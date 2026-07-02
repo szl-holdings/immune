@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useGetImmuneState,
   useGetImmuneLedgerLatest,
@@ -6,8 +6,17 @@ import {
   type ImmuneReceipt,
 } from "@workspace/api-client-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Terminal, Database, ShieldAlert, CheckCircle2, ChevronRight, XCircle, Unlink } from "lucide-react";
+import { Terminal, Database, ShieldAlert, CheckCircle2, ChevronRight, XCircle, Unlink, KeyRound } from "lucide-react";
 import { getWatcherFramework } from "@/lib/frameworks";
+
+const API_BASE = `${import.meta.env.BASE_URL || "/"}api/immune`;
+
+interface PubKeyInfo {
+  enabled: boolean;
+  alg: string;
+  publicKey: string | null;
+  kid: string | null;
+}
 
 const HUKLLA_NAMES: Record<string, string> = {
   T01: "intent.unsigned",
@@ -34,6 +43,27 @@ export function AuditConsole() {
   const verifierQuery = useVerifyImmuneLedger();
   const [openReceipt, setOpenReceipt] = useState<number | null>(null);
   const [tamperedSeq, setTamperedSeq] = useState<number | null>(null);
+  const [pubkey, setPubkey] = useState<PubKeyInfo | null>(null);
+
+  // The server's cryptographic identity — fetched once so the audit console can
+  // show whether new receipts are Ed25519-signed (and under which key id) or
+  // hash-only. Honest either way; never assumed.
+  useEffect(() => {
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/pubkey`, {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setPubkey((await res.json()) as PubKeyInfo);
+      } catch {
+        /* leave null — the badge simply won't claim a signature exists */
+      }
+    })();
+    return () => controller.abort();
+  }, []);
 
   const state = stateQuery.data;
   const ledger = ledgerQuery.data;
@@ -110,6 +140,30 @@ export function AuditConsole() {
               {shortHash(state?.lastHash)}
             </div>
           </div>
+        </div>
+
+        {/* Signing identity — honest about whether new receipts are Ed25519-signed */}
+        <div className="border-t border-border/40 pt-2.5 flex items-center gap-2">
+          <div className="text-[9px] text-muted-foreground font-mono flex items-center gap-1.5 shrink-0">
+            <KeyRound className="w-3 h-3" /> Signing
+          </div>
+          {pubkey?.enabled ? (
+            <span
+              className="inline-flex items-center gap-1.5 font-mono text-[9px] text-primary border border-primary/40 bg-primary/10 rounded-sm px-1.5 py-0.5"
+              title={pubkey.publicKey ? `${pubkey.alg} public key: ${pubkey.publicKey}` : undefined}
+              data-testid="badge-signing-identity"
+            >
+              <span className="inline-block w-1 h-1 rounded-full bg-primary animate-pulse" />
+              Ed25519 · kid {pubkey.kid?.slice(0, 8) ?? "—"}
+            </span>
+          ) : (
+            <span
+              className="font-mono text-[9px] text-muted-foreground/70 border border-border/40 rounded-sm px-1.5 py-0.5"
+              data-testid="badge-signing-identity"
+            >
+              hash-only (unsigned)
+            </span>
+          )}
         </div>
       </div>
 

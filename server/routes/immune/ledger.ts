@@ -1,8 +1,13 @@
 import fs from "fs";
 import path from "path";
 import { canonicalBytes, sha256Hex, CanonicalError } from "./canonical";
+import { signReceiptBytes, verifyReceiptSignature, officialPublicKeyB64 } from "./signing";
 
-const DATA_DIR = path.resolve(process.cwd(), "data", "immune");
+// The append-only chain lives under data/immune by default. IMMUNE_DATA_DIR lets
+// a deploy (or a test) point at a different writable dir without touching cwd.
+const DATA_DIR = process.env.IMMUNE_DATA_DIR
+  ? path.resolve(process.env.IMMUNE_DATA_DIR)
+  : path.resolve(process.cwd(), "data", "immune");
 const LEDGER_PATH = path.join(DATA_DIR, "ledger.jsonl");
 const EVIDENCE_PATH = path.join(DATA_DIR, "huklla_evidence.jsonl");
 
@@ -12,6 +17,12 @@ export interface Receipt {
   prevHash: string;
   hash: string;
   payload: Record<string, unknown>;
+  // Optional Ed25519 signature (sibling fields — NOT part of the hashed view,
+  // so unsigned seeded receipts keep verifying unchanged).
+  alg?: "ed25519";
+  sig?: string;
+  pub?: string;
+  kid?: string;
 }
 
 export interface EvidenceRecord {
@@ -101,6 +112,13 @@ function appendReceiptSync(input: AppendInput): Receipt {
     throw new CanonicalError(`canonicalize failed: ${(err as Error).message}`);
   }
   const receipt: Receipt = { seq, ts, prevHash, hash, payload: input.payload };
+  const signature = signReceiptBytes(bytes);
+  if (signature) {
+    receipt.alg = signature.alg;
+    receipt.sig = signature.sig;
+    receipt.pub = signature.pub;
+    receipt.kid = signature.kid;
+  }
   fsyncAppend(JSON.stringify(receipt) + "\n");
   all.push(receipt);
   return receipt;
@@ -117,7 +135,7 @@ export function appendReceipt(input: AppendInput): Promise<Receipt> {
 
 export interface VerifierIssue {
   seq: number;
-  kind: "bad_hash" | "bad_prev" | "bad_sequence" | "parse_error" | "bad_payload";
+  kind: "bad_hash" | "bad_prev" | "bad_sequence" | "parse_error" | "bad_payload" | "bad_sig" | "untrusted_key";
   detail: string;
 }
 
@@ -164,8 +182,9 @@ export function verifyLedger(): VerifierReport {
       flag(parsed.seq ?? lineSeq, "bad_prev", `expected prevHash ${prevHash.slice(0, 12)}…, got ${String(parsed.prevHash).slice(0, 12)}…`);
     }
     let recomputed: string;
+    let bytes: Buffer;
     try {
-      const bytes = canonicalBytes({
+      bytes = canonicalBytes({
         seq: parsed.seq,
         ts: parsed.ts,
         prevHash: parsed.prevHash,
@@ -180,6 +199,20 @@ export function verifyLedger(): VerifierReport {
     }
     if (recomputed !== parsed.hash) {
       flag(parsed.seq ?? lineSeq, "bad_hash", `hash mismatch — recomputed ${recomputed.slice(0, 12)}…, stored ${String(parsed.hash).slice(0, 12)}…`);
+    }
+    // Signatures are OPTIONAL — only verify when a receipt carries one, so the
+    // seeded unsigned chain still verifies. A present-but-invalid signature is a
+    // real integrity failure; a valid signature under a key other than the
+    // published one is flagged as untrusted (authenticity, not integrity).
+    if (parsed.sig) {
+      if (!verifyReceiptSignature(bytes, parsed)) {
+        flag(parsed.seq ?? lineSeq, "bad_sig", `ed25519 signature does not match receipt bytes`);
+      } else {
+        const official = officialPublicKeyB64();
+        if (official && parsed.pub && parsed.pub !== official) {
+          flag(parsed.seq ?? lineSeq, "untrusted_key", `signed by kid ${String(parsed.kid).slice(0, 8)} — not the published key`);
+        }
+      }
     }
     prevHash = parsed.hash;
     expectedSeq = (parsed.seq ?? lineSeq) + 1;

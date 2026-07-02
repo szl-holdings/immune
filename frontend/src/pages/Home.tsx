@@ -3,6 +3,7 @@ import { ImmuneCycleResult, useGetImmuneState } from "@workspace/api-client-reac
 import { ControlsPanel } from "@/components/ControlsPanel";
 import { AuditConsole } from "@/components/AuditConsole";
 import { ThreeScene } from "@/components/ThreeScene";
+import AgentConsole from "@/components/AgentConsole";
 import PulsePanel from "@/components/PulsePanel";
 import IntelPanel from "@/components/IntelPanel";
 import LeadersPanel from "@/components/LeadersPanel";
@@ -171,6 +172,9 @@ export default function Home() {
               <span className="text-warning"> UNAVAILABLE</span> (feed down — shown plainly, never faked).
             </p>
           </header>
+
+          {/* Marquee: a REAL governed agent on SZL's own inference */}
+          <AgentConsole />
 
           {/* Live pulse: NVD CVEs + GitHub/HF ecosystem */}
           <PulsePanel />

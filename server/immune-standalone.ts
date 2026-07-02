@@ -18,6 +18,9 @@ const __serverDir = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 app.disable("x-powered-by");
+// Behind the Hugging Face / nginx proxy, honor X-Forwarded-For so req.ip is the
+// real visitor (per-IP rate limiting in the agent depends on this).
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "2mb" }));
 
 // Lightweight liveness probe (handy for Docker/HF healthchecks).

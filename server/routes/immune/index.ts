@@ -16,19 +16,18 @@ const RunImmuneCycleBody = z.object({
   intent: z.string().optional(),
 });
 import { getState, setState, clearDeadman } from "./state";
-import { sentraInspect } from "./sentra";
-import { evaluateTripwires, HUKLLA_REGISTRY } from "./huklla";
+import { HUKLLA_REGISTRY } from "./huklla";
 import {
-  appendReceipt,
-  appendEvidence,
   ledgerCount,
   ledgerLastHash,
   ledgerLatest,
   verifyLedger,
   evidenceLatest,
 } from "./ledger";
-import { canonicalBytes, CanonicalError } from "./canonical";
 import { getFrameworks, getTransparency, getIncidents, getLeaders, getPulse } from "./intel";
+import { runGovernedCycle } from "./cycle";
+import { publicKeyInfo } from "./signing";
+import agentRouter, { agentStatus } from "./agent";
 
 const router: IRouter = Router();
 
@@ -86,67 +85,21 @@ router.post("/cycle", async (req: Request, res: Response) => {
     return;
   }
   const { actor, intent } = parsed.data;
-  const s = getState();
 
   const intentPayload = {
     actor: actor ?? "operator@immune.demo",
     intent: intent ?? "DEMO: read public market snapshot",
   };
 
-  const sentra = sentraInspect(intentPayload, s.mode);
-
-  let receiptOut: any = null;
-  let payloadBytes = 0;
-  let pass = false;
-
-  if (s.deadman) {
-    pass = false;
-  } else if (sentra.accepted) {
-    const payload: Record<string, unknown> = {
-      actor: intentPayload.actor,
-      intent: intentPayload.intent,
-      mode: s.mode,
-      sentra: {
-        accepted: true,
-        signatureMatched: sentra.signatureMatched ?? "intent.required",
-      },
-    };
-    try {
-      payloadBytes = canonicalBytes({ payload }).byteLength;
-      const r = await appendReceipt({ payload });
-      receiptOut = r;
-      pass = true;
-    } catch (err) {
-      const detail = err instanceof CanonicalError ? err.message : (err as Error).message;
-      receiptOut = null;
-      pass = false;
-      sentra.accepted = false;
-      sentra.reason = `canonicalize: ${detail}`;
-      sentra.signatureMatched = "guard.canonical";
-    }
-  }
-
-  const huklla = evaluateTripwires({
-    mode: s.mode,
-    selectedTripwire: s.tripwire,
-    sentraAccepted: sentra.accepted,
-    payloadBytes,
-    receiptWritten: receiptOut !== null,
-  });
-
-  appendEvidence({
-    ts: new Date().toISOString(),
-    cycleSeq: ledgerCount(),
-    fired: huklla,
-  });
+  const result = await runGovernedCycle(intentPayload);
 
   res.json({
-    pass,
-    mode: s.mode,
-    deadman: s.deadman,
-    sentra,
-    huklla,
-    receipt: receiptOut,
+    pass: result.pass,
+    mode: result.mode,
+    deadman: result.deadman,
+    sentra: result.sentra,
+    huklla: result.huklla,
+    receipt: result.receipt,
     ledgerCount: ledgerCount(),
     lastHash: ledgerLastHash(),
   });
@@ -190,5 +143,19 @@ router.get("/intel/pulse", async (_req: Request, res: Response) => {
   const data = await getPulse();
   res.json(data);
 });
+
+// The server's Ed25519 public identity for offline signature verification.
+router.get("/pubkey", (_req: Request, res: Response) => {
+  res.json(publicKeyInfo());
+});
+
+// A convenience mirror of the agent status at the top level (the UI can also
+// read /agent/status). Kept so /state consumers can discover the live agent.
+router.get("/agent-status", (_req: Request, res: Response) => {
+  res.json(agentStatus());
+});
+
+// The live governed agent — /agent/status and /agent/run.
+router.use("/agent", agentRouter);
 
 export default router;
