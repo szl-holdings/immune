@@ -1,0 +1,12 @@
+[
+  { "id": "lambda", "repo": "szl-lambda-gate", "maturity": "CONJECTURE", "anchor": "geometric mean" },
+  { "id": "axioms", "repo": "szl-lambda-gate", "maturity": "METHOD", "anchor": "selfcheck" },
+  { "id": "theoremU", "repo": "lutar-lean", "maturity": "PROVEN", "anchor": "TheoremU_LambdaUnique" },
+  { "id": "lutar", "repo": "lutar-lean", "maturity": "PROVEN", "anchor": "locked_count_eight" },
+  { "id": "neyman", "repo": "lutar-lean", "maturity": "PROVEN", "anchor": "immune Neyman" },
+  { "id": "pinsker", "repo": "lutar-lean", "maturity": "PROVEN", "anchor": "binary_pinsker" },
+  { "id": "norm", "repo": "szl-governed-norm", "maturity": "PROVEN", "anchor": "RMSNorm" },
+  { "id": "khipu", "repo": "khipu-consensus", "maturity": "METHOD", "anchor": "3f + 1" },
+  { "id": "energy", "repo": "governed-inference-meter", "maturity": "METHOD", "anchor": "tokens_out" },
+  { "id": "yarqa", "repo": "yarqa", "maturity": "METHOD", "anchor": "compartmentalize_with_receipt" }
+]
