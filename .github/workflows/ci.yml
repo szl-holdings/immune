@@ -1,0 +1,30 @@
+# Copyright 2026 SZL Holdings — SPDX-License-Identifier: Apache-2.0
+name: CI
+
+# Minimal, honest quality gate for the IMMUNE demo artifact. The frontend is a
+# slice of a pnpm-catalog monorepo (deps use `catalog:` / `workspace:*`), so it
+# is not independently installable or buildable in isolation here. The
+# dependency-free Foundations honesty guard is the real gate: it proves every
+# served formula traces verbatim to a committed corpus snapshot, and self-tests
+# that the guard rejects a fabricated anchor. Actions are SHA-pinned.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  foundations-guard:
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+      # actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "20"
+      - name: Foundations honesty guard (dependency-free)
+        working-directory: frontend
+        run: node scripts/check-foundations-corpus.mjs
