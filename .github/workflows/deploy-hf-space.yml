@@ -1,0 +1,139 @@
+# Copyright 2026 SZL Holdings — SPDX-License-Identifier: Apache-2.0
+name: Deploy to HF Space
+
+# Auto-sync the IMMUNE deploy artifacts to the Hugging Face Docker Space
+# SZLHOLDINGS/immune and trigger a rebuild on every push to main that touches
+# the deploy directory (or on manual dispatch).
+#
+# WHY THIS EXISTS: the Space is a SEPARATE git remote from GitHub. A build fix
+# merged here (e.g. #6, the ECR base-image fix) does NOT reach the Space, so the
+# Space keeps serving the old, broken build until someone pushes to it by hand
+# with a WRITE-scoped HF token. This workflow makes that push automatic.
+#
+# REQUIRES: repo secret HF_TOKEN — a Hugging Face WRITE token with access to the
+# SZLHOLDINGS/immune Space. A read-only token (the kind vaulted for Spaces
+# runtime) CANNOT push; this workflow FAILS LOUDLY in that case rather than
+# silently "succeeding" without deploying. See frontend/deploy/README.md and the
+# Wave-T Dev-1 result file for the founder step that creates + vaults this secret.
+#
+# This workflow only COPIES Dockerfile/.dockerignore/README.md into the Space and
+# preserves the Space's existing dist/ (the built artifact is gitignored here and
+# cannot be rebuilt from this sliced repo). It never regenerates ledger data.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/deploy/Dockerfile"
+      - "frontend/deploy/.dockerignore"
+      - "frontend/deploy/README.md"
+      - ".github/workflows/deploy-hf-space.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-hf-space
+  cancel-in-progress: false
+
+env:
+  HF_SPACE: SZLHOLDINGS/immune
+  DEPLOY_DIR: frontend/deploy
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+
+      - name: Require a WRITE-scoped HF_TOKEN (fail loudly otherwise)
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HF_TOKEN:-}" ]; then
+            echo "::error title=HF_TOKEN missing::Repo secret HF_TOKEN is not set. Add a Hugging Face WRITE token as the HF_TOKEN repo secret (see frontend/deploy/README.md). Refusing to pretend the Space was deployed."
+            exit 1
+          fi
+          # Validate the token and detect an obviously read-only token up front.
+          code=$(curl -sS -o /tmp/whoami.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${HF_TOKEN}" \
+            https://huggingface.co/api/whoami-v2 || echo 000)
+          if [ "$code" != "200" ]; then
+            echo "::error title=HF_TOKEN invalid::whoami-v2 returned HTTP $code. The HF_TOKEN secret is invalid, expired, or revoked."
+            exit 1
+          fi
+          role=$(python3 -c "import json;d=json.load(open('/tmp/whoami.json'));print((d.get('auth') or {}).get('accessToken',{}).get('role',''))" 2>/dev/null || echo "")
+          user=$(python3 -c "import json;d=json.load(open('/tmp/whoami.json'));print(d.get('name',''))" 2>/dev/null || echo "")
+          echo "HF token belongs to: ${user:-<unknown>} (role='${role:-unspecified}')"
+          if [ "$role" = "read" ]; then
+            echo "::error title=HF_TOKEN is read-only::The HF_TOKEN secret is a READ token; it cannot push to the Space. Replace it with a WRITE-scoped token for ${HF_SPACE}."
+            exit 1
+          fi
+          echo "HF_USER=${user}" >> "$GITHUB_ENV"
+
+      - name: Sync deploy artifacts to the HF Space and rebuild
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          for f in Dockerfile .dockerignore README.md; do
+            if [ ! -f "${DEPLOY_DIR}/${f}" ]; then
+              echo "::error title=Missing deploy file::${DEPLOY_DIR}/${f} not found in the repo; cannot sync a partial Space."
+              exit 1
+            fi
+          done
+
+          user="${HF_USER:-hf}"
+          remote="https://${user}:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}"
+
+          # Clone the CURRENT Space so we preserve its built dist/ (gitignored here).
+          workdir="$(mktemp -d)"
+          echo "Cloning Space ${HF_SPACE} ..."
+          if ! git clone --depth 1 "$remote" "$workdir/space" 2>/tmp/clone.err; then
+            sed 's/'"${HF_TOKEN}"'/***/g' /tmp/clone.err || true
+            echo "::error title=Space clone failed::Could not clone https://huggingface.co/spaces/${HF_SPACE}. Check the token has access to this Space."
+            exit 1
+          fi
+
+          # Copy only the build definition; never touch the Space's dist/ or data.
+          cp "${DEPLOY_DIR}/Dockerfile"     "$workdir/space/Dockerfile"
+          cp "${DEPLOY_DIR}/.dockerignore"  "$workdir/space/.dockerignore"
+          cp "${DEPLOY_DIR}/README.md"      "$workdir/space/README.md"
+
+          cd "$workdir/space"
+          git config user.name  "immune-autodeploy[bot]"
+          git config user.email "immune-autodeploy@users.noreply.huggingface.co"
+
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No Dockerfile/.dockerignore/README changes to push; will force a factory rebuild of the current Space content."
+            pushed=0
+          else
+            git add Dockerfile .dockerignore README.md
+            git commit -m "chore(deploy): sync build definition from szl-holdings/immune@${GITHUB_SHA}"
+            echo "Pushing to Space (a WRITE token is required; a read-only token fails here) ..."
+            if ! git push "$remote" HEAD:main 2>/tmp/push.err; then
+              sed 's/'"${HF_TOKEN}"'/***/g' /tmp/push.err || true
+              echo "::error title=Space push rejected::git push to ${HF_SPACE} failed — the HF_TOKEN is almost certainly READ-ONLY or lacks write access to this Space. Deploy did NOT happen."
+              exit 1
+            fi
+            pushed=1
+          fi
+
+          # Trigger a factory rebuild so the ECR-based Dockerfile is rebuilt from
+          # scratch (a plain push already rebuilds, but this guarantees it and
+          # covers the no-diff / workflow_dispatch case).
+          echo "Requesting factory rebuild ..."
+          code=$(curl -sS -o /tmp/restart.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer ${HF_TOKEN}" \
+            "https://huggingface.co/api/spaces/${HF_SPACE}/restart?factory=true" || echo 000)
+          if [ "$code" != "200" ] && [ "$code" != "201" ]; then
+            cat /tmp/restart.json 2>/dev/null || true
+            echo "::error title=Factory rebuild failed::POST /restart?factory=true returned HTTP $code. The push may have succeeded but the rebuild was not triggered."
+            exit 1
+          fi
+
+          echo "Deploy complete (pushed=${pushed}). Factory rebuild requested for https://huggingface.co/spaces/${HF_SPACE}"
