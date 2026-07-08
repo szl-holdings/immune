@@ -7,7 +7,17 @@
 #
 # The server bundle has all node deps inlined, so no npm install is needed at image
 # build time — the image stays small.
-FROM node:20-alpine
+#
+# Base image is pulled from the AWS ECR Public mirror of the official Docker Library
+# image (bit-identical to docker.io/library/node:20-alpine) because Hugging Face's
+# shared Docker builders pull anonymously from Docker Hub and hit its anonymous
+# pull-rate limit; when throttled the FROM pull stalls until the build job hits its
+# wall-clock limit ("Job timeout"). ECR Public has no such limit, so the pull is fast
+# and deterministic. This is the ONLY unbounded step in an otherwise COPY-only build.
+FROM public.ecr.aws/docker/library/node:20-alpine
+
+# Cache-bust / fresh-container marker (bump to force HF to rebuild+redeploy):
+ARG IMMUNE_DEPLOY_REV=2026-07-08d
 
 WORKDIR /app
 

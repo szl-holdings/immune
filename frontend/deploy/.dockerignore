@@ -1,0 +1,6 @@
+# Keep the Docker build context minimal and deterministic: only the built dist/ is
+# copied into the image. Everything else in this deploy/ dir (docs, the build script,
+# VCS metadata) is build-time-only and must not be shipped to the HF builder.
+*
+!dist/
+!dist/**
