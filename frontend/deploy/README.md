@@ -1,5 +1,9 @@
 ---
-title: IMMUNE Investor Demo
+title: IMMUNE — Verifiable AI Defense Matrix
+emoji: 🛡️
+colorFrom: green
+colorTo: blue
+short_description: Verifiable AI — append-only SHA-256 receipt chain + gates
 sdk: docker
 app_port: 7860
 pinned: false
@@ -75,3 +79,29 @@ Push the contents of this `deploy/` directory (the `Dockerfile`, this `README.md
 the built `dist/`) to a Docker Space. The metadata header above (`sdk: docker`,
 `app_port: 7860`) tells the Space how to build and expose the container. The ledger data
 directory is made writable for the Space's non-root user so the chain can keep appending.
+
+---
+
+*— a product of SZL Holdings.*
+
+---
+
+## ◇ Part of the SZL Holdings estate — *governed AI you can prove*
+
+One sovereign substrate, many organs — every decision carries a signed, checkable receipt.
+
+**[◇ Holographic Estate — the showcase](https://szlholdings-holographic.hf.space)** ·
+[🛡️ a11oy](https://huggingface.co/spaces/SZLHOLDINGS/a11oy) ·
+[🧬 IMMUNE](https://huggingface.co/spaces/SZLHOLDINGS/immune) ·
+[🦅 killinchu](https://huggingface.co/spaces/SZLHOLDINGS/killinchu) ·
+[🫀 anatomy](https://huggingface.co/spaces/SZLHOLDINGS/anatomy) ·
+[🌌 cosmos](https://huggingface.co/spaces/SZLHOLDINGS/cosmos) ·
+[🛰️ SDA](https://huggingface.co/spaces/SZLHOLDINGS/sda) ·
+[🌊 yarqa](https://huggingface.co/spaces/SZLHOLDINGS/yarqa) ·
+[🤗 all Spaces](https://huggingface.co/SZLHOLDINGS)
+
+**Receipt cluster:** [▶ a11oy console](https://szlholdings-a11oy.hf.space) ·
+[📜 governed-receipt-spec (hub)](https://github.com/szl-holdings/governed-receipt-spec) ·
+[✅ receipt verifier](https://szlholdings-governed-receipt-verifier.static.hf.space)
+
+<sub>Doctrine v11 · Λ = Conjecture 1, never green · honest by design · public data only.</sub>
