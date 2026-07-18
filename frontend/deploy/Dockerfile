@@ -17,12 +17,13 @@
 FROM public.ecr.aws/docker/library/node:20-alpine
 
 # Cache-bust / fresh-container marker (bump to force HF to rebuild+redeploy):
-ARG IMMUNE_DEPLOY_REV=2026-07-08d
+ARG IMMUNE_DEPLOY_REV=2026-07-17a
 
 WORKDIR /app
 
 # Self-contained server bundle, the vite-built SPA, and the REAL receipt/evidence chain.
 COPY dist/immune-server.js ./immune-server.js
+COPY dist/szl-source-attestation.mjs ./szl-source-attestation.mjs
 COPY dist/public ./public
 COPY dist/data ./data
 
