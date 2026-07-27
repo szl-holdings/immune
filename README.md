@@ -2,6 +2,8 @@
 
 # IMMUNE — Verifiable AI You Can't Fake
 
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](./LICENSE)
+
 **Stage: LIVE · MEASURED.** IMMUNE is the governed AI safety layer: every accepted
 agent action is sealed into an append-only, SHA-256 hash-linked receipt chain, and
 every externally-sourced datum carries an honest `LIVE / REFERENCE / UNAVAILABLE`

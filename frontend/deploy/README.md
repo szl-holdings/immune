@@ -7,7 +7,7 @@ short_description: Verifiable AI — append-only SHA-256 receipt chain + gates
 sdk: docker
 app_port: 7860
 pinned: false
-license: other
+license: apache-2.0
 ---
 
 # IMMUNE — Verifiable AI you can't fake
@@ -20,6 +20,14 @@ live/reference threat-intelligence feeds (Sigstore Rekor, MITRE ATLAS, OWASP LLM
 Nothing here is faked. Receipts, hashes, and the chain verifier run for real; every
 externally-sourced datum carries an honest provenance label (LIVE / REFERENCE /
 UNAVAILABLE).
+
+## License
+
+The IMMUNE source and this Space deployment definition are licensed under
+[Apache License 2.0](https://github.com/szl-holdings/immune/blob/main/LICENSE).
+Third-party data and standards retain their respective upstream terms and are
+attributed by the application; the Apache-2.0 declaration does not relicense
+external content.
 
 ## What's in the image
 
@@ -37,18 +45,19 @@ falls back to `index.html` for all non-API routes (SPA). It listens on `PORT` (d
 From the repository root (requires `pnpm install` to have run):
 
 ```bash
-bash artifacts/immune-demo/deploy/build-standalone.sh
+bash frontend/deploy/build-standalone.sh
 ```
 
 This:
-1. builds the static frontend with `BASE_PATH=/` into `dist/public`,
-2. bundles `src/immune-standalone.ts` into a single `dist/immune-server.js`,
+
+1. builds the static frontend with `BASE_PATH=/` into `dist/public`;
+2. bundles `server/immune-standalone.ts` into a single `dist/immune-server.js`;
 3. copies the static frontend and the real receipt chain into `dist/`.
 
 ## Run it locally
 
 ```bash
-( cd artifacts/immune-demo/deploy/dist && PORT=7878 node immune-server.js )
+( cd frontend/deploy/dist && PORT=7878 node immune-server.js )
 ```
 
 Verify:
@@ -65,13 +74,14 @@ The build context is **this `deploy/` directory**, and `dist/` must already exis
 (run `build-standalone.sh` first):
 
 ```bash
-cd artifacts/immune-demo/deploy
+cd frontend/deploy
 bash build-standalone.sh
 docker build -t immune-demo .
 docker run --rm -p 7860:7860 immune-demo
 ```
 
-Then open http://localhost:7860 and hit `http://localhost:7860/api/immune/state`.
+Then open `http://localhost:7860` and query
+`http://localhost:7860/api/immune/state`.
 
 ## Hugging Face Space (Docker SDK)
 
