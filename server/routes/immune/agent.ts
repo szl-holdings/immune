@@ -10,7 +10,21 @@
 //   * receipts are the real signed hash-chain entries,
 //   * if inference is unconfigured/unreachable the endpoint returns an honest 503.
 import { Router, type IRouter, type Request, type Response } from "express";
+import { createHash } from "node:crypto";
 import { z } from "zod";
+import {
+  ActionClassSchema,
+  DECISION_GENOME_SCHEMA_ID,
+  DecisionGenomeEventSchema,
+  DecisionGenomeSchema,
+  DecisionRecommendationSchema,
+  DecisionScoreSchema,
+  DecisionSourceSchema,
+  type ActionClass,
+  type DecisionGenome,
+  type DecisionState,
+  type SourceState,
+} from "@szl-holdings/contracts/decision-genome";
 import { runGovernedCycle } from "./cycle";
 import { getState } from "./state";
 import { ledgerCount, ledgerLastHash, verifyLedger } from "./ledger";
@@ -154,6 +168,281 @@ export function agentStatus(): Record<string, unknown> {
 }
 
 const router: IRouter = Router();
+
+const FRONTIER_POLICY_VERSION = "immune-frontier-v1";
+const SOURCE_CLOCK_SKEW_MS = 5 * 60_000;
+
+export const FrontierEvaluateSchema = z.object({
+  observationId: z.string().min(1).max(256),
+  subject: z.object({
+    kind: z.string().min(1).max(128),
+    id: z.string().min(1).max(512),
+  }),
+  source: DecisionSourceSchema.omit({ state: true }).extend({
+    licenseSpdxOrTermsUrl: z.string().min(1).max(1024),
+  }),
+  signals: z.object({
+    novelty: z.number().min(0).max(1),
+    dangerContext: z.number().min(0).max(1),
+    baselineAnomaly: z.number().min(0).max(1),
+    causalShift: z.number().min(0).max(1),
+    propagationRisk: z.number().min(0).max(1),
+    hardPolicyViolation: z.boolean().default(false),
+  }),
+  calibrationScores: z.array(z.number().min(0).max(1)).max(10_000).default([]),
+  alpha: DecisionScoreSchema.shape.falseAlertBudgetAlpha.lt(0.5).default(0.05),
+});
+export type FrontierEvaluateInput = z.infer<typeof FrontierEvaluateSchema>;
+
+function stableValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, item]) => [key, stableValue(item)]),
+    );
+  }
+  return value;
+}
+
+function sha256(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(stableValue(value))).digest("hex");
+}
+
+export function decisionSourceState(
+  source: FrontierEvaluateInput["source"],
+  nowMs = Date.now(),
+): {
+  state: SourceState;
+  ageMinutes: number | null;
+} {
+  const observed = Date.parse(source.observedAt);
+  const fetched = Date.parse(source.fetchedAt);
+  if (!Number.isFinite(observed) || !Number.isFinite(fetched)) {
+    return { state: "UNAVAILABLE", ageMinutes: null };
+  }
+  if (
+    observed - fetched > SOURCE_CLOCK_SKEW_MS ||
+    observed - nowMs > SOURCE_CLOCK_SKEW_MS ||
+    fetched - nowMs > SOURCE_CLOCK_SKEW_MS
+  ) {
+    return { state: "CONFLICTED", ageMinutes: (fetched - observed) / 60_000 };
+  }
+  const ageMinutes = Math.max(0, (nowMs - observed) / 60_000);
+  if (source.expiresAt && Date.parse(source.expiresAt) <= nowMs) {
+    return { state: ageMinutes <= 240 ? "STALE" : "DEGRADED", ageMinutes };
+  }
+  if (ageMinutes <= 5) return { state: "LIVE", ageMinutes };
+  if (ageMinutes <= 60) return { state: "CACHED", ageMinutes };
+  if (ageMinutes <= 240) return { state: "STALE", ageMinutes };
+  return { state: "DEGRADED", ageMinutes };
+}
+
+export function conformalPValue(score: number, calibrationScores: number[]): number | null {
+  if (calibrationScores.length < 20) return null;
+  const atLeastAsAnomalous = calibrationScores.filter((item) => item >= score).length;
+  return (1 + atLeastAsAnomalous) / (calibrationScores.length + 1);
+}
+
+export function buildShadowDecisionGenome(
+  input: FrontierEvaluateInput,
+  now = new Date(),
+): DecisionGenome {
+  const freshness = decisionSourceState(input.source, now.getTime());
+  const compositeRisk =
+    0.25 * input.signals.novelty +
+    0.30 * input.signals.dangerContext +
+    0.20 * input.signals.baselineAnomaly +
+    0.15 * input.signals.causalShift +
+    0.10 * input.signals.propagationRisk;
+  const pValue = conformalPValue(compositeRisk, input.calibrationScores);
+  const freshnessDebt = ["STALE", "DEGRADED", "UNAVAILABLE", "CONFLICTED"].includes(freshness.state)
+    ? 0.35
+    : freshness.state === "CACHED"
+      ? 0.1
+      : 0;
+  const uncertainty = Math.min(
+    1,
+    0.55 * (1 - input.source.confidence) + freshnessDebt + (pValue === null ? 0.2 : 0),
+  );
+
+  let state: DecisionState;
+  let action: ActionClass;
+  const reasonCodes: string[] = [];
+
+  if (
+    input.source.confidence < 0.5 ||
+    ["STALE", "DEGRADED", "UNAVAILABLE", "CONFLICTED"].includes(freshness.state)
+  ) {
+    state = "WITHHOLD";
+    action = freshness.state === "STALE" ? "REQUEST_READ_ONLY_PROBE" : "OPEN_INCIDENT";
+    reasonCodes.push("PROVENANCE_OR_FRESHNESS_GATE");
+    if (input.signals.hardPolicyViolation) reasonCodes.push("HARD_POLICY_SIGNAL");
+  } else if (input.signals.hardPolicyViolation) {
+    state = "QUARANTINE_RECOMMENDED";
+    action = "REQUEST_QUARANTINE_REVIEW";
+    reasonCodes.push("HARD_POLICY_SIGNAL");
+  } else if (pValue === null) {
+    state = "REVIEW_REQUIRED";
+    action = "OPEN_INCIDENT";
+    reasonCodes.push("CALIBRATION_SET_INSUFFICIENT");
+  } else if (pValue <= input.alpha && compositeRisk >= 0.85) {
+    state = "QUARANTINE_RECOMMENDED";
+    action = "REQUEST_QUARANTINE_REVIEW";
+    reasonCodes.push("CONFORMAL_ALERT", "HIGH_COMPOSITE_RISK");
+  } else if (pValue <= input.alpha || compositeRisk >= 0.65) {
+    state = "REVIEW_REQUIRED";
+    action = "OPEN_INCIDENT";
+    reasonCodes.push(pValue <= input.alpha ? "CONFORMAL_ALERT" : "ELEVATED_COMPOSITE_RISK");
+  } else {
+    state = "ALLOW_OBSERVE";
+    action = "OBSERVE";
+    reasonCodes.push("SHADOW_OBSERVATION_ONLY");
+  }
+
+  const at = now.toISOString();
+  const subjectDigest = sha256(input.subject);
+  const source = DecisionSourceSchema.parse({ ...input.source, state: freshness.state });
+  const recommendation = DecisionRecommendationSchema.parse({
+    state,
+    action: ActionClassSchema.parse(action),
+    reasonCodes,
+    humanApprovalRequired: action !== "OBSERVE",
+    executable: false,
+    evidenceLabel: "MODELED",
+  });
+  const scores = DecisionScoreSchema.parse({
+    novelty: input.signals.novelty,
+    dangerContext: input.signals.dangerContext,
+    baselineAnomaly: input.signals.baselineAnomaly,
+    causalShift: input.signals.causalShift,
+    propagationRisk: input.signals.propagationRisk,
+    compositeRisk,
+    conformalPValue: pValue,
+    falseAlertBudgetAlpha: input.alpha,
+    uncertainty,
+  });
+  const eventBase = {
+    at,
+    actor: "immune:frontier-shadow",
+    subjectDigest,
+    policyVersion: FRONTIER_POLICY_VERSION,
+    evidenceLabel: "MODELED" as const,
+  };
+  const events = DecisionGenomeEventSchema.array().parse([
+    {
+      ...eventBase,
+      eventId: `${input.observationId}:observation`,
+      eventType: "OBSERVATION",
+      inputDigests: [source.rawPayloadSha256],
+      payload: {
+        sourceState: source.state,
+        sourceConfidence: source.confidence,
+        sourceAgeMinutes: freshness.ageMinutes,
+      },
+    },
+    {
+      ...eventBase,
+      eventId: `${input.observationId}:fusion`,
+      eventType: "FUSION",
+      inputDigests: [source.rawPayloadSha256],
+      payload: scores,
+    },
+    {
+      ...eventBase,
+      eventId: `${input.observationId}:recommendation`,
+      eventType: "RECOMMENDATION",
+      inputDigests: [sha256(scores)],
+      payload: recommendation,
+    },
+  ]);
+  const genomeWithoutDigest = {
+    schemaId: DECISION_GENOME_SCHEMA_ID,
+    decisionId: input.observationId,
+    createdAt: at,
+    mode: "shadow" as const,
+    subject: { ...input.subject, digest: subjectDigest },
+    sources: [source],
+    scores,
+    recommendation,
+    events,
+  };
+  return DecisionGenomeSchema.parse({
+    ...genomeWithoutDigest,
+    digest: sha256(genomeWithoutDigest),
+  });
+}
+
+router.get("/frontier", (_req: Request, res: Response) => {
+  res.json({
+    service: "immune-decision-genome",
+    version: "v1",
+    mode: "shadow",
+    schemaId: DECISION_GENOME_SCHEMA_ID,
+    evidenceLabel: "MODELED",
+    executable: false,
+    kernels: [
+      "negative-selection novelty",
+      "danger-context aggregation",
+      "causal mechanism shift",
+      "graph propagation risk",
+      "conformal false-alert control",
+      "provenance and freshness gate",
+    ],
+    outputs: ["ALLOW_OBSERVE", "REVIEW_REQUIRED", "QUARANTINE_RECOMMENDED", "WITHHOLD"],
+    invariant:
+      "No destructive action is emitted. Missing provenance, stale evidence, or insufficient calibration cannot become a green claim.",
+  });
+});
+
+router.post("/frontier/evaluate", async (req: Request, res: Response) => {
+  const parsed = FrontierEvaluateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: "invalid_decision_observation",
+      issues: parsed.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
+    });
+    return;
+  }
+
+  const input = parsed.data;
+  const genome = buildShadowDecisionGenome(input);
+  const cycle = await runGovernedCycle(
+    { actor: "immune:frontier-shadow", intent: "seal defensive shadow recommendation" },
+    {
+      schemaId: genome.schemaId,
+      decisionId: genome.decisionId,
+      genomeDigest: genome.digest,
+      subjectDigest: genome.subject.digest,
+      policyVersion: FRONTIER_POLICY_VERSION,
+      recommendation: {
+        state: genome.recommendation.state,
+        action: genome.recommendation.action,
+        executable: genome.recommendation.executable,
+        evidenceLabel: genome.recommendation.evidenceLabel,
+      },
+    },
+  );
+
+  res.json({
+    genome,
+    governance: {
+      pass: cycle.pass,
+      sentra: cycle.sentra,
+      firedTripwires: cycle.huklla.filter((item) => item.fired),
+      receipt: cycle.receipt
+        ? {
+            seq: cycle.receipt.seq,
+            hash: cycle.receipt.hash,
+            prevHash: cycle.receipt.prevHash,
+            signed: Boolean(cycle.receipt.sig),
+            kid: cycle.receipt.kid ?? null,
+          }
+        : null,
+    },
+  });
+});
 
 router.get("/status", (_req: Request, res: Response) => {
   res.json(agentStatus());

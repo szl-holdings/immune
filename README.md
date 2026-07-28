@@ -41,6 +41,14 @@ AI-agent action.
 | `GET /api/immune/ledger/verify` | Recompute the whole chain from disk; `ok: true` on a clean chain |
 | `GET /api/immune/evidence/latest` | Last 25 HUKLLA firing records |
 | `GET /api/immune/intel/{frameworks,transparency,incidents,leaders,pulse}` | Live/curated threat intel |
+| `GET /api/immune/agent/frontier` | Shadow-only Decision Genome capability and truth boundary |
+| `POST /api/immune/agent/frontier/evaluate` | Validate one evidence observation and return a non-executable `MODELED` recommendation |
+
+The frontier evaluator consumes the shared
+`@szl-holdings/contracts/decision-genome` schema from Platform. It does not
+define a second contract, authorize an action, or claim measured detection
+performance. Missing or stale provenance, future-dated evidence, and
+insufficient calibration fail closed to review or withholding.
 
 ## Repository layout
 
