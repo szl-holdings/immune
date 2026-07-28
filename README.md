@@ -49,6 +49,9 @@ The frontier evaluator consumes the shared
 define a second contract, authorize an action, or claim measured detection
 performance. Missing or stale provenance, future-dated evidence, and
 insufficient calibration fail closed to review or withholding.
+The receipt-writing evaluator shares the agent abuse budget (three accepted
+requests per IP per minute and 300 accepted requests per UTC day) and returns
+HTTP 409 when the governed cycle does not seal the recommendation.
 
 ## Repository layout
 

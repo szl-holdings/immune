@@ -149,6 +149,7 @@ function rateCheck(ip: string): { ok: true } | { ok: false; reason: string; retr
   }
   hits.push(now);
   ipHits.set(ip, hits);
+  dayCount++;
   return { ok: true };
 }
 
@@ -407,6 +408,14 @@ router.post("/frontier/evaluate", async (req: Request, res: Response) => {
   }
 
   const input = parsed.data;
+  const ip = req.ip || "unknown";
+  const gate = rateCheck(ip);
+  if (!gate.ok) {
+    if (gate.retryAfter) res.set("Retry-After", String(gate.retryAfter));
+    res.status(429).json({ error: gate.reason });
+    return;
+  }
+
   const genome = buildShadowDecisionGenome(input);
   const cycle = await runGovernedCycle(
     { actor: "immune:frontier-shadow", intent: "seal defensive shadow recommendation" },
@@ -425,7 +434,7 @@ router.post("/frontier/evaluate", async (req: Request, res: Response) => {
     },
   );
 
-  res.json({
+  res.status(cycle.pass ? 200 : 409).json({
     genome,
     governance: {
       pass: cycle.pass,
