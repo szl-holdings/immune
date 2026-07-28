@@ -228,7 +228,7 @@ export function decisionSourceState(
     observed - nowMs > SOURCE_CLOCK_SKEW_MS ||
     fetched - nowMs > SOURCE_CLOCK_SKEW_MS
   ) {
-    return { state: "CONFLICTED", ageMinutes: (fetched - observed) / 60_000 };
+    return { state: "CONFLICTED", ageMinutes: (nowMs - observed) / 60_000 };
   }
   const ageMinutes = Math.max(0, (nowMs - observed) / 60_000);
   if (source.expiresAt && Date.parse(source.expiresAt) <= nowMs) {
