@@ -202,6 +202,23 @@ function stableValue(value: unknown): unknown {
   return value;
 }
 
+function governanceCanonicalValue(value: unknown): unknown {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "UNAVAILABLE";
+    if (Number.isInteger(value)) return value;
+    return value.toFixed(12).replace(/0+$/, "").replace(/\.$/, "");
+  }
+  if (Array.isArray(value)) return value.map(governanceCanonicalValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, item]) => [key, governanceCanonicalValue(item)]),
+    );
+  }
+  return value;
+}
+
 function sha256(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(stableValue(value))).digest("hex");
 }
@@ -215,10 +232,14 @@ function sourceState(observedAt: string, fetchedAt: string): {
   if (!Number.isFinite(observed) || !Number.isFinite(fetched)) {
     return { state: "UNAVAILABLE", ageMinutes: null };
   }
+  const now = Date.now();
+  if (observed > now + 5 * 60_000 || fetched > now + 5 * 60_000) {
+    return { state: "CONFLICTED", ageMinutes: (now - observed) / 60_000 };
+  }
   if (observed - fetched > 5 * 60_000) {
     return { state: "CONFLICTED", ageMinutes: (fetched - observed) / 60_000 };
   }
-  const ageMinutes = Math.max(0, (Date.now() - observed) / 60_000);
+  const ageMinutes = Math.max(0, (now - observed) / 60_000);
   if (ageMinutes <= 5) return { state: "LIVE", ageMinutes };
   if (ageMinutes <= 60) return { state: "CACHED", ageMinutes };
   if (ageMinutes <= 240) return { state: "STALE", ageMinutes };
@@ -388,9 +409,15 @@ router.post("/frontier/evaluate", async (req: Request, res: Response) => {
     events,
   };
   const genome = { ...genomeWithoutDigest, digest: sha256(genomeWithoutDigest) };
+  const sealPayload = {
+    schemaId: DECISION_GENOME_SCHEMA_ID,
+    canonicalEncoding: "non-integer-decimal-strings-v1",
+    genomeDigest: genome.digest,
+    genome: governanceCanonicalValue(genome),
+  };
   const cycle = await runGovernedCycle(
     { actor: "immune:frontier-shadow", intent: "seal defensive shadow recommendation" },
-    genome,
+    sealPayload,
   );
 
   res.json({
