@@ -10,6 +10,7 @@
 //   * receipts are the real signed hash-chain entries,
 //   * if inference is unconfigured/unreachable the endpoint returns an honest 503.
 import { Router, type IRouter, type Request, type Response } from "express";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { runGovernedCycle } from "./cycle";
 import { getState } from "./state";
@@ -154,6 +155,262 @@ export function agentStatus(): Record<string, unknown> {
 }
 
 const router: IRouter = Router();
+
+const DECISION_GENOME_SCHEMA_ID = "urn:szl:contracts:decision-genome:v1";
+const FRONTIER_POLICY_VERSION = "immune-frontier-v1";
+
+const FrontierEvaluateSchema = z.object({
+  observationId: z.string().min(1).max(256),
+  subject: z.object({
+    kind: z.string().min(1).max(128),
+    id: z.string().min(1).max(512),
+  }),
+  source: z.object({
+    sourceName: z.string().min(1).max(128),
+    sourceUrl: z.string().url().optional(),
+    upstreamObjectId: z.string().max(512).optional(),
+    upstreamVersion: z.string().max(256).optional(),
+    observedAt: z.string().min(1).max(64),
+    fetchedAt: z.string().min(1).max(64),
+    parserVersion: z.string().min(1).max(128),
+    rawPayloadSha256: z.string().regex(/^[a-fA-F0-9]{64}$/),
+    licenseSpdxOrTermsUrl: z.string().min(1).max(1024),
+    distributionMarking: z.string().min(1).max(128),
+    confidence: z.number().min(0).max(1),
+  }),
+  signals: z.object({
+    novelty: z.number().min(0).max(1),
+    dangerContext: z.number().min(0).max(1),
+    baselineAnomaly: z.number().min(0).max(1),
+    causalShift: z.number().min(0).max(1),
+    propagationRisk: z.number().min(0).max(1),
+    hardPolicyViolation: z.boolean().default(false),
+  }),
+  calibrationScores: z.array(z.number().min(0).max(1)).max(10_000).default([]),
+  alpha: z.number().gt(0).lt(0.5).default(0.05),
+});
+
+function stableValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, item]) => [key, stableValue(item)]),
+    );
+  }
+  return value;
+}
+
+function sha256(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(stableValue(value))).digest("hex");
+}
+
+function sourceState(observedAt: string, fetchedAt: string): {
+  state: "LIVE" | "CACHED" | "STALE" | "DEGRADED" | "UNAVAILABLE" | "CONFLICTED";
+  ageMinutes: number | null;
+} {
+  const observed = Date.parse(observedAt);
+  const fetched = Date.parse(fetchedAt);
+  if (!Number.isFinite(observed) || !Number.isFinite(fetched)) {
+    return { state: "UNAVAILABLE", ageMinutes: null };
+  }
+  if (observed - fetched > 5 * 60_000) {
+    return { state: "CONFLICTED", ageMinutes: (fetched - observed) / 60_000 };
+  }
+  const ageMinutes = Math.max(0, (Date.now() - observed) / 60_000);
+  if (ageMinutes <= 5) return { state: "LIVE", ageMinutes };
+  if (ageMinutes <= 60) return { state: "CACHED", ageMinutes };
+  if (ageMinutes <= 240) return { state: "STALE", ageMinutes };
+  return { state: "DEGRADED", ageMinutes };
+}
+
+function conformalPValue(score: number, calibrationScores: number[]): number | null {
+  if (calibrationScores.length < 20) return null;
+  const atLeastAsAnomalous = calibrationScores.filter((item) => item >= score).length;
+  return (1 + atLeastAsAnomalous) / (calibrationScores.length + 1);
+}
+
+router.get("/frontier", (_req: Request, res: Response) => {
+  res.json({
+    service: "immune-decision-genome",
+    version: "v1",
+    mode: "shadow",
+    schemaId: DECISION_GENOME_SCHEMA_ID,
+    evidenceLabel: "MODELED",
+    executable: false,
+    kernels: [
+      "negative-selection novelty",
+      "danger-context aggregation",
+      "causal mechanism shift",
+      "graph propagation risk",
+      "conformal false-alert control",
+      "provenance and freshness gate",
+    ],
+    outputs: ["ALLOW_OBSERVE", "REVIEW_REQUIRED", "QUARANTINE_RECOMMENDED", "WITHHOLD"],
+    invariant:
+      "No destructive action is emitted. Missing provenance, stale evidence, or insufficient calibration cannot become a green claim.",
+  });
+});
+
+router.post("/frontier/evaluate", async (req: Request, res: Response) => {
+  const parsed = FrontierEvaluateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: "invalid_decision_observation",
+      issues: parsed.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
+    });
+    return;
+  }
+
+  const input = parsed.data;
+  const freshness = sourceState(input.source.observedAt, input.source.fetchedAt);
+  const compositeRisk =
+    0.25 * input.signals.novelty +
+    0.30 * input.signals.dangerContext +
+    0.20 * input.signals.baselineAnomaly +
+    0.15 * input.signals.causalShift +
+    0.10 * input.signals.propagationRisk;
+  const pValue = conformalPValue(compositeRisk, input.calibrationScores);
+  const freshnessDebt = ["STALE", "DEGRADED", "UNAVAILABLE", "CONFLICTED"].includes(freshness.state)
+    ? 0.35
+    : freshness.state === "CACHED"
+      ? 0.1
+      : 0;
+  const uncertainty = Math.min(
+    1,
+    0.55 * (1 - input.source.confidence) + freshnessDebt + (pValue === null ? 0.2 : 0),
+  );
+
+  let state: "ALLOW_OBSERVE" | "REVIEW_REQUIRED" | "QUARANTINE_RECOMMENDED" | "WITHHOLD";
+  let action:
+    | "OBSERVE"
+    | "OPEN_INCIDENT"
+    | "REQUEST_READ_ONLY_PROBE"
+    | "REQUEST_QUARANTINE_REVIEW";
+  const reasonCodes: string[] = [];
+
+  if (
+    input.source.confidence < 0.5 ||
+    ["STALE", "DEGRADED", "UNAVAILABLE", "CONFLICTED"].includes(freshness.state)
+  ) {
+    state = "WITHHOLD";
+    action = freshness.state === "STALE" ? "REQUEST_READ_ONLY_PROBE" : "OPEN_INCIDENT";
+    reasonCodes.push("PROVENANCE_OR_FRESHNESS_GATE");
+  } else if (input.signals.hardPolicyViolation) {
+    state = "QUARANTINE_RECOMMENDED";
+    action = "REQUEST_QUARANTINE_REVIEW";
+    reasonCodes.push("HARD_POLICY_SIGNAL");
+  } else if (pValue === null) {
+    state = "REVIEW_REQUIRED";
+    action = "OPEN_INCIDENT";
+    reasonCodes.push("CALIBRATION_SET_INSUFFICIENT");
+  } else if (pValue <= input.alpha && compositeRisk >= 0.85) {
+    state = "QUARANTINE_RECOMMENDED";
+    action = "REQUEST_QUARANTINE_REVIEW";
+    reasonCodes.push("CONFORMAL_ALERT", "HIGH_COMPOSITE_RISK");
+  } else if (pValue <= input.alpha || compositeRisk >= 0.65) {
+    state = "REVIEW_REQUIRED";
+    action = "OPEN_INCIDENT";
+    reasonCodes.push(pValue <= input.alpha ? "CONFORMAL_ALERT" : "ELEVATED_COMPOSITE_RISK");
+  } else {
+    state = "ALLOW_OBSERVE";
+    action = "OBSERVE";
+    reasonCodes.push("SHADOW_OBSERVATION_ONLY");
+  }
+
+  const now = new Date().toISOString();
+  const subjectDigest = sha256(input.subject);
+  const source = {
+    ...input.source,
+    rawPayloadSha256: input.source.rawPayloadSha256.toLowerCase(),
+    state: freshness.state,
+    ageMinutes: freshness.ageMinutes,
+  };
+  const recommendation = {
+    state,
+    action,
+    reasonCodes,
+    humanApprovalRequired: action !== "OBSERVE",
+    executable: false as const,
+    evidenceLabel: "MODELED" as const,
+  };
+  const scores = {
+    novelty: input.signals.novelty,
+    dangerContext: input.signals.dangerContext,
+    baselineAnomaly: input.signals.baselineAnomaly,
+    causalShift: input.signals.causalShift,
+    propagationRisk: input.signals.propagationRisk,
+    compositeRisk,
+    conformalPValue: pValue,
+    falseAlertBudgetAlpha: input.alpha,
+    uncertainty,
+  };
+  const eventBase = {
+    at: now,
+    actor: "immune:frontier-shadow",
+    subjectDigest,
+    policyVersion: FRONTIER_POLICY_VERSION,
+    evidenceLabel: "MODELED",
+  };
+  const events = [
+    {
+      ...eventBase,
+      eventId: `${input.observationId}:observation`,
+      eventType: "OBSERVATION",
+      inputDigests: [source.rawPayloadSha256],
+      payload: { sourceState: source.state, sourceConfidence: source.confidence },
+    },
+    {
+      ...eventBase,
+      eventId: `${input.observationId}:fusion`,
+      eventType: "FUSION",
+      inputDigests: [source.rawPayloadSha256],
+      payload: scores,
+    },
+    {
+      ...eventBase,
+      eventId: `${input.observationId}:recommendation`,
+      eventType: "RECOMMENDATION",
+      inputDigests: [sha256(scores)],
+      payload: recommendation,
+    },
+  ];
+  const genomeWithoutDigest = {
+    schemaId: DECISION_GENOME_SCHEMA_ID,
+    decisionId: input.observationId,
+    createdAt: now,
+    mode: "shadow",
+    subject: { ...input.subject, digest: subjectDigest },
+    sources: [source],
+    scores,
+    recommendation,
+    events,
+  };
+  const genome = { ...genomeWithoutDigest, digest: sha256(genomeWithoutDigest) };
+  const cycle = await runGovernedCycle(
+    { actor: "immune:frontier-shadow", intent: "seal defensive shadow recommendation" },
+    genome,
+  );
+
+  res.json({
+    genome,
+    governance: {
+      pass: cycle.pass,
+      sentra: cycle.sentra,
+      firedTripwires: cycle.huklla.filter((item) => item.fired),
+      receipt: cycle.receipt
+        ? {
+            seq: cycle.receipt.seq,
+            hash: cycle.receipt.hash,
+            prevHash: cycle.receipt.prevHash,
+            signed: Boolean(cycle.receipt.sig),
+            kid: cycle.receipt.kid ?? null,
+          }
+        : null,
+    },
+  });
+});
 
 router.get("/status", (_req: Request, res: Response) => {
   res.json(agentStatus());
