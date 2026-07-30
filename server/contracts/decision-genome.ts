@@ -1,50 +1,50 @@
 /**
  * Decision Genome v1.
  *
- * Repository-local mirror of the canonical Apache-2.0 contract at
- * szl-holdings/platform/packages/contracts/src/decision-genome.ts.
- * Kept local so this release slice can build without a private workspace link.
+ * Portable evidence and authority contract shared by reasoning planes such as
+ * Immune and constrained action planes such as Killinchu. A Decision Genome is
+ * append-only: observations, recommendations, approvals, denials, executions,
+ * and outcomes are events tied to exact subject and predecessor digests.
  */
-import { z } from "zod";
+import { z } from 'zod';
 
-export const DECISION_GENOME_SCHEMA_ID =
-  "urn:szl:contracts:decision-genome:v1" as const;
+export const DECISION_GENOME_SCHEMA_ID = 'urn:szl:contracts:decision-genome:v1' as const;
 
 export const EvidenceLabelSchema = z.enum([
-  "PROVED",
-  "MEASURED",
-  "VERIFIED",
-  "MODELED",
-  "UNAVAILABLE",
+  'PROVED',
+  'MEASURED',
+  'VERIFIED',
+  'MODELED',
+  'UNAVAILABLE',
 ]);
 export type EvidenceLabel = z.infer<typeof EvidenceLabelSchema>;
 
 export const SourceStateSchema = z.enum([
-  "LIVE",
-  "CACHED",
-  "STALE",
-  "DEGRADED",
-  "UNAVAILABLE",
-  "CONFLICTED",
-  "WITHDRAWN",
-  "PLANNED",
+  'LIVE',
+  'CACHED',
+  'STALE',
+  'DEGRADED',
+  'UNAVAILABLE',
+  'CONFLICTED',
+  'WITHDRAWN',
+  'PLANNED',
 ]);
 export type SourceState = z.infer<typeof SourceStateSchema>;
 
 export const DecisionStateSchema = z.enum([
-  "ALLOW_OBSERVE",
-  "REVIEW_REQUIRED",
-  "QUARANTINE_RECOMMENDED",
-  "WITHHOLD",
+  'ALLOW_OBSERVE',
+  'REVIEW_REQUIRED',
+  'QUARANTINE_RECOMMENDED',
+  'WITHHOLD',
 ]);
 export type DecisionState = z.infer<typeof DecisionStateSchema>;
 
 export const ActionClassSchema = z.enum([
-  "OBSERVE",
-  "OPEN_INCIDENT",
-  "REQUEST_READ_ONLY_PROBE",
-  "REQUEST_QUARANTINE_REVIEW",
-  "EXPORT_RECEIPT",
+  'OBSERVE',
+  'OPEN_INCIDENT',
+  'REQUEST_READ_ONLY_PROBE',
+  'REQUEST_QUARANTINE_REVIEW',
+  'EXPORT_RECEIPT',
 ]);
 export type ActionClass = z.infer<typeof ActionClassSchema>;
 
@@ -92,9 +92,7 @@ export const DecisionRecommendationSchema = z.object({
   executable: z.literal(false),
   evidenceLabel: EvidenceLabelSchema,
 });
-export type DecisionRecommendation = z.infer<
-  typeof DecisionRecommendationSchema
->;
+export type DecisionRecommendation = z.infer<typeof DecisionRecommendationSchema>;
 
 export const AuthorizationLeaseSchema = z.object({
   leaseId: z.string().min(1).max(256),
@@ -106,7 +104,7 @@ export const AuthorizationLeaseSchema = z.object({
   expiresAt: z.string().datetime(),
   maxUncertainty: z.number().min(0).max(1),
   decisionDigest: z.string().regex(/^[a-f0-9]{64}$/),
-  verification: z.enum(["UNVERIFIED", "VERIFIED", "INVALID"]),
+  verification: z.enum(['UNVERIFIED', 'VERIFIED', 'INVALID']),
   signature: z.string().min(1).optional(),
   revokedAt: z.string().datetime().optional(),
 });
@@ -115,14 +113,14 @@ export type AuthorizationLease = z.infer<typeof AuthorizationLeaseSchema>;
 export const DecisionGenomeEventSchema = z.object({
   eventId: z.string().min(1).max(256),
   eventType: z.enum([
-    "OBSERVATION",
-    "NORMALIZATION",
-    "FUSION",
-    "RECOMMENDATION",
-    "AUTHORIZATION",
-    "DENIAL",
-    "EXECUTION",
-    "OUTCOME",
+    'OBSERVATION',
+    'NORMALIZATION',
+    'FUSION',
+    'RECOMMENDATION',
+    'AUTHORIZATION',
+    'DENIAL',
+    'EXECUTION',
+    'OUTCOME',
   ]),
   at: z.string().datetime(),
   actor: z.string().min(1).max(256),
@@ -138,7 +136,7 @@ export const DecisionGenomeSchema = z.object({
   schemaId: z.literal(DECISION_GENOME_SCHEMA_ID),
   decisionId: z.string().min(1).max(256),
   createdAt: z.string().datetime(),
-  mode: z.enum(["shadow", "advisory", "operational"]),
+  mode: z.enum(['shadow', 'advisory', 'operational']),
   subject: z.object({
     kind: z.string().min(1).max(128),
     id: z.string().min(1).max(512),
