@@ -91,7 +91,7 @@ jobs:
           }
           for local in glob.glob("frontend/deploy/dist/**/*", recursive=True):
               if os.path.isfile(local):
-                  relative = os.path.relpath(local, "frontend/deploy/dist").replace("\\", "/")
+                  relative = os.path.relpath(local, "frontend/deploy").replace("\\", "/")
                   uploads[relative] = local
 
           existing = set(api.list_repo_files(space, repo_type="space"))

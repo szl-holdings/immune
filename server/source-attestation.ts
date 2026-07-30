@@ -21,6 +21,7 @@ type DeployManifest = {
   };
   destination: string | null;
   artifacts: Record<string, string>;
+  mutable_paths?: string[];
   claims: {
     github_actions_provenance_verified: false;
     cryptographic_release_receipt: false;

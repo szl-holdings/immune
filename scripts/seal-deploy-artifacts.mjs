@@ -32,6 +32,9 @@ try {
 const artifacts = {};
 for (const absolute of (await collectFiles(root)).sort()) {
   const relative = path.relative(root, absolute).split(path.sep).join("/");
+  if (relative === "data" || relative.startsWith("data/")) {
+    continue;
+  }
   artifacts[relative] = createHash("sha256")
     .update(await readFile(absolute))
     .digest("hex");
@@ -75,6 +78,7 @@ const manifest = {
   destination:
     predecessor.destination ?? predecessor.destination_repository ?? null,
   artifacts,
+  mutable_paths: ["data/"],
   claims: {
     github_actions_provenance_verified: false,
     cryptographic_release_receipt: false,
