@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { ImmuneCycleResult } from "@workspace/api-client-react";
+import { ImmuneCycleResult } from "@/lib/immune-api";
 
 export function ThreeScene({ lastCycleResult }: { lastCycleResult: ImmuneCycleResult | null }) {
   const mountRef = useRef<HTMLDivElement>(null);

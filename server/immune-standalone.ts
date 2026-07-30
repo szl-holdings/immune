@@ -12,6 +12,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import immuneRouter from "./routes/immune";
+import { buildInfo, sourceAttestation } from "./source-attestation";
 
 const __serverDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -25,8 +26,31 @@ app.use(express.json({ limit: "2mb" }));
 
 // Lightweight liveness probe (handy for Docker/HF healthchecks).
 app.get("/healthz", (_req: Request, res: Response) => {
-  res.json({ ok: true, service: "immune-standalone" });
+  res.json({
+    ok: true,
+    service: "immune-standalone",
+    transport_state: "REACHABLE",
+    verification_state: "STRUCTURAL_ONLY",
+    authority_state: "BOUNDED_WRITE",
+  });
 });
+
+app.get("/api/build-info", (_req: Request, res: Response) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json(buildInfo());
+});
+
+app.get(
+  "/.well-known/szl-source.json",
+  async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.setHeader("Cache-Control", "no-store");
+      res.json(await sourceAttestation());
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 // The real IMMUNE API — receipt chain, SENTRA, HUKLLA, threat intel.
 app.use("/api/immune", immuneRouter);

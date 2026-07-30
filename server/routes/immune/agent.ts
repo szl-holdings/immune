@@ -24,7 +24,7 @@ import {
   type DecisionGenome,
   type DecisionState,
   type SourceState,
-} from "@szl-holdings/contracts/decision-genome";
+} from "../../contracts/decision-genome";
 import { runGovernedCycle } from "./cycle";
 import { getState } from "./state";
 import { ledgerCount, ledgerLastHash, verifyLedger } from "./ledger";

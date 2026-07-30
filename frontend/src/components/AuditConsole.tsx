@@ -4,7 +4,7 @@ import {
   useGetImmuneLedgerLatest,
   useVerifyImmuneLedger,
   type ImmuneReceipt,
-} from "@workspace/api-client-react";
+} from "@/lib/immune-api";
 import { motion, AnimatePresence } from "framer-motion";
 import { Terminal, Database, ShieldAlert, CheckCircle2, ChevronRight, XCircle, Unlink, KeyRound } from "lucide-react";
 import { getWatcherFramework } from "@/lib/frameworks";
