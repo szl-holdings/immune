@@ -322,5 +322,5 @@ export const readSourceAttestation = getSourceAttestation;
 export const buildSourceAttestation = getSourceAttestation;
 export const loadSourceAttestation = getSourceAttestation;
 export const readBuildInfo = getBuildInfo;
-export const sourceAttestation = getSourceAttestation();
-export const buildInfo = getBuildInfo();
+export const sourceAttestation = getSourceAttestation;
+export const buildInfo = getBuildInfo;
