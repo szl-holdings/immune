@@ -9,12 +9,12 @@
 # build time — the image stays small.
 #
 # Base image is pulled from the AWS ECR Public mirror of the official Docker Library
-# image (bit-identical to docker.io/library/node:20-alpine) because Hugging Face's
+# image (the ECR mirror of the official Node 24 Alpine image) because Hugging Face's
 # shared Docker builders pull anonymously from Docker Hub and hit its anonymous
 # pull-rate limit; when throttled the FROM pull stalls until the build job hits its
 # wall-clock limit ("Job timeout"). ECR Public has no such limit, so the pull is fast
 # and deterministic. This is the ONLY unbounded step in an otherwise COPY-only build.
-FROM public.ecr.aws/docker/library/node:20-alpine
+FROM public.ecr.aws/docker/library/node:24-alpine
 
 # Cache-bust / fresh-container marker (bump to force HF to rebuild+redeploy):
 ARG IMMUNE_DEPLOY_REV=2026-07-17a
@@ -23,7 +23,7 @@ WORKDIR /app
 
 # Self-contained server bundle, the vite-built SPA, and the REAL receipt/evidence chain.
 COPY dist/immune-server.js ./immune-server.js
-COPY dist/szl-source-attestation.mjs ./szl-source-attestation.mjs
+COPY dist/hf-deploy-manifest.json ./hf-deploy-manifest.json
 COPY dist/public ./public
 COPY dist/data ./data
 

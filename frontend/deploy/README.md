@@ -42,13 +42,14 @@ falls back to `index.html` for all non-API routes (SPA). It listens on `PORT` (d
 
 ## Build the artifact
 
-From the repository root (requires `pnpm install` to have run):
+From the repository root:
 
 ```bash
-bash frontend/deploy/build-standalone.sh
+pnpm install --frozen-lockfile
+SOURCE_REVISION="$(git rev-parse HEAD)" pnpm run build
 ```
 
-This:
+This cross-platform build:
 
 1. builds the static frontend with `BASE_PATH=/` into `dist/public`;
 2. bundles `server/immune-standalone.ts` into a single `dist/immune-server.js`;
@@ -74,8 +75,8 @@ The build context is **this `deploy/` directory**, and `dist/` must already exis
 (run `build-standalone.sh` first):
 
 ```bash
+SOURCE_REVISION="$(git rev-parse HEAD)" pnpm run build
 cd frontend/deploy
-bash build-standalone.sh
 docker build -t immune-demo .
 docker run --rm -p 7860:7860 immune-demo
 ```

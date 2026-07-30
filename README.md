@@ -68,20 +68,24 @@ LEDGER_FIELD_KEYS.md Frozen ledger field-key decision (why `sentra` stays an int
 
 ## Build & deploy (the live Hugging Face Space)
 
-The self-contained image is assembled by `frontend/deploy/build-standalone.sh`, which:
+After `pnpm install --frozen-lockfile`, run `pnpm run build`. The historical
+`frontend/deploy/build-standalone.sh` command delegates to the same
+cross-platform Node builder. It:
 
 1. Builds the Vite frontend at site root (`BASE_PATH=/`).
 2. Bundles `server/immune-standalone.ts` (all deps inlined) into a single `dist/immune-server.js` via esbuild.
 3. Copies the built SPA to `dist/public/` and seeds the real chain into `dist/data/immune/`.
 
-`frontend/deploy/Dockerfile` (node:20-alpine, non-root UID 1000, port 7860) copies that
+`frontend/deploy/Dockerfile` (Node 24 Alpine, non-root UID 1000, port 7860) copies that
 `dist/` and runs `node immune-server.js`. See `frontend/deploy/README.md` for the exact commands.
 
-> **Provenance note.** Canonical development of IMMUNE happens inside the SZL Holdings pnpm
-> monorepo (the frontend imports the shared `@workspace/*` client/zod libraries there). This
-> repository is IMMUNE's public source-of-truth mirror and the home its live Space points to;
-> the `deploy/` scripts run in that monorepo context. This is documented honestly rather than
-> implying a hidden generator.
+> **Provenance note.** This repository is now independently installable,
+> typecheckable, buildable, and smoke-testable. The deploy workflow always
+> rebuilds from the exact merged GitHub revision, replaces the Space runtime
+> whitelist, and verifies `/.well-known/szl-source.json` plus the live ledger
+> before it reports success. Shared Decision Genome concepts retain their
+> canonical Platform origin; the Apache-2.0 schema is mirrored locally so the
+> runtime no longer depends on a private workspace link.
 
 ---
 

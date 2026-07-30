@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { ImmuneCycleResult, useGetImmuneState } from "@workspace/api-client-react";
+import { ImmuneCycleResult, useGetImmuneState } from "@/lib/immune-api";
 import { ControlsPanel } from "@/components/ControlsPanel";
 import { AuditConsole } from "@/components/AuditConsole";
 import { ThreeScene } from "@/components/ThreeScene";

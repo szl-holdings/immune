@@ -13,7 +13,7 @@ import {
   getGetImmuneEvidenceLatestQueryKey,
   type ImmuneCycleResult,
   type ImmuneMode,
-} from "@workspace/api-client-react";
+} from "@/lib/immune-api";
 
 const MODES: { id: ImmuneMode; label: string; sub: string; icon: React.FC<any> }[] = [
   { id: "PASS", label: "PASS", sub: "Clean payload · Signature match", icon: ShieldCheck },
