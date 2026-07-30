@@ -120,7 +120,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 const rawPort = process.env.PORT || "7860";
 const port = Number(rawPort);
 
-if (Number.isNaN(port) || port <= 0) {
+if (!Number.isInteger(port) || port < 1 || port > 65_535) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 

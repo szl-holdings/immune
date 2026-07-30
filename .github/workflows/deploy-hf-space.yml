@@ -33,6 +33,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.11"
+      - name: Install pinned Hugging Face publisher
+        run: python3 -m pip install --quiet "huggingface_hub==1.26.0"
       - name: Require write-scoped HF_TOKEN
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -42,7 +44,6 @@ jobs:
             echo "::error::HF_TOKEN is not set; refusing to claim a deployment."
             exit 1
           }
-          python3 -m pip install --quiet "huggingface_hub==1.23.0"
           python3 - <<'PYEOF'
           import os
           from huggingface_hub import HfApi
@@ -53,6 +54,8 @@ jobs:
           print("Authenticated Hugging Face publisher:", who.get("name", "<unknown>"))
           PYEOF
       - name: Install, typecheck, and build exact source
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           pnpm install --frozen-lockfile
@@ -70,7 +73,12 @@ jobs:
           import os
           import time
           import urllib.request
-          from huggingface_hub import HfApi, CommitOperationAdd, CommitOperationDelete
+          from huggingface_hub import (
+              HfApi,
+              CommitOperationAdd,
+              CommitOperationDelete,
+              hf_hub_download,
+          )
 
           token = os.environ["HF_TOKEN"]
           space = os.environ["HF_SPACE"]
@@ -83,7 +91,7 @@ jobs:
           }
           for local in glob.glob("frontend/deploy/dist/**/*", recursive=True):
               if os.path.isfile(local):
-                  relative = os.path.relpath(local, "frontend/deploy").replace("\\", "/")
+                  relative = os.path.relpath(local, "frontend/deploy/dist").replace("\\", "/")
                   uploads[relative] = local
 
           existing = set(api.list_repo_files(space, repo_type="space"))
@@ -103,6 +111,11 @@ jobs:
           )
           target = commit.oid
           print("Published Space revision:", target)
+          api.add_space_variable(
+              repo_id=space,
+              key="IMMUNE_EXPECTED_HF_REVISION",
+              value=target,
+          )
 
           deadline = time.monotonic() + 720
           while time.monotonic() < deadline:
@@ -118,6 +131,24 @@ jobs:
           else:
               raise TimeoutError(f"Space did not reach RUNNING at {target}")
 
+          import hashlib
+          for remote, local in sorted(uploads.items()):
+              downloaded = hf_hub_download(
+                  repo_id=space,
+                  repo_type="space",
+                  filename=remote,
+                  revision=target,
+                  token=token,
+              )
+              with open(local, "rb") as local_file:
+                  local_digest = hashlib.sha256(local_file.read()).hexdigest()
+              with open(downloaded, "rb") as remote_file:
+                  remote_digest = hashlib.sha256(remote_file.read()).hexdigest()
+              if local_digest != remote_digest:
+                  raise RuntimeError(
+                      f"Published artifact digest mismatch for {remote}"
+                  )
+
           base = "https://szlholdings-immune.hf.space"
           for attempt in range(18):
               try:
@@ -131,8 +162,23 @@ jobs:
                   assert ledger["ok"] is True
                   assert source["deployment"]["hf_revision"] == target
                   assert source["source"]["commit"] == os.environ["GITHUB_SHA"].lower()
-                  assert source["alignment_state"] == "SOURCE_BOUND_DEPLOYMENT"
-                  print("LIVE VERIFIED:", target, os.environ["GITHUB_SHA"])
+                  assert source["artifact_integrity"]["status"] == "MATCH"
+                  assert source["claims"]["runtime_whitelist_hash_match"] is True
+                  assert source["claims"]["github_actions_provenance_verified"] is False
+                  assert source["claims"]["cryptographic_release_receipt"] is False
+                  assert source["alignment_state"] in {
+                      "REVISION_UNAVAILABLE",
+                      "OBSERVED_RUNTIME_HASH_MATCH",
+                  }
+                  with urllib.request.urlopen(base + "/api/build-info", timeout=15) as response:
+                      build = json.load(response)
+                  assert build["build"]["state"] == "OBSERVED_HASH_MATCH"
+                  assert build["build"]["receipt_minted"] is False
+                  print(
+                      "LIVE READBACK VERIFIED; CRYPTOGRAPHIC RECEIPT UNAVAILABLE:",
+                      target,
+                      os.environ["GITHUB_SHA"],
+                  )
                   break
               except Exception as error:
                   if attempt == 17:

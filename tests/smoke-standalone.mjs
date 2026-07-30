@@ -82,13 +82,19 @@ try {
   assert.equal(verification.ok, true);
 
   const source = await getJson("/.well-known/szl-source.json");
-  assert.equal(source.alignment_state, "SOURCE_BOUND_DEPLOYMENT");
+  assert.equal(source.alignment_state, "REVISION_UNAVAILABLE");
   assert.equal(source.source.repository, "szl-holdings/immune");
   assert.equal(source.source.commit, sourceRevision.toLowerCase());
+  assert.equal(source.artifact_integrity.status, "MATCH");
+  assert.equal(source.claims.runtime_whitelist_hash_match, true);
+  assert.equal(source.claims.github_actions_provenance_verified, false);
+  assert.equal(source.claims.cryptographic_release_receipt, false);
 
   const build = await getJson("/api/build-info");
-  assert.equal(build.build.state, "OBSERVED");
+  assert.equal(build.build.state, "OBSERVED_HASH_MATCH");
   assert.equal(build.build.revision, sourceRevision.toLowerCase());
+  assert.equal(build.build.runtime_hash_match, true);
+  assert.equal(build.build.receipt_minted, false);
 
   const page = await fetch(base + "/");
   assert.equal(page.status, 200);

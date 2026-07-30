@@ -6,10 +6,10 @@ function write(
   message: string,
 ): void {
   const event = {
+    ...context,
     level,
     service: "immune-standalone",
     message,
-    ...context,
     at: new Date().toISOString(),
   };
   const serialized = JSON.stringify(event);

@@ -8,7 +8,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "node scripts/build-standalone.mjs",
+    "build": "node scripts/assert-protected-deploy-source.mjs && node scripts/check-decision-genome-snapshot.mjs && node scripts/build-standalone.mjs && node scripts/seal-deploy-artifacts.mjs",
     "build:frontend": "pnpm --dir frontend run build",
     "typecheck": "pnpm --dir frontend run typecheck && tsc -p tsconfig.server.json --noEmit"
   },
