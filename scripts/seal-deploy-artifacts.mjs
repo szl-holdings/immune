@@ -47,6 +47,7 @@ const sourceRepository =
   predecessor.repository ??
   null;
 const sourceRevision =
+  process.env.SOURCE_REVISION ??
   process.env.GITHUB_SHA ??
   predecessor.source_revision ??
   predecessor.revision ??
