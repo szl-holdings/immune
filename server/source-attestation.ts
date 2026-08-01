@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const REVISION_PATTERN = /^[0-9a-f]{40}$/u;
@@ -115,6 +116,30 @@ type ManifestResult =
       reason: string;
     };
 
+function runtimeServerPath(): string {
+  return fileURLToPath(import.meta.url);
+}
+
+export function resolveRuntimeStaticDir(
+  serverDir = path.dirname(runtimeServerPath()),
+): string | null {
+  const candidates = [
+    process.env.IMMUNE_STATIC_DIR,
+    path.resolve(serverDir, "public"),
+    path.resolve(serverDir, "dist", "public"),
+    path.resolve(process.cwd(), "public"),
+    path.resolve(process.cwd(), "dist", "public"),
+    path.resolve(serverDir, "..", "..", "immune-demo", "dist", "public"),
+  ].filter((candidate): candidate is string =>
+    typeof candidate === "string" && candidate.length > 0
+  );
+
+  for (const directory of candidates) {
+    if (existsSync(path.join(directory, "index.html"))) return directory;
+  }
+  return null;
+}
+
 function candidateManifestPaths(): string[] {
   return [
     process.env.IMMUNE_DEPLOY_MANIFEST_PATH,
@@ -225,7 +250,9 @@ function verifyArtifacts(result: ManifestResult): {
   };
 }
 
-export function getRuntimeHashBinding(): RuntimeHashBinding {
+export function getRuntimeHashBinding(
+  selection: { serverPath?: string; staticDir?: string | null } = {},
+): RuntimeHashBinding {
   const result = readManifest();
   if (!result.ok) {
     return {
@@ -266,17 +293,47 @@ export function getRuntimeHashBinding(): RuntimeHashBinding {
     };
   }
 
+  const serverPath = selection.serverPath ?? runtimeServerPath();
+  const staticDir =
+    selection.staticDir === undefined
+      ? resolveRuntimeStaticDir(path.dirname(serverPath))
+      : selection.staticDir;
+  let observedServerSha256: string | null = null;
+  let observedIndexSha256: string | null = null;
+  let runtimeReason: string | null = null;
+  try {
+    observedServerSha256 = digest(readFileSync(serverPath));
+  } catch {
+    runtimeReason = "running server bundle is unavailable";
+  }
+  if (staticDir === null) {
+    runtimeReason ??= "selected runtime static directory is unavailable";
+  } else {
+    try {
+      observedIndexSha256 = digest(readFileSync(path.join(staticDir, "index.html")));
+    } catch {
+      runtimeReason ??= "selected runtime index is unavailable";
+    }
+  }
+  if (runtimeReason === null && observedServerSha256 !== immuneServerSha256) {
+    runtimeReason = "running server bundle digest does not match the deployment manifest";
+  }
+  if (runtimeReason === null && observedIndexSha256 !== publicIndexSha256) {
+    runtimeReason = "selected runtime index digest does not match the deployment manifest";
+  }
+  if (!requiredHashesPresent) {
+    runtimeReason = "deployment manifest is missing required runtime artifact hashes";
+  }
+
   return {
-    available: requiredHashesPresent,
-    reason: requiredHashesPresent
-      ? null
-      : "deployment manifest is missing required runtime artifact hashes",
+    available: requiredHashesPresent && runtimeReason === null,
+    reason: runtimeReason,
     source_repository: result.manifest.source.repository,
     source_revision: result.manifest.source.revision,
     deployment_manifest_sha256: digest(manifestBytes),
     artifact_set_sha256: digest(JSON.stringify(entries)),
-    immune_server_sha256: immuneServerSha256,
-    public_index_sha256: publicIndexSha256,
+    immune_server_sha256: observedServerSha256,
+    public_index_sha256: observedIndexSha256,
   };
 }
 
@@ -291,6 +348,7 @@ function normalizeRevision(value: string | undefined): string | null {
 export function getSourceAttestation(): SourceAttestation {
   const result = readManifest();
   const integrity = verifyArtifacts(result);
+  const runtime = getRuntimeHashBinding();
   const manifest = result.ok ? result.manifest : null;
   const expectedRevision = normalizeRevision(
     process.env.IMMUNE_EXPECTED_HF_REVISION,
@@ -306,7 +364,7 @@ export function getSourceAttestation(): SourceAttestation {
   let alignment: SourceAlignment;
   if (!result.ok) {
     alignment = "INVALID_MANIFEST";
-  } else if (integrity.status !== "MATCH") {
+  } else if (integrity.status !== "MATCH" || !runtime.available) {
     alignment = "ARTIFACT_HASH_MISMATCH";
   } else if (expectedRevision === null || observedRevision === null) {
     alignment = "REVISION_UNAVAILABLE";
@@ -331,13 +389,14 @@ export function getSourceAttestation(): SourceAttestation {
     observed_huggingface_revision: observedRevision,
     claims: {
       whole_repository_parity: false,
-      runtime_whitelist_hash_match: integrity.status === "MATCH",
+      runtime_whitelist_hash_match:
+        integrity.status === "MATCH" && runtime.available,
       huggingface_revision_match: revisionMatch,
       github_actions_provenance_verified: false,
       cryptographic_release_receipt: false,
     },
     relation:
-      integrity.status === "MATCH"
+      integrity.status === "MATCH" && runtime.available
         ? "declared-github-source-with-runtime-hash-match"
         : "declared-source-without-runtime-hash-match",
     limits: [

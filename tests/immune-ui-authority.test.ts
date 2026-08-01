@@ -252,3 +252,34 @@ test("Home is the sole authority query and every security surface consumes its p
   assert.match(scene, /startAnimationLoop/);
   assert.doesNotMatch(scene, /requestAnimationFrame\(/);
 });
+
+test("governed-cycle UX requires real input and keeps proof labels evidence-scoped", () => {
+  const repoRoot = path.resolve(import.meta.dirname, "..");
+  const controls = fs.readFileSync(
+    path.join(repoRoot, "frontend/src/components/ControlsPanel.tsx"),
+    "utf8",
+  );
+  const home = fs.readFileSync(
+    path.join(repoRoot, "frontend/src/pages/Home.tsx"),
+    "utf8",
+  );
+
+  assert.match(controls, /const \[cycleActor, setCycleActor\] = useState\(""\)/);
+  assert.match(controls, /const \[cycleIntent, setCycleIntent\] = useState\(""\)/);
+  assert.match(controls, /const actor = cycleActor\.trim\(\)/);
+  assert.match(controls, /const intent = cycleIntent\.trim\(\)/);
+  assert.match(controls, /if \(!canRunCycle \|\| !actor \|\| !intent\) return/);
+  assert.match(controls, /data: \{ actor, intent \}/);
+  assert.match(controls, /currentMode === "PASS"/);
+  assert.match(controls, /!authority\.deadman/);
+  assert.match(controls, /Accepted input writes a real governed-cycle receipt/);
+  assert.match(controls, /aria-describedby="cycle-write-warning"/);
+  assert.doesNotMatch(controls, /operator@immune\.demo|DEMO: inject payload/);
+
+  assert.match(home, /href="#main-content"/);
+  assert.match(home, /LIVE \/ MEASURED/);
+  assert.match(home, /MODELED \/ SAMPLE/);
+  assert.match(home, /UNAVAILABLE \/ LIMITS/);
+  assert.match(home, /Public readback is not an ATO or a performance claim/);
+  assert.doesNotMatch(home, /Nothing on this page is fabricated/);
+});

@@ -209,7 +209,9 @@ try {
 
   const stillLive = await fetch(base + "/healthz");
   assert.equal(stillLive.status, 200);
-  assert.equal((await stillLive.json()).transport_state, "REACHABLE");
+  const stillLiveBody = await stillLive.json();
+  assert.equal(stillLiveBody.transport_state, "REACHABLE");
+  assert.equal(stillLiveBody.write_ready, false);
   console.log("IMMUNE standalone smoke: 9/9 PASS");
 } finally {
   if (child.exitCode === null) {

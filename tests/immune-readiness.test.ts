@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { getRuntimeHashBinding } from "../server/source-attestation";
 import {
   buildReadinessContract,
   readinessHttpResult,
@@ -248,6 +251,93 @@ test("verified reject and deadman authority never become write-ready", () => {
   }
 });
 
+test("runtime binding hashes the executed bundle and selected static tree", {
+  concurrency: false,
+}, () => {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "immune-runtime-binding-"));
+  const manifestRoot = path.join(temporary, "manifest");
+  const runtimeRoot = path.join(temporary, "runtime");
+  const runtimePublic = path.join(runtimeRoot, "public");
+  fs.mkdirSync(path.join(manifestRoot, "public"), { recursive: true });
+  fs.mkdirSync(runtimePublic, { recursive: true });
+  const serverBytes = "console.log('bound server');\n";
+  const indexBytes = "<!doctype html><title>bound</title>\n";
+  const digest = (value: string) =>
+    createHash("sha256").update(value).digest("hex");
+  fs.writeFileSync(path.join(manifestRoot, "immune-server.js"), serverBytes);
+  fs.writeFileSync(path.join(manifestRoot, "public", "index.html"), indexBytes);
+  const runtimeServer = path.join(runtimeRoot, "immune-server.js");
+  const runtimeIndex = path.join(runtimePublic, "index.html");
+  fs.writeFileSync(runtimeServer, serverBytes);
+  fs.writeFileSync(runtimeIndex, indexBytes);
+  const manifestPath = path.join(manifestRoot, "hf-deploy-manifest.json");
+  fs.writeFileSync(
+    manifestPath,
+    JSON.stringify({
+      schema: "szl.hf-deploy-manifest/v2",
+      source: {
+        repository: "szl-holdings/immune",
+        revision: REVISION,
+        ref: "refs/heads/main",
+      },
+      workflow: { repository: null, run_id: null, run_attempt: null, ref: null },
+      destination: "SZLHOLDINGS/immune",
+      artifacts: {
+        "immune-server.js": digest(serverBytes),
+        "public/index.html": digest(indexBytes),
+      },
+      claims: {
+        github_actions_provenance_verified: false,
+        cryptographic_release_receipt: false,
+      },
+    }),
+  );
+
+  const names = [
+    "IMMUNE_DEPLOY_MANIFEST_PATH",
+    "IMMUNE_DEPLOY_MANIFEST",
+    "IMMUNE_STATIC_DIR",
+  ] as const;
+  const before = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+  try {
+    process.env.IMMUNE_DEPLOY_MANIFEST_PATH = manifestPath;
+    process.env.IMMUNE_DEPLOY_MANIFEST = manifestPath;
+    process.env.IMMUNE_STATIC_DIR = runtimePublic;
+    const selection = { serverPath: runtimeServer, staticDir: runtimePublic };
+    let binding = getRuntimeHashBinding(selection);
+    assert.equal(binding.available, true);
+    assert.equal(binding.reason, null);
+    assert.equal(binding.immune_server_sha256, digest(serverBytes));
+    assert.equal(binding.public_index_sha256, digest(indexBytes));
+
+    fs.writeFileSync(runtimeServer, "console.log('unbound server');\n");
+    binding = getRuntimeHashBinding(selection);
+    assert.equal(binding.available, false);
+    assert.equal(
+      binding.reason,
+      "running server bundle digest does not match the deployment manifest",
+    );
+    assert.notEqual(binding.immune_server_sha256, digest(serverBytes));
+
+    fs.writeFileSync(runtimeServer, serverBytes);
+    fs.writeFileSync(runtimeIndex, "<!doctype html><title>unbound</title>\n");
+    binding = getRuntimeHashBinding(selection);
+    assert.equal(binding.available, false);
+    assert.equal(
+      binding.reason,
+      "selected runtime index digest does not match the deployment manifest",
+    );
+    assert.notEqual(binding.public_index_sha256, digest(indexBytes));
+  } finally {
+    for (const name of names) {
+      const value = before[name];
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
 test("readyz is registered before static hosting and metadata is evidence-scoped", () => {
   const root = path.resolve(import.meta.dirname, "..");
   const server = fs.readFileSync(path.join(root, "server/immune-standalone.ts"), "utf8");
@@ -258,6 +348,10 @@ test("readyz is registered before static hosting and metadata is evidence-scoped
   assert.ok(staticHosting > readyRoute);
   assert.ok(spaFallback > readyRoute);
   assert.match(server, /const \{ statusCode, body \} = readinessHttpResult\(\)/);
+  assert.match(server, /const readiness = readinessStatus\(\)/);
+  assert.match(server, /write_ready: readiness\.write_ready/);
+  assert.match(server, /verification_state: readiness\.authority\.evidence_state/);
+  assert.doesNotMatch(server, /write_ready: isActionReady\(authority\)/);
   assert.match(server, /res\.status\(statusCode\)\.type\("application\/json"\)\.json\(body\)/);
 
   const html = fs.readFileSync(path.join(root, "frontend/index.html"), "utf8");
