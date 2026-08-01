@@ -58,6 +58,8 @@ export type ImmuneReadiness = {
   authority: {
     enabled: boolean;
     evidence_state: EvidenceState;
+    mode: AuthoritySnapshot["mode"];
+    deadman: boolean;
     key_id: string | null;
     receipt_count: number;
     receipt_hash: string | null;
@@ -123,12 +125,16 @@ export function buildReadinessContract(inputs: ReadinessInputs): ImmuneReadiness
   addBlocker(blockers, ledger.ok && ledger.count === 0, "RECEIPT_LEDGER_EMPTY");
 
   const runtimeReady = sourceBound && runtimeBound && ledgerReady;
-  const authorityReady =
+  const authorityVerified =
     authority.authority.enabled && authority.evidenceState === "VERIFIED";
+  const deadmanEngaged = authority.deadman || authority.mode === "DEADMAN";
+  const authorityReady = authorityVerified && !deadmanEngaged;
   if (!authority.authority.enabled) {
     blockers.push("ACTION_TRUST_ROOT_UNCONFIGURED");
-  } else if (!authorityReady) {
+  } else if (!authorityVerified) {
     blockers.push(`ACTION_AUTHORITY_${authority.evidenceState}`);
+  } else if (deadmanEngaged) {
+    blockers.push("ACTION_AUTHORITY_DEADMAN");
   }
   const writeReady = runtimeReady && authorityReady;
 
@@ -169,6 +175,8 @@ export function buildReadinessContract(inputs: ReadinessInputs): ImmuneReadiness
     authority: {
       enabled: authority.authority.enabled,
       evidence_state: authority.evidenceState,
+      mode: authority.mode,
+      deadman: authority.deadman,
       key_id: authority.authority.keyId,
       receipt_count: authority.authorityReceiptCount,
       receipt_hash: authority.authorityReceiptHash,

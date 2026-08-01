@@ -30,13 +30,19 @@ app.use(express.json({ limit: "2mb" }));
 // Lightweight liveness probe (handy for Docker/HF healthchecks).
 app.get("/healthz", (_req: Request, res: Response) => {
   const authority = getState();
+  const deadmanEngaged = authority.deadman || authority.mode === "DEADMAN";
   res.json({
     ok: true,
     service: "immune-standalone",
     transport_state: "REACHABLE",
     verification_state: authority.evidenceState,
     authority_state: authority.authority.enabled ? "SIGNED_ADVISORY_ONLY" : "UNAVAILABLE",
-    write_ready: authority.evidenceState === "VERIFIED",
+    authority_mode: authority.mode,
+    deadman: authority.deadman,
+    write_ready:
+      authority.authority.enabled &&
+      authority.evidenceState === "VERIFIED" &&
+      !deadmanEngaged,
   });
 });
 

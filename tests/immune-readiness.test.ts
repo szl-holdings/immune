@@ -190,6 +190,40 @@ test("full READY requires both verified runtime and verified signed authority", 
   assert.deepEqual(readiness.blockers, []);
 });
 
+test("verified DEADMAN authority keeps the service read-only", () => {
+  const deadman = inputs();
+  deadman.authority = {
+    ...deadman.authority,
+    mode: "DEADMAN",
+    deadman: true,
+    tripwire: "T07",
+    evidenceState: "VERIFIED",
+    reason: "signed DEADMAN action and receipt chain verified",
+    validUntil: "2026-08-01T19:00:00.000Z",
+    updatedAt: "2026-08-01T18:59:00.000Z",
+    requestId: "deadman-authority-0001",
+    revision: 1,
+    authorityReceiptCount: 1,
+    authorityReceiptHash: DIGEST,
+    authority: {
+      enabled: true,
+      version: "immune.action.v1",
+      keyId: "0123456789abcdef",
+    },
+  };
+
+  const readiness = buildReadinessContract(deadman);
+  assert.equal(readiness.status, "READ_ONLY");
+  assert.equal(readiness.ready, false);
+  assert.equal(readiness.runtime_ready, true);
+  assert.equal(readiness.read_ready, true);
+  assert.equal(readiness.authority_ready, false);
+  assert.equal(readiness.write_ready, false);
+  assert.equal(readiness.authority.mode, "DEADMAN");
+  assert.equal(readiness.authority.deadman, true);
+  assert.deepEqual(readiness.blockers, ["ACTION_AUTHORITY_DEADMAN"]);
+});
+
 test("readyz is registered before static hosting and metadata is evidence-scoped", () => {
   const root = path.resolve(import.meta.dirname, "..");
   const server = fs.readFileSync(path.join(root, "server/immune-standalone.ts"), "utf8");
