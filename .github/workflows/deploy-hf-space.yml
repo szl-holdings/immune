@@ -155,18 +155,25 @@ jobs:
                   with urllib.request.urlopen(base + "/healthz", timeout=15) as response:
                       health = json.load(response)
                   with urllib.request.urlopen(base + "/readyz", timeout=15) as response:
+                      assert response.status == 200
                       readiness = json.load(response)
                   with urllib.request.urlopen(base + "/api/immune/ledger/verify", timeout=15) as response:
                       ledger = json.load(response)
                   with urllib.request.urlopen(base + "/.well-known/szl-source.json", timeout=15) as response:
                       source = json.load(response)
                   assert health["transport_state"] == "REACHABLE"
-                  assert readiness["status"] == "READY_READONLY"
-                  assert readiness["ready"] is True
-                  assert readiness["access_mode"] == "PUBLIC_READONLY"
-                  assert readiness["ledger_state"] == "VERIFIED"
-                  assert readiness["ledger_count"] > 0
+                  assert readiness["schema"] == "szl.immune-readiness/v1"
+                  assert readiness["status"] == "READ_ONLY"
+                  assert readiness["ready"] is False
+                  assert readiness["source"]["revision"] == os.environ["GITHUB_SHA"].lower()
+                  assert readiness["source"]["build_revision"] == os.environ["GITHUB_SHA"].lower()
+                  assert readiness["runtime_ready"] is True
+                  assert readiness["read_ready"] is True
+                  assert readiness["authority_ready"] is False
                   assert readiness["write_ready"] is False
+                  assert readiness["blockers"] == ["ACTION_TRUST_ROOT_UNCONFIGURED"]
+                  assert readiness["runtime"]["artifact_integrity"]["status"] == "MATCH"
+                  assert readiness["ledger"]["ok"] is True
                   assert ledger["ok"] is True
                   assert source["deployment"]["hf_revision"] == target
                   assert source["source"]["commit"] == os.environ["GITHUB_SHA"].lower()

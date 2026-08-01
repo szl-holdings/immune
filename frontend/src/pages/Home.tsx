@@ -18,7 +18,7 @@ import { Activity, ShieldAlert, ShieldCheck, Skull, ChevronDown } from "lucide-r
 
 export default function Home() {
   useEffect(() => {
-    document.title = "IMMUNE — Verifiable-AI Defense";
+    document.title = "IMMUNE | Evidence-Scoped AI Defense";
   }, []);
 
   const stateQuery = useGetImmuneState();

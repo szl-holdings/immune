@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -74,15 +75,35 @@ try {
     `server did not start: ${lastReadyError}\n${output}`,
   );
 
-  const readiness = await getJson("/readyz");
-  assert.equal(readiness.status, "READY_READONLY");
-  assert.equal(readiness.ready, true);
-  assert.equal(readiness.access_mode, "PUBLIC_READONLY");
-  assert.equal(readiness.ledger_state, "VERIFIED");
-  assert.ok(readiness.ledger_count > 0);
-  assert.equal(readiness.first_bad_seq, null);
-  assert.equal(readiness.authority_state, "UNAVAILABLE");
+  const readinessResponse = await fetch(base + "/readyz");
+  assert.equal(readinessResponse.status, 200);
+  assert.match(readinessResponse.headers.get("content-type") ?? "", /^application\/json/);
+  const readiness = await readinessResponse.json();
+  assert.equal(readiness.schema, "szl.immune-readiness/v1");
+  assert.equal(readiness.status, "READ_ONLY");
+  assert.equal(readiness.ready, false);
+  assert.equal(readiness.runtime_ready, true);
+  assert.equal(readiness.read_ready, true);
+  assert.equal(readiness.authority_ready, false);
   assert.equal(readiness.write_ready, false);
+  assert.deepEqual(readiness.blockers, ["ACTION_TRUST_ROOT_UNCONFIGURED"]);
+  assert.equal(readiness.source.repository, "szl-holdings/immune");
+  assert.equal(readiness.source.revision, sourceRevision.toLowerCase());
+  assert.equal(readiness.source.build_revision, sourceRevision.toLowerCase());
+  assert.equal(readiness.runtime.artifact_integrity.status, "MATCH");
+  assert.equal(readiness.ledger.ok, true);
+
+  const manifestPath = path.join(dist, "hf-deploy-manifest.json");
+  const manifestBytes = fs.readFileSync(manifestPath);
+  const manifest = JSON.parse(manifestBytes.toString("utf8"));
+  const artifactEntries = Object.entries(manifest.artifacts).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
+  const sha256 = (value) => createHash("sha256").update(value).digest("hex");
+  assert.equal(readiness.build.deployment_manifest_sha256, sha256(manifestBytes));
+  assert.equal(readiness.build.artifact_set_sha256, sha256(JSON.stringify(artifactEntries)));
+  assert.equal(readiness.runtime.immune_server_sha256, manifest.artifacts["immune-server.js"]);
+  assert.equal(readiness.runtime.public_index_sha256, manifest.artifacts["public/index.html"]);
 
   const state = await getJson("/api/immune/state");
   assert.equal(typeof state.ledgerCount, "number");
@@ -166,7 +187,11 @@ try {
 
   const page = await fetch(base + "/");
   assert.equal(page.status, 200);
-  assert.match(await page.text(), /<div id="root"><\/div>/);
+  const html = await page.text();
+  assert.match(html, /<div id="root"><\/div>/);
+  assert.match(html, /IMMUNE \| Evidence-Scoped AI Defense/);
+  assert.match(html, /rel="canonical" href="https:\/\/szlholdings-immune\.hf\.space\/"/);
+  assert.doesNotMatch(html, /Investor Demo|built on Replit/);
 
   // A corrupted evidence ledger must take readiness down without lying about
   // process liveness. This exercises the real built server and filesystem.
@@ -176,8 +201,11 @@ try {
   const refusedReadinessBody = await refusedReadiness.json();
   assert.equal(refusedReadinessBody.status, "NOT_READY");
   assert.equal(refusedReadinessBody.ready, false);
-  assert.equal(refusedReadinessBody.ledger_state, "CONFLICT");
-  assert.notEqual(refusedReadinessBody.first_bad_seq, null);
+  assert.equal(refusedReadinessBody.runtime_ready, false);
+  assert.equal(refusedReadinessBody.read_ready, false);
+  assert.equal(refusedReadinessBody.ledger.ok, false);
+  assert.notEqual(refusedReadinessBody.ledger.first_bad_seq, null);
+  assert.ok(refusedReadinessBody.blockers.includes("RECEIPT_LEDGER_INTEGRITY_FAILED"));
 
   const stillLive = await fetch(base + "/healthz");
   assert.equal(stillLive.status, 200);
