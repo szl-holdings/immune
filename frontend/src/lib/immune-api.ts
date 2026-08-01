@@ -6,6 +6,20 @@ import {
 } from "@tanstack/react-query";
 
 export type ImmuneMode = "PASS" | "SENTRA_REJECT" | "DEADMAN";
+export type EvidenceState = "VERIFIED" | "FAILED" | "UNAVAILABLE" | "STALE";
+
+export interface SignedActionEnvelope {
+  version: "immune.action.v1";
+  requestId: string;
+  issuedAt: string;
+  expiresAt: string;
+  actor: string;
+  keyId: string;
+  action:
+    | { type: "SET_MODE"; mode: ImmuneMode; tripwire?: string | null }
+    | { type: "RESET" };
+  signature: string;
+}
 
 export interface ImmuneState {
   mode: ImmuneMode;
@@ -13,6 +27,18 @@ export interface ImmuneState {
   deadman: boolean;
   ledgerCount: number;
   lastHash: string | null;
+  evidenceState: EvidenceState;
+  reason: string;
+  updatedAt: string | null;
+  requestId: string | null;
+  revision: number;
+  authorityReceiptCount: number;
+  authorityReceiptHash: string | null;
+  authority: {
+    enabled: boolean;
+    version: "immune.action.v1";
+    keyId: string | null;
+  };
 }
 
 export interface ImmuneReceipt {
@@ -116,10 +142,10 @@ export function useVerifyImmuneLedger(): UseQueryResult<VerifierReport, Error> {
   });
 }
 
-export function useSetImmuneState(): UseMutationResult<
+export function useSubmitImmuneAction(): UseMutationResult<
   ImmuneState,
   Error,
-  DataEnvelope<{ mode: ImmuneMode; tripwire?: string }>
+  DataEnvelope<SignedActionEnvelope>
 > {
   return useMutation({
     mutationFn: ({ data }) =>
@@ -140,19 +166,6 @@ export function useRunImmuneCycle(): UseMutationResult<
       request<ImmuneCycleResult>("/cycle", {
         method: "POST",
         body: JSON.stringify(data),
-      }),
-  });
-}
-
-export function useResetImmune(): UseMutationResult<
-  ImmuneState,
-  Error,
-  void
-> {
-  return useMutation({
-    mutationFn: () =>
-      request<ImmuneState>("/reset", {
-        method: "POST",
       }),
   });
 }

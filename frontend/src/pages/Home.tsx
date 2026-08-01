@@ -24,16 +24,20 @@ export default function Home() {
     setLastCycleResult(result);
   }, []);
 
-  const mode = state?.mode ?? "PASS";
+  const mode = state?.mode ?? "SENTRA_REJECT";
   const deadman = state?.deadman ?? false;
+  const evidenceState = state?.evidenceState ?? "UNAVAILABLE";
 
   const getStatusColor = () => {
+    if (evidenceState === "FAILED") return "text-destructive shadow-destructive border-destructive/50";
+    if (evidenceState !== "VERIFIED") return "text-warning shadow-warning border-warning/50";
     if (deadman) return "text-destructive shadow-destructive border-destructive/50";
     if (mode === "SENTRA_REJECT") return "text-warning shadow-warning border-warning/50";
     return "text-primary shadow-primary border-primary/50";
   };
 
   const StatusIcon = () => {
+    if (evidenceState !== "VERIFIED") return <ShieldAlert className="w-8 h-8 text-warning" />;
     if (deadman) return <Skull className="w-8 h-8 text-destructive animate-pulse" />;
     if (mode === "SENTRA_REJECT") return <ShieldAlert className="w-8 h-8 text-warning" />;
     return <ShieldCheck className="w-8 h-8 text-primary" />;
@@ -88,13 +92,19 @@ export default function Home() {
           <div className="flex flex-col items-end gap-1 font-mono text-[10px] sm:text-xs uppercase tracking-widest">
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">System Status</span>
-              <span className={`px-2 py-1 bg-black/50 border ${getStatusColor()} backdrop-blur`}>
-                {deadman ? "FROZEN" : mode}
+              <span
+                className={`px-2 py-1 bg-black/50 border ${getStatusColor()} backdrop-blur`}
+                role="status"
+                aria-live="polite"
+              >
+                {evidenceState === "VERIFIED" ? (deadman ? "FROZEN" : mode) : evidenceState}
               </span>
             </div>
             <div className="flex items-center gap-2 mt-2">
-              <Activity className="w-3 h-3 text-primary" />
-              <span className="text-primary/70">Live Uplink</span>
+              <Activity className={`w-3 h-3 ${evidenceState === "VERIFIED" ? "text-primary" : "text-warning"}`} />
+              <span className={evidenceState === "VERIFIED" ? "text-primary/70" : "text-warning"}>
+                {evidenceState === "VERIFIED" ? "Verified authority" : "No green claim"}
+              </span>
             </div>
           </div>
         </div>

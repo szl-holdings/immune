@@ -26,7 +26,7 @@ import {
   type SourceState,
 } from "../../contracts/decision-genome";
 import { runGovernedCycle } from "./cycle";
-import { getState } from "./state";
+import { getState, type EvidenceState } from "./state";
 import { ledgerCount, ledgerLastHash, verifyLedger } from "./ledger";
 import { HUKLLA_REGISTRY } from "./huklla";
 import { listSentraSignatures } from "./sentra";
@@ -38,14 +38,27 @@ const MAX_GOAL_LEN = 500;
 const MAX_TOKENS = 400;
 
 // ---- Real, read-only tools. Each returns LIVE data about IMMUNE itself. ----
-type ToolFn = (args: Record<string, unknown>) => { provenance: "LIVE"; data: unknown };
+type ToolFn = (args: Record<string, unknown>) => {
+  provenance: "LIVE" | EvidenceState;
+  data: unknown;
+};
 
 const TOOLS: Record<string, { desc: string; run: ToolFn }> = {
   immune_state: {
     desc: "Current IMMUNE mode + whether DEADMAN is engaged.",
     run: () => {
       const s = getState();
-      return { provenance: "LIVE", data: { mode: s.mode, deadman: s.deadman, tripwire: s.tripwire } };
+      return {
+        provenance: s.evidenceState,
+        data: {
+          mode: s.mode,
+          deadman: s.deadman,
+          tripwire: s.tripwire,
+          evidenceState: s.evidenceState,
+          reason: s.reason,
+          receiptHash: s.authorityReceiptHash,
+        },
+      };
     },
   },
   ledger_stats: {
@@ -155,16 +168,23 @@ function rateCheck(ip: string): { ok: true } | { ok: false; reason: string; retr
 
 export function agentStatus(): Record<string, unknown> {
   const inf = inferenceInfo();
+  const authority = getState();
+  const available = inf.configured && authority.evidenceState === "VERIFIED";
   return {
-    available: inf.configured,
-    provenance: inf.configured ? "LIVE" : "UNAVAILABLE",
+    available,
+    provenance: available ? "LIVE" : inf.configured ? authority.evidenceState : "UNAVAILABLE",
     inference: inf,
+    authority: {
+      evidenceState: authority.evidenceState,
+      reason: authority.reason,
+      receiptHash: authority.authorityReceiptHash,
+    },
     signing: signingEnabled() ? "ed25519" : "hash-only",
     tools: TOOL_NAMES,
     maxSteps: MAX_STEPS,
-    note: inf.configured
+    note: available
       ? "Live governed agent ready — every action is SENTRA-gated and receipted."
-      : "Inference is not configured on this deployment; the governed cycle above still runs manually.",
+      : "Governed agent unavailable until inference and signed action authority are both verified.",
   };
 }
 

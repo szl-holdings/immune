@@ -12,6 +12,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import immuneRouter from "./routes/immune";
+import { getState } from "./routes/immune/state";
 import { buildInfo, sourceAttestation } from "./source-attestation";
 
 const __serverDir = path.dirname(fileURLToPath(import.meta.url));
@@ -26,12 +27,14 @@ app.use(express.json({ limit: "2mb" }));
 
 // Lightweight liveness probe (handy for Docker/HF healthchecks).
 app.get("/healthz", (_req: Request, res: Response) => {
+  const authority = getState();
   res.json({
     ok: true,
     service: "immune-standalone",
     transport_state: "REACHABLE",
-    verification_state: "STRUCTURAL_ONLY",
-    authority_state: "BOUNDED_WRITE",
+    verification_state: authority.evidenceState,
+    authority_state: authority.authority.enabled ? "SIGNED_ADVISORY_ONLY" : "UNAVAILABLE",
+    write_ready: authority.evidenceState === "VERIFIED",
   });
 });
 

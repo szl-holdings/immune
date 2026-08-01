@@ -77,6 +77,9 @@ try {
   const state = await getJson("/api/immune/state");
   assert.equal(typeof state.ledgerCount, "number");
   assert.ok(state.ledgerCount > 0);
+  assert.equal(state.evidenceState, "UNAVAILABLE");
+  assert.equal(state.mode, "SENTRA_REJECT");
+  assert.equal(state.authority.enabled, false);
 
   const verification = await getJson("/api/immune/ledger/verify");
   assert.equal(verification.ok, true);
@@ -101,6 +104,10 @@ try {
   assert.match(await page.text(), /<div id="root"><\/div>/);
   console.log("IMMUNE standalone smoke: 7/7 PASS");
 } finally {
-  child.kill();
-  fs.rmSync(temporary, { recursive: true, force: true });
+  if (child.exitCode === null) {
+    const closed = new Promise((resolve) => child.once("close", resolve));
+    child.kill();
+    await closed;
+  }
+  fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

@@ -33,16 +33,32 @@ AI-agent action.
 
 | Endpoint | What |
 |---|---|
-| `GET /api/immune/state` | Current mode, active tripwire, deadman flag, ledger count + lastHash |
-| `POST /api/immune/state` | Set mode (`PASS` / `SENTRA_REJECT` / `DEADMAN`) + tripwire |
+| `GET /api/immune/state` | Authoritative `VERIFIED / FAILED / UNAVAILABLE / STALE` state, signed-action receipt head, mode, tripwire, and YAWAR chain head |
+| `POST /api/immune/state` | Verify and atomically apply an `immune.action.v1` Ed25519 envelope; unsigned controls are rejected |
 | `POST /api/immune/cycle` | Run one governed cycle: SENTRA inspect → (if accepted) append receipt → HUKLLA evaluate |
-| `POST /api/immune/reset` | Clear DEADMAN |
+| `POST /api/immune/reset` | Apply a signed `RESET` envelope through the same authority path |
 | `GET /api/immune/ledger/latest` | Last 25 SHA-256 receipts |
 | `GET /api/immune/ledger/verify` | Recompute the whole chain from disk; `ok: true` on a clean chain |
 | `GET /api/immune/evidence/latest` | Last 25 HUKLLA firing records |
 | `GET /api/immune/intel/{frameworks,transparency,incidents,leaders,pulse}` | Live/curated threat intel |
 | `GET /api/immune/agent/frontier` | Shadow-only Decision Genome capability and truth boundary |
 | `POST /api/immune/agent/frontier/evaluate` | Validate one evidence observation and return a non-executable `MODELED` recommendation |
+
+### Signed advisory authority
+
+Privileged advisory controls are disabled unless `IMMUNE_ACTION_PUBLIC_KEY` is
+canonical base64 for the trusted raw 32-byte Ed25519 public key. Clients submit
+a strict, short-lived `immune.action.v1` envelope with a unique `requestId`; the
+signature covers the canonical envelope without its `signature` field.
+
+Accepted actions and resulting state are committed together to
+`data/immune/authority.sqlite` in WAL/FULL mode. Receipts are append-only,
+request IDs remain single-use across restarts, and a missing trust root, read
+failure, stale receipt, or chain mismatch can never render green. The public UI
+holds no operator private key: it accepts an already-signed envelope and is
+otherwise read-only. `IMMUNE_EVIDENCE_MAX_AGE_MS` may override the default
+15-minute freshness window; stale state remains observable but cannot authorize
+a governed cycle.
 
 The frontier evaluator consumes the shared
 `@szl-holdings/contracts/decision-genome` schema from Platform. It does not

@@ -1,22 +1,11 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
 
-// Local mirrors of the api-zod request schemas (the generated api-zod dist on
-// disk predates these immune endpoints). Kept in lockstep with
-// lib/api-zod/src/generated/api.ts.
-const SetImmuneStateBody = z.object({
-  mode: z.enum(["PASS", "SENTRA_REJECT", "DEADMAN"]),
-  tripwire: z
-    .enum(["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10"])
-    .optional(),
-});
-
 const RunImmuneCycleBody = z.object({
   actor: z.string().optional(),
   intent: z.string().optional(),
 });
-import { getState, setState, clearDeadman } from "./state";
-import { HUKLLA_REGISTRY } from "./huklla";
+import { AuthorityError, applySignedAction, getState } from "./state";
 import {
   ledgerCount,
   ledgerLastHash,
@@ -34,48 +23,36 @@ const router: IRouter = Router();
 router.get("/state", (_req: Request, res: Response) => {
   const s = getState();
   res.json({
-    mode: s.mode,
-    tripwire: s.tripwire,
-    deadman: s.deadman,
+    ...s,
     ledgerCount: ledgerCount(),
     lastHash: ledgerLastHash(),
   });
 });
 
-router.post("/state", (req: Request, res: Response) => {
-  const parsed = SetImmuneStateBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "invalid body", detail: parsed.error.flatten() });
-    return;
+function applyAction(req: Request, res: Response): void {
+  try {
+    const s = applySignedAction(req.body);
+    res.status(201).json({ ...s, ledgerCount: ledgerCount(), lastHash: ledgerLastHash() });
+  } catch (error) {
+    const authorityError =
+      error instanceof AuthorityError
+        ? error
+        : new AuthorityError("AUTHORITY_UNAVAILABLE", "signed action authority unavailable", 503);
+    res.status(authorityError.status).json({
+      error: authorityError.code,
+      detail: authorityError.message,
+      state: getState(),
+    });
   }
-  const { mode, tripwire } = parsed.data;
-  if (mode === "DEADMAN" && !tripwire) {
-    res.status(400).json({ error: "DEADMAN requires a tripwire id (T01–T10)" });
-    return;
-  }
-  if (tripwire && !HUKLLA_REGISTRY.find((t) => t.id === tripwire)) {
-    res.status(400).json({ error: `unknown tripwire: ${tripwire}` });
-    return;
-  }
-  const s = setState(mode, tripwire ?? null);
-  res.json({
-    mode: s.mode,
-    tripwire: s.tripwire,
-    deadman: s.deadman,
-    ledgerCount: ledgerCount(),
-    lastHash: ledgerLastHash(),
-  });
-});
+}
 
-router.post("/reset", (_req: Request, res: Response) => {
-  const s = clearDeadman();
-  res.json({
-    mode: s.mode,
-    tripwire: s.tripwire,
-    deadman: s.deadman,
-    ledgerCount: ledgerCount(),
-    lastHash: ledgerLastHash(),
-  });
+router.post("/state", applyAction);
+router.post("/reset", (req: Request, res: Response) => {
+  if (req.body?.action?.type !== "RESET") {
+    res.status(400).json({ error: "INVALID_ACTION", detail: "reset requires a signed RESET envelope" });
+    return;
+  }
+  applyAction(req, res);
 });
 
 router.post("/cycle", async (req: Request, res: Response) => {

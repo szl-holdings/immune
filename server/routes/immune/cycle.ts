@@ -34,11 +34,16 @@ export async function runGovernedCycle(
   extra?: Record<string, unknown>,
 ): Promise<GovernedCycleResult> {
   const s = getState();
+  // A stale, unavailable, or failed authority read can never inherit PASS.
+  // The last durable mode is observable, but execution is fail-closed until
+  // the signed authority evidence is freshly VERIFIED again.
+  const effectiveMode: ImmuneMode =
+    s.evidenceState === "VERIFIED" ? s.mode : "SENTRA_REJECT";
 
   // SENTRA inspects the FULL intent (base fields + any agent extra) so the gate
   // sees exactly what will be governed.
   const inspected = extra ? { ...intentPayload, agent: extra } : intentPayload;
-  const sentra = sentraInspect(inspected, s.mode);
+  const sentra = sentraInspect(inspected, effectiveMode);
 
   let receiptOut: Receipt | null = null;
   let payloadBytes = 0;
@@ -50,7 +55,7 @@ export async function runGovernedCycle(
     const payload: Record<string, unknown> = {
       actor: intentPayload.actor,
       intent: intentPayload.intent,
-      mode: s.mode,
+      mode: effectiveMode,
       sentra: {
         accepted: true,
         signatureMatched: sentra.signatureMatched ?? "intent.required",
@@ -72,7 +77,7 @@ export async function runGovernedCycle(
   }
 
   const huklla = evaluateTripwires({
-    mode: s.mode,
+    mode: effectiveMode,
     selectedTripwire: s.tripwire,
     sentraAccepted: sentra.accepted,
     payloadBytes,
@@ -85,5 +90,13 @@ export async function runGovernedCycle(
     fired: huklla,
   });
 
-  return { pass, mode: s.mode, deadman: s.deadman, sentra, huklla, receipt: receiptOut, payloadBytes };
+  return {
+    pass,
+    mode: effectiveMode,
+    deadman: s.deadman,
+    sentra,
+    huklla,
+    receipt: receiptOut,
+    payloadBytes,
+  };
 }
