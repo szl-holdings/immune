@@ -14,6 +14,7 @@ import { fileURLToPath } from "url";
 import immuneRouter from "./routes/immune";
 import { verifyLedger } from "./routes/immune/ledger";
 import {
+  bindRuntimeStaticDir,
   buildInfo,
   resolveRuntimeStaticDir,
   sourceAttestation,
@@ -21,6 +22,7 @@ import {
 import { readinessHttpResult, readinessStatus } from "./readiness";
 
 const __serverDir = path.dirname(fileURLToPath(import.meta.url));
+const staticDir = bindRuntimeStaticDir(resolveRuntimeStaticDir(__serverDir));
 
 const app = express();
 
@@ -81,8 +83,6 @@ app.use("/api", (_req: Request, res: Response) => {
 // Resolve the vite-built static frontend (dist/public). Checked in priority order
 // so the same bundle works whether run from its dist dir (Docker /app/public),
 // from the deploy dir, or straight from the workspace during local testing.
-const staticDir = resolveRuntimeStaticDir(__serverDir);
-
 if (staticDir) {
   app.use(
     express.static(staticDir, {

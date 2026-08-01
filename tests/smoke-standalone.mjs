@@ -93,6 +93,14 @@ try {
   assert.equal(readiness.runtime.artifact_integrity.status, "MATCH");
   assert.equal(readiness.ledger.ok, true);
 
+  const agentStatus = await getJson("/api/immune/agent/status");
+  assert.equal(agentStatus.available, false);
+  assert.equal(agentStatus.provenance, "UNAVAILABLE");
+  assert.equal(agentStatus.readiness.status, "READ_ONLY");
+  assert.equal(agentStatus.readiness.write_ready, false);
+  assert.ok(agentStatus.blockers.includes("INFERENCE_UNCONFIGURED"));
+  assert.ok(agentStatus.blockers.includes("ACTION_TRUST_ROOT_UNCONFIGURED"));
+
   const manifestPath = path.join(dist, "hf-deploy-manifest.json");
   const manifestBytes = fs.readFileSync(manifestPath);
   const manifest = JSON.parse(manifestBytes.toString("utf8"));
@@ -238,7 +246,7 @@ try {
   const stillLiveBody = await stillLive.json();
   assert.equal(stillLiveBody.transport_state, "REACHABLE");
   assert.equal(stillLiveBody.write_ready, false);
-  console.log("IMMUNE standalone smoke: 11/11 PASS");
+  console.log("IMMUNE standalone smoke: 12/12 PASS");
 } finally {
   if (child.exitCode === null) {
     const closed = new Promise((resolve) => child.once("close", resolve));

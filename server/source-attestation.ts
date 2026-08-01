@@ -122,6 +122,19 @@ function runtimeServerPath(): string {
   return fileURLToPath(import.meta.url);
 }
 
+let startupStaticDir: string | null | undefined;
+
+export function bindRuntimeStaticDir(directory: string | null): string | null {
+  const normalized = directory === null ? null : path.resolve(directory);
+  if (startupStaticDir !== undefined && startupStaticDir !== normalized) {
+    throw new Error(
+      `runtime static directory is already bound to ${startupStaticDir ?? "none"}`,
+    );
+  }
+  startupStaticDir = normalized;
+  return startupStaticDir;
+}
+
 export function resolveRuntimeStaticDir(
   serverDir = path.dirname(runtimeServerPath()),
 ): string | null {
@@ -300,7 +313,9 @@ export function getRuntimeHashBinding(
   const serverPath = selection.serverPath ?? runtimeServerPath();
   const staticDir =
     selection.staticDir === undefined
-      ? resolveRuntimeStaticDir(path.dirname(serverPath))
+      ? startupStaticDir === undefined
+        ? resolveRuntimeStaticDir(path.dirname(serverPath))
+        : startupStaticDir
       : selection.staticDir;
   let observedServerSha256: string | null = null;
   let observedIndexSha256: string | null = null;

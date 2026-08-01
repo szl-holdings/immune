@@ -26,8 +26,8 @@ import {
   type SourceState,
 } from "../../contracts/decision-genome";
 import { CycleReadinessError, runGovernedCycle } from "./cycle";
-import { readinessStatus } from "../../readiness";
-import { getState, type EvidenceState } from "./state";
+import { readinessStatus, type ImmuneReadiness } from "../../readiness";
+import { getState, type AuthoritySnapshot, type EvidenceState } from "./state";
 import { ledgerCount, ledgerLastHash, verifyLedger } from "./ledger";
 import { HUKLLA_REGISTRY } from "./huklla";
 import { listSentraSignatures } from "./sentra";
@@ -177,25 +177,70 @@ function rateCheck(ip: string): { ok: true } | { ok: false; reason: string; retr
   return { ok: true };
 }
 
-export function agentStatus(): Record<string, unknown> {
-  const inf = inferenceInfo();
-  const authority = getState();
-  const available = inf.configured && authority.evidenceState === "VERIFIED";
+export type AgentStatusView = {
+  available: boolean;
+  provenance: "LIVE" | "UNAVAILABLE";
+  blockers: string[];
+  inference: ReturnType<typeof inferenceInfo>;
+  readiness: Pick<ImmuneReadiness, "status" | "write_ready">;
+  authority: {
+    evidenceState: EvidenceState;
+    reason: string;
+    receiptHash: string | null;
+  };
+  signing: "ed25519" | "hash-only";
+  tools: string[];
+  maxSteps: number;
+  note: string;
+};
+
+export type AgentStatusDependencies = {
+  inferenceInfo: () => ReturnType<typeof inferenceInfo>;
+  readinessStatus: () => ImmuneReadiness;
+  getState: () => AuthoritySnapshot;
+  signingEnabled: () => boolean;
+};
+
+const DEFAULT_AGENT_STATUS_DEPENDENCIES: AgentStatusDependencies = {
+  inferenceInfo,
+  readinessStatus,
+  getState,
+  signingEnabled,
+};
+
+export function agentStatus(
+  dependencies: AgentStatusDependencies = DEFAULT_AGENT_STATUS_DEPENDENCIES,
+): AgentStatusView {
+  const inf = dependencies.inferenceInfo();
+  const readiness = dependencies.readinessStatus();
+  const authority = dependencies.getState();
+  const available = inf.configured && readiness.write_ready;
+  const blockers = [
+    ...(inf.configured ? [] : ["INFERENCE_UNCONFIGURED"]),
+    ...readiness.blockers,
+  ];
   return {
     available,
-    provenance: available ? "LIVE" : inf.configured ? authority.evidenceState : "UNAVAILABLE",
+    provenance: available ? "LIVE" : "UNAVAILABLE",
+    blockers: [...new Set(blockers)],
     inference: inf,
+    readiness: {
+      status: readiness.status,
+      write_ready: readiness.write_ready,
+    },
     authority: {
       evidenceState: authority.evidenceState,
       reason: authority.reason,
       receiptHash: authority.authorityReceiptHash,
     },
-    signing: signingEnabled() ? "ed25519" : "hash-only",
+    signing: dependencies.signingEnabled() ? "ed25519" : "hash-only",
     tools: TOOL_NAMES,
     maxSteps: MAX_STEPS,
     note: available
       ? "Live governed agent ready — every action is SENTRA-gated and receipted."
-      : "Governed agent unavailable until inference and signed action authority are both verified.",
+      : !inf.configured
+        ? "Governed agent unavailable because inference is not configured."
+        : `Governed agent unavailable until the full server write-readiness contract is satisfied: ${readiness.blockers.join(", ")}.`,
   };
 }
 

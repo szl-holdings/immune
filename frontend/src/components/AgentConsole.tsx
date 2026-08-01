@@ -28,6 +28,8 @@ interface InferenceInfo {
 interface AgentStatus {
   available: boolean;
   provenance: "LIVE" | "UNAVAILABLE";
+  blockers: string[];
+  readiness: { status: "READY" | "READ_ONLY" | "NOT_READY"; write_ready: boolean };
   inference: InferenceInfo;
   signing: "ed25519" | "hash-only";
   tools: string[];
@@ -218,13 +220,18 @@ export default function AgentConsole() {
             <WifiOff className="w-4 h-4 text-warning shrink-0 mt-0.5" />
             <div className="font-mono text-[11px] text-warning/90 leading-relaxed">
               <div className="font-bold uppercase tracking-widest text-[10px] mb-1">
-                [ UNAVAILABLE ] Inference not configured
+                [ UNAVAILABLE ] Governed agent blocked
               </div>
               <p className="text-muted-foreground">
                 {status?.note ??
                   "No inference endpoint is configured on this deployment — so no live agent is shown here rather than a faked one."}{" "}
-                The manual governed cycle above still runs on real receipts.
+                All write paths stay fail-closed until the same server readiness contract passes.
               </p>
+              {status?.blockers?.length ? (
+                <p className="mt-2 text-[9px] uppercase tracking-wider">
+                  {status.blockers.join(" · ")}
+                </p>
+              ) : null}
             </div>
           </div>
         )}
