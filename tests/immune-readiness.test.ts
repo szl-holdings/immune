@@ -4,7 +4,9 @@ import path from "node:path";
 import test from "node:test";
 import {
   buildReadinessContract,
+  readinessHttpResult,
   readinessStatus,
+  type ReadinessDependencies,
   type ReadinessInputs,
 } from "../server/readiness";
 
@@ -145,22 +147,46 @@ test("source drift and receipt corruption independently fail runtime readiness",
   assert.ok(readiness.blockers.includes("RUNTIME_ARTIFACT_INTEGRITY_UNVERIFIED"));
 });
 
-test("ledger read failures remain a fail-closed readiness contract", () => {
+function dependencies(): ReadinessDependencies {
   const base = inputs();
-  const readiness = readinessStatus({
+  return {
     sourceAttestation: () => base.source,
     buildInfo: () => base.build,
     runtimeHashBinding: () => base.runtime,
-    verifyLedger: () => {
-      throw new Error("ledger unavailable");
-    },
+    verifyLedger: () => base.ledger,
     getState: () => base.authority,
-  });
-  assert.equal(readiness.schema, "szl.immune-readiness/v1");
-  assert.equal(readiness.status, "NOT_READY");
-  assert.equal(readiness.runtime_ready, false);
-  assert.equal(readiness.ledger.ok, false);
-  assert.ok(readiness.blockers.includes("RECEIPT_LEDGER_INTEGRITY_FAILED"));
+  };
+}
+
+test("every readiness dependency failure returns stable NOT_READY JSON and HTTP 503", () => {
+  const cases: Array<[keyof ReadinessDependencies, string]> = [
+    ["sourceAttestation", "SOURCE_ATTESTATION_UNAVAILABLE"],
+    ["buildInfo", "BUILD_INFO_UNAVAILABLE"],
+    ["runtimeHashBinding", "RUNTIME_HASH_BINDING_UNAVAILABLE"],
+    ["verifyLedger", "RECEIPT_LEDGER_UNAVAILABLE"],
+    ["getState", "ACTION_AUTHORITY_UNAVAILABLE"],
+  ];
+
+  for (const [dependency, blocker] of cases) {
+    const failing = {
+      ...dependencies(),
+      [dependency]: () => {
+        throw new Error(`${dependency} unavailable`);
+      },
+    } as ReadinessDependencies;
+    const readiness = readinessStatus(failing);
+    const http = readinessHttpResult(failing);
+    assert.equal(readiness.schema, "szl.immune-readiness/v1", dependency);
+    assert.equal(readiness.status, "NOT_READY", dependency);
+    assert.equal(readiness.ready, false, dependency);
+    assert.equal(readiness.runtime_ready, false, dependency);
+    assert.equal(readiness.read_ready, false, dependency);
+    assert.equal(readiness.authority_ready, false, dependency);
+    assert.equal(readiness.write_ready, false, dependency);
+    assert.deepEqual(readiness.blockers, [blocker], dependency);
+    assert.equal(http.statusCode, 503, dependency);
+    assert.deepEqual(http.body, readiness, dependency);
+  }
 });
 
 test("full READY requires both verified runtime and verified signed authority", () => {
@@ -190,6 +216,38 @@ test("full READY requires both verified runtime and verified signed authority", 
   assert.deepEqual(readiness.blockers, []);
 });
 
+test("verified reject and deadman authority never become write-ready", () => {
+  for (const mode of ["SENTRA_REJECT", "DEADMAN"] as const) {
+    const guarded = inputs();
+    guarded.authority = {
+      ...guarded.authority,
+      mode,
+      deadman: mode === "DEADMAN",
+      tripwire: mode === "DEADMAN" ? "T01" : null,
+      evidenceState: "VERIFIED",
+      reason: "signed defensive action and receipt chain verified",
+      validUntil: "2026-08-01T19:00:00.000Z",
+      updatedAt: "2026-08-01T18:59:00.000Z",
+      requestId: `verified-${mode.toLowerCase()}`,
+      revision: 2,
+      authorityReceiptCount: 2,
+      authorityReceiptHash: DIGEST,
+      authority: {
+        enabled: true,
+        version: "immune.action.v1",
+        keyId: "0123456789abcdef",
+      },
+    };
+    const readiness = buildReadinessContract(guarded);
+    assert.equal(readiness.status, "READ_ONLY", mode);
+    assert.equal(readiness.runtime_ready, true, mode);
+    assert.equal(readiness.authority_ready, false, mode);
+    assert.equal(readiness.write_ready, false, mode);
+    assert.equal(readiness.ready, false, mode);
+    assert.deepEqual(readiness.blockers, [`ACTION_AUTHORITY_${mode}`], mode);
+  }
+});
+
 test("readyz is registered before static hosting and metadata is evidence-scoped", () => {
   const root = path.resolve(import.meta.dirname, "..");
   const server = fs.readFileSync(path.join(root, "server/immune-standalone.ts"), "utf8");
@@ -199,6 +257,8 @@ test("readyz is registered before static hosting and metadata is evidence-scoped
   assert.ok(readyRoute >= 0);
   assert.ok(staticHosting > readyRoute);
   assert.ok(spaFallback > readyRoute);
+  assert.match(server, /const \{ statusCode, body \} = readinessHttpResult\(\)/);
+  assert.match(server, /res\.status\(statusCode\)\.type\("application\/json"\)\.json\(body\)/);
 
   const html = fs.readFileSync(path.join(root, "frontend/index.html"), "utf8");
   const home = fs.readFileSync(path.join(root, "frontend/src/pages/Home.tsx"), "utf8");

@@ -155,6 +155,7 @@ jobs:
                   with urllib.request.urlopen(base + "/healthz", timeout=15) as response:
                       health = json.load(response)
                   with urllib.request.urlopen(base + "/readyz", timeout=15) as response:
+                      assert response.status == 200
                       readiness = json.load(response)
                   with urllib.request.urlopen(base + "/api/immune/ledger/verify", timeout=15) as response:
                       ledger = json.load(response)
@@ -162,6 +163,8 @@ jobs:
                       source = json.load(response)
                   assert health["transport_state"] == "REACHABLE"
                   assert readiness["schema"] == "szl.immune-readiness/v1"
+                  assert readiness["status"] == "READ_ONLY"
+                  assert readiness["ready"] is False
                   assert readiness["source"]["revision"] == os.environ["GITHUB_SHA"].lower()
                   assert readiness["source"]["build_revision"] == os.environ["GITHUB_SHA"].lower()
                   assert readiness["runtime_ready"] is True

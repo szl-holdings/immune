@@ -80,6 +80,11 @@ export type ReadinessDependencies = {
   getState: () => AuthoritySnapshot;
 };
 
+export type ReadinessHttpResult = {
+  statusCode: 200 | 503;
+  body: ImmuneReadiness;
+};
+
 const LIVE_DEPENDENCIES: ReadinessDependencies = {
   sourceAttestation,
   buildInfo,
@@ -90,6 +95,56 @@ const LIVE_DEPENDENCIES: ReadinessDependencies = {
 
 function addBlocker(blockers: string[], condition: boolean, blocker: string): void {
   if (condition) blockers.push(blocker);
+}
+
+export function isActionReady(authority: AuthoritySnapshot): boolean {
+  return (
+    authority.authority.enabled &&
+    authority.evidenceState === "VERIFIED" &&
+    authority.mode === "PASS" &&
+    !authority.deadman
+  );
+}
+
+function unavailableReadiness(blockers: string[]): ImmuneReadiness {
+  return {
+    schema: "szl.immune-readiness/v1",
+    status: "NOT_READY",
+    ready: false,
+    runtime_ready: false,
+    read_ready: false,
+    authority_ready: false,
+    write_ready: false,
+    blockers: [...new Set(blockers)],
+    source: {
+      repository: null,
+      revision: null,
+      build_revision: null,
+      alignment_state: "REVISION_UNAVAILABLE",
+      manifest_schema: null,
+    },
+    build: {
+      state: "UNVERIFIED",
+      artifact_count: 0,
+      runtime_hash_match: false,
+      artifact_set_algorithm: "sha256(json(sorted[path,sha256]))",
+      deployment_manifest_sha256: null,
+      artifact_set_sha256: null,
+    },
+    runtime: {
+      immune_server_sha256: null,
+      public_index_sha256: null,
+      artifact_integrity: { status: "UNAVAILABLE", checked: 0, failures: [] },
+    },
+    ledger: { ok: false, count: 0, first_bad_seq: null },
+    authority: {
+      enabled: false,
+      evidence_state: "UNAVAILABLE",
+      key_id: null,
+      receipt_count: 0,
+      receipt_hash: null,
+    },
+  };
 }
 
 export function buildReadinessContract(inputs: ReadinessInputs): ImmuneReadiness {
@@ -123,12 +178,15 @@ export function buildReadinessContract(inputs: ReadinessInputs): ImmuneReadiness
   addBlocker(blockers, ledger.ok && ledger.count === 0, "RECEIPT_LEDGER_EMPTY");
 
   const runtimeReady = sourceBound && runtimeBound && ledgerReady;
-  const authorityReady =
-    authority.authority.enabled && authority.evidenceState === "VERIFIED";
+  const authorityReady = isActionReady(authority);
   if (!authority.authority.enabled) {
     blockers.push("ACTION_TRUST_ROOT_UNCONFIGURED");
-  } else if (!authorityReady) {
+  } else if (authority.evidenceState !== "VERIFIED") {
     blockers.push(`ACTION_AUTHORITY_${authority.evidenceState}`);
+  } else if (authority.deadman || authority.mode === "DEADMAN") {
+    blockers.push("ACTION_AUTHORITY_DEADMAN");
+  } else if (authority.mode !== "PASS") {
+    blockers.push(`ACTION_AUTHORITY_${authority.mode}`);
   }
   const writeReady = runtimeReady && authorityReady;
 
@@ -179,17 +237,53 @@ export function buildReadinessContract(inputs: ReadinessInputs): ImmuneReadiness
 export function readinessStatus(
   dependencies: ReadinessDependencies = LIVE_DEPENDENCIES,
 ): ImmuneReadiness {
-  let ledger: VerifierReport;
+  const dependencyBlockers: string[] = [];
+  let source: SourceAttestation | undefined;
+  let build: BuildInfo | undefined;
+  let runtime: RuntimeHashBinding | undefined;
+  let ledger: VerifierReport | undefined;
+  let authority: AuthoritySnapshot | undefined;
+
+  try {
+    source = dependencies.sourceAttestation();
+  } catch {
+    dependencyBlockers.push("SOURCE_ATTESTATION_UNAVAILABLE");
+  }
+  try {
+    build = dependencies.buildInfo();
+  } catch {
+    dependencyBlockers.push("BUILD_INFO_UNAVAILABLE");
+  }
+  try {
+    runtime = dependencies.runtimeHashBinding();
+  } catch {
+    dependencyBlockers.push("RUNTIME_HASH_BINDING_UNAVAILABLE");
+  }
   try {
     ledger = dependencies.verifyLedger();
   } catch {
-    ledger = { ok: false, count: 0, issues: [], firstBadSeq: null };
+    dependencyBlockers.push("RECEIPT_LEDGER_UNAVAILABLE");
   }
-  return buildReadinessContract({
-    source: dependencies.sourceAttestation(),
-    build: dependencies.buildInfo(),
-    runtime: dependencies.runtimeHashBinding(),
-    ledger,
-    authority: dependencies.getState(),
-  });
+  try {
+    authority = dependencies.getState();
+  } catch {
+    dependencyBlockers.push("ACTION_AUTHORITY_UNAVAILABLE");
+  }
+
+  if (!source || !build || !runtime || !ledger || !authority) {
+    return unavailableReadiness(dependencyBlockers);
+  }
+
+  try {
+    return buildReadinessContract({ source, build, runtime, ledger, authority });
+  } catch {
+    return unavailableReadiness(["READINESS_CONTRACT_EVALUATION_FAILED"]);
+  }
+}
+
+export function readinessHttpResult(
+  dependencies: ReadinessDependencies = LIVE_DEPENDENCIES,
+): ReadinessHttpResult {
+  const body = readinessStatus(dependencies);
+  return { statusCode: body.runtime_ready ? 200 : 503, body };
 }
