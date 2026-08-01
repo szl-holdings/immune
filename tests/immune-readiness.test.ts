@@ -545,20 +545,23 @@ test("readyz is registered before static hosting and metadata is evidence-scoped
   const root = path.resolve(import.meta.dirname, "..");
   const server = fs.readFileSync(path.join(root, "server/immune-standalone.ts"), "utf8");
   const readyRoute = server.indexOf('app.get("/readyz"');
+  const healthRoute = server.indexOf('app.get("/healthz"');
   const staticHosting = server.indexOf("express.static(staticDir");
   const spaFallback = server.indexOf('app.get("/{*splat}"');
+  const healthHandler = server.slice(healthRoute, readyRoute);
+  assert.ok(healthRoute >= 0);
   assert.ok(readyRoute >= 0);
   assert.ok(staticHosting > readyRoute);
   assert.ok(spaFallback > readyRoute);
   assert.match(server, /const \{ statusCode, body \} = readinessHttpResult\(\)/);
-  assert.match(server, /const readiness = readinessStatus\(\)/);
   assert.match(
     server,
     /const staticDir = bindRuntimeStaticDir\(resolveRuntimeStaticDir\(__serverDir\)\)/,
   );
-  assert.match(server, /write_ready: readiness\.write_ready/);
-  assert.match(server, /verification_state: readiness\.authority\.evidence_state/);
-  assert.doesNotMatch(server, /write_ready: isActionReady\(authority\)/);
+  assert.match(healthHandler, /readiness_state: "NOT_EVALUATED"/);
+  assert.match(healthHandler, /readiness_endpoint: "\/readyz"/);
+  assert.doesNotMatch(healthHandler, /readinessStatus|verifyLedger|getRuntimeHashBinding/);
+  assert.doesNotMatch(healthHandler, /write_ready|verification_state|authority_state/);
   assert.match(server, /res\.status\(statusCode\)\.type\("application\/json"\)\.json\(body\)/);
 
   const html = fs.readFileSync(path.join(root, "frontend/index.html"), "utf8");
@@ -575,6 +578,11 @@ test("readyz is registered before static hosting and metadata is evidence-scoped
   assert.doesNotMatch(html, /Investor Demo|built on Replit|Update this description/);
   assert.match(home, /document\.title = "IMMUNE \| Evidence-Scoped AI Defense"/);
   assert.doesNotMatch(home, /document\.title = "IMMUNE — Verifiable-AI Defense"/);
+  assert.match(home, /data-testid="controls-scroll-region"/);
+  assert.match(home, /lg:overflow-y-auto/);
+  assert.match(home, /lg:overscroll-contain/);
+  assert.match(home, /tabIndex=\{0\}/);
+  assert.match(home, /focus-visible:ring-2/);
   assert.match(agentConsole, /Governed agent blocked/);
   assert.match(agentConsole, /All write paths stay fail-closed/);
   assert.doesNotMatch(agentConsole, /manual governed cycle above still runs/iu);

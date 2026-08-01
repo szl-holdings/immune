@@ -159,9 +159,15 @@ export default function Home() {
             initial={{ x: -60, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ delay: 0.2, type: "spring", stiffness: 200, damping: 20 }}
-            className="w-full pointer-events-auto flex flex-col gap-6 lg:absolute lg:left-6 lg:top-32 lg:bottom-6 lg:w-[320px]"
+            className="w-full pointer-events-auto flex flex-col gap-6 lg:absolute lg:left-6 lg:top-32 lg:bottom-6 lg:min-h-0 lg:w-[320px]"
           >
-            <div className="flex-1 bg-black/40 backdrop-blur-md border border-border/50 p-5 sm:p-6 flex flex-col relative overflow-hidden group">
+            <div
+              aria-label="Governed controls"
+              className="group relative flex flex-1 flex-col border border-border/50 bg-black/40 p-5 backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-6 lg:min-h-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-contain [scrollbar-gutter:stable]"
+              data-testid="controls-scroll-region"
+              role="region"
+              tabIndex={0}
+            >
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/50 to-transparent" />
               <ControlsPanel authority={authority} />
             </div>

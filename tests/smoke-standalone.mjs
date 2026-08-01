@@ -62,6 +62,9 @@ try {
       assert.equal(response.status, 200, body);
       const health = JSON.parse(body);
       assert.equal(health.transport_state, "REACHABLE");
+      assert.equal(health.readiness_state, "NOT_EVALUATED");
+      assert.equal(health.readiness_endpoint, "/readyz");
+      assert.equal(Object.hasOwn(health, "write_ready"), false);
       ready = true;
       break;
     } catch (error) {
@@ -245,8 +248,10 @@ try {
   assert.equal(stillLive.status, 200);
   const stillLiveBody = await stillLive.json();
   assert.equal(stillLiveBody.transport_state, "REACHABLE");
-  assert.equal(stillLiveBody.write_ready, false);
-  console.log("IMMUNE standalone smoke: 12/12 PASS");
+  assert.equal(stillLiveBody.readiness_state, "NOT_EVALUATED");
+  assert.equal(stillLiveBody.readiness_endpoint, "/readyz");
+  assert.equal(Object.hasOwn(stillLiveBody, "write_ready"), false);
+  console.log("IMMUNE standalone smoke: 13/13 PASS");
 } finally {
   if (child.exitCode === null) {
     const closed = new Promise((resolve) => child.once("close", resolve));

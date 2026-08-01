@@ -19,7 +19,7 @@ import {
   resolveRuntimeStaticDir,
   sourceAttestation,
 } from "./source-attestation";
-import { readinessHttpResult, readinessStatus } from "./readiness";
+import { readinessHttpResult } from "./readiness";
 
 const __serverDir = path.dirname(fileURLToPath(import.meta.url));
 const staticDir = bindRuntimeStaticDir(resolveRuntimeStaticDir(__serverDir));
@@ -34,16 +34,12 @@ app.use(express.json({ limit: "2mb" }));
 
 // Lightweight liveness probe (handy for Docker/HF healthchecks).
 app.get("/healthz", (_req: Request, res: Response) => {
-  const readiness = readinessStatus();
   res.json({
     ok: true,
     service: "immune-standalone",
     transport_state: "REACHABLE",
-    verification_state: readiness.authority.evidence_state,
-    authority_state: readiness.authority.enabled
-      ? "SIGNED_ADVISORY_ONLY"
-      : "UNAVAILABLE",
-    write_ready: readiness.write_ready,
+    readiness_state: "NOT_EVALUATED",
+    readiness_endpoint: "/readyz",
   });
 });
 
