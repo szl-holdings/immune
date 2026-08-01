@@ -124,10 +124,17 @@ function appendReceiptSync(input: AppendInput): Receipt {
   return receipt;
 }
 
-export function appendReceipt(input: AppendInput): Promise<Receipt> {
+export function appendReceipt(
+  input: AppendInput,
+  beforeAppend?: () => void,
+): Promise<Receipt> {
+  const commit = () => {
+    beforeAppend?.();
+    return appendReceiptSync(input);
+  };
   const next = appendChain.then(
-    () => appendReceiptSync(input),
-    () => appendReceiptSync(input),
+    commit,
+    commit,
   );
   appendChain = next;
   return next;

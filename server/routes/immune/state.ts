@@ -42,7 +42,7 @@ export const SignedActionEnvelopeSchema = z
 export type SignedActionEnvelope = z.infer<typeof SignedActionEnvelopeSchema>;
 type Action = SignedActionEnvelope["action"];
 
-interface StoredState {
+export interface StoredState {
   mode: ImmuneMode;
   tripwire: string | null;
   deadman: boolean;
@@ -54,12 +54,100 @@ interface StoredState {
 export interface AuthoritySnapshot extends StoredState {
   evidenceState: EvidenceState;
   reason: string;
+  validUntil: string | null;
   authorityReceiptCount: number;
   authorityReceiptHash: string | null;
   authority: {
     enabled: boolean;
     version: typeof ACTION_ENVELOPE_VERSION;
     keyId: string | null;
+  };
+}
+
+export interface AuthoritativeTripwireState {
+  evidenceState: EvidenceState;
+  mode: ImmuneMode;
+  deadman: boolean;
+  tripwire: string | null;
+  reason: string;
+  validUntil: string | null;
+  updatedAt: string | null;
+  requestId: string | null;
+  revision: number;
+}
+
+/**
+ * The single effective authority projection used by execution and every public
+ * operator surface. Durable state remains observable, but it cannot become an
+ * active tripwire or PASS claim unless its signed evidence is freshly VERIFIED.
+ */
+export function authoritativeTripwireState(
+  snapshot: AuthoritySnapshot,
+): AuthoritativeTripwireState {
+  const verified = snapshot.evidenceState === "VERIFIED";
+  const consistent =
+    !verified ||
+    (snapshot.mode === "DEADMAN"
+      ? snapshot.deadman && snapshot.tripwire !== null
+      : !snapshot.deadman && snapshot.tripwire === null);
+  if (!consistent) {
+    return {
+      evidenceState: "FAILED",
+      mode: "SENTRA_REJECT",
+      deadman: false,
+      tripwire: null,
+      reason: "verified authority state contains an inconsistent tripwire binding",
+      validUntil: snapshot.validUntil,
+      updatedAt: snapshot.updatedAt,
+      requestId: snapshot.requestId,
+      revision: snapshot.revision,
+    };
+  }
+  const deadman = verified && snapshot.mode === "DEADMAN" && snapshot.deadman;
+  return {
+    evidenceState: snapshot.evidenceState,
+    mode: verified ? snapshot.mode : "SENTRA_REJECT",
+    deadman,
+    tripwire: deadman ? snapshot.tripwire : null,
+    reason: snapshot.reason,
+    validUntil: snapshot.validUntil,
+    updatedAt: snapshot.updatedAt,
+    requestId: snapshot.requestId,
+    revision: snapshot.revision,
+  };
+}
+
+export type PublicAuthoritySnapshot = AuthoritySnapshot & {
+  durableState: StoredState;
+  tripwireState: AuthoritativeTripwireState;
+};
+
+/**
+ * Preserve durable state for audit under an explicit namespace while keeping
+ * legacy top-level fields fail-closed and identical to tripwireState.
+ */
+export function publicAuthoritySnapshot(
+  snapshot: AuthoritySnapshot,
+): PublicAuthoritySnapshot {
+  const tripwireState = authoritativeTripwireState(snapshot);
+  const durableState: StoredState = {
+    mode: snapshot.mode,
+    tripwire: snapshot.tripwire,
+    deadman: snapshot.deadman,
+    updatedAt: snapshot.updatedAt,
+    requestId: snapshot.requestId,
+    revision: snapshot.revision,
+  };
+  return {
+    ...snapshot,
+    evidenceState: tripwireState.evidenceState,
+    mode: tripwireState.mode,
+    deadman: tripwireState.deadman,
+    tripwire: tripwireState.tripwire,
+    reason: tripwireState.reason,
+    validUntil: tripwireState.validUntil,
+    durableState,
+    tripwireState,
   };
 }
 
@@ -357,6 +445,7 @@ export class AuthorityStore {
           ...safeState(),
           evidenceState: "UNAVAILABLE",
           reason: "signed action trust root is not configured",
+          validUntil: null,
           authorityReceiptCount: receipts.length,
           authorityReceiptHash: receipts.at(-1)?.receiptHash ?? null,
           authority,
@@ -368,6 +457,7 @@ export class AuthorityStore {
           ...safeState(),
           evidenceState: "FAILED",
           reason: verification.reason,
+          validUntil: null,
           authorityReceiptCount: receipts.length,
           authorityReceiptHash: receipts.at(-1)?.receiptHash ?? null,
           authority,
@@ -378,6 +468,7 @@ export class AuthorityStore {
           ...safeState(),
           evidenceState: "UNAVAILABLE",
           reason: "no verified signed action receipt exists",
+          validUntil: null,
           authorityReceiptCount: 0,
           authorityReceiptHash: null,
           authority,
@@ -389,17 +480,34 @@ export class AuthorityStore {
           ...safeState(),
           evidenceState: "FAILED",
           reason: "authority state does not match the append-only receipt head",
+          validUntil: null,
           authorityReceiptCount: receipts.length,
           authorityReceiptHash: latest.receiptHash,
           authority,
         };
       }
-      const ageMs = this.now().getTime() - Date.parse(state.updatedAt);
-      const stale = !Number.isFinite(ageMs) || ageMs < -MAX_CLOCK_SKEW_MS || ageMs > this.maxEvidenceAgeMs;
+      const nowMs = this.now().getTime();
+      const updatedAtMs = Date.parse(state.updatedAt);
+      const signedExpiresAtMs = Date.parse(latest.envelope.expiresAt);
+      const validUntilMs = Math.min(
+        updatedAtMs + this.maxEvidenceAgeMs,
+        signedExpiresAtMs,
+      );
+      const validUntil = Number.isFinite(validUntilMs)
+        ? new Date(validUntilMs).toISOString()
+        : null;
+      const stale =
+        !Number.isFinite(updatedAtMs) ||
+        !Number.isFinite(signedExpiresAtMs) ||
+        updatedAtMs - nowMs > MAX_CLOCK_SKEW_MS ||
+        validUntilMs <= nowMs;
       return {
         ...state,
         evidenceState: stale ? "STALE" : "VERIFIED",
-        reason: stale ? "latest signed action receipt is outside the freshness window" : "signed action and receipt chain verified",
+        reason: stale
+          ? "latest signed action receipt is outside its signed validity window"
+          : "signed action and receipt chain verified",
+        validUntil,
         authorityReceiptCount: receipts.length,
         authorityReceiptHash: latest.receiptHash,
         authority,
@@ -409,6 +517,7 @@ export class AuthorityStore {
         ...safeState(),
         evidenceState: "UNAVAILABLE",
         reason: `authority state read unavailable: ${error instanceof Error ? error.message : String(error)}`,
+        validUntil: null,
         authorityReceiptCount: 0,
         authorityReceiptHash: null,
         authority,
@@ -579,6 +688,7 @@ export function getState(): AuthoritySnapshot {
       ...safeState(),
       evidenceState: "UNAVAILABLE",
       reason: `authority initialization unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      validUntil: null,
       authorityReceiptCount: 0,
       authorityReceiptHash: null,
       authority: { enabled: false, version: ACTION_ENVELOPE_VERSION, keyId: null },

@@ -5,7 +5,12 @@ const RunImmuneCycleBody = z.object({
   actor: z.string().optional(),
   intent: z.string().optional(),
 });
-import { AuthorityError, applySignedAction, getState } from "./state";
+import {
+  AuthorityError,
+  applySignedAction,
+  getState,
+  publicAuthoritySnapshot,
+} from "./state";
 import {
   ledgerCount,
   ledgerLastHash,
@@ -23,7 +28,7 @@ const router: IRouter = Router();
 router.get("/state", (_req: Request, res: Response) => {
   const s = getState();
   res.json({
-    ...s,
+    ...publicAuthoritySnapshot(s),
     ledgerCount: ledgerCount(),
     lastHash: ledgerLastHash(),
   });
@@ -32,16 +37,21 @@ router.get("/state", (_req: Request, res: Response) => {
 function applyAction(req: Request, res: Response): void {
   try {
     const s = applySignedAction(req.body);
-    res.status(201).json({ ...s, ledgerCount: ledgerCount(), lastHash: ledgerLastHash() });
+    res.status(201).json({
+      ...publicAuthoritySnapshot(s),
+      ledgerCount: ledgerCount(),
+      lastHash: ledgerLastHash(),
+    });
   } catch (error) {
     const authorityError =
       error instanceof AuthorityError
         ? error
         : new AuthorityError("AUTHORITY_UNAVAILABLE", "signed action authority unavailable", 503);
+    const failedState = getState();
     res.status(authorityError.status).json({
       error: authorityError.code,
       detail: authorityError.message,
-      state: getState(),
+      state: publicAuthoritySnapshot(failedState),
     });
   }
 }

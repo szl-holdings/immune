@@ -2,12 +2,18 @@
 // live-agent loop (agent.ts) run the EXACT same path — SENTRA gate -> (if
 // accepted) append a SHA-256 hash-linked + optionally Ed25519-signed YAWAR
 // receipt -> evaluate HUKLLA tripwires -> append evidence. No forked logic.
-import { getState } from "./state";
-import type { ImmuneMode } from "./state";
+import { authoritativeTripwireState, getState } from "./state";
+import type { AuthoritySnapshot, ImmuneMode } from "./state";
 import { sentraInspect, type SentraVerdict } from "./sentra";
 import { evaluateTripwires, type HukllaFiredTripwire } from "./huklla";
-import { appendReceipt, appendEvidence, ledgerCount, type Receipt } from "./ledger";
-import { canonicalBytes, CanonicalError } from "./canonical";
+import {
+  appendReceipt,
+  appendEvidence,
+  ledgerCount,
+  type AppendInput,
+  type Receipt,
+} from "./ledger";
+import { canonicalBytes } from "./canonical";
 
 export interface GovernedCycleResult {
   pass: boolean;
@@ -24,6 +30,44 @@ export interface GovernedIntent {
   intent: string;
 }
 
+export interface GovernedCycleDependencies {
+  getAuthorityState: () => AuthoritySnapshot;
+  appendReceipt: (input: AppendInput, beforeAppend?: () => void) => Promise<Receipt>;
+  appendEvidence: typeof appendEvidence;
+  ledgerCount: typeof ledgerCount;
+}
+
+const DEFAULT_DEPENDENCIES: GovernedCycleDependencies = {
+  getAuthorityState: getState,
+  appendReceipt,
+  appendEvidence,
+  ledgerCount,
+};
+
+class AuthorityRevisionError extends Error {
+  constructor() {
+    super("signed authority changed before receipt persistence");
+    this.name = "AuthorityRevisionError";
+  }
+}
+
+function sameAuthority(
+  expected: AuthoritySnapshot,
+  current: AuthoritySnapshot,
+): boolean {
+  const currentEffective = authoritativeTripwireState(current);
+  return (
+    currentEffective.evidenceState === "VERIFIED" &&
+    !currentEffective.deadman &&
+    current.revision === expected.revision &&
+    current.requestId === expected.requestId &&
+    current.authorityReceiptHash === expected.authorityReceiptHash &&
+    current.authority.version === expected.authority.version &&
+    current.authority.keyId === expected.authority.keyId &&
+    currentEffective.validUntil === authoritativeTripwireState(expected).validUntil
+  );
+}
+
 /**
  * Run one governed cycle over an intent. `extra` (optional) is recorded under a
  * namespaced `agent` field inside the receipt payload so the receipt reflects
@@ -32,13 +76,11 @@ export interface GovernedIntent {
 export async function runGovernedCycle(
   intentPayload: GovernedIntent,
   extra?: Record<string, unknown>,
+  dependencies: GovernedCycleDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<GovernedCycleResult> {
-  const s = getState();
-  // A stale, unavailable, or failed authority read can never inherit PASS.
-  // The last durable mode is observable, but execution is fail-closed until
-  // the signed authority evidence is freshly VERIFIED again.
-  const effectiveMode: ImmuneMode =
-    s.evidenceState === "VERIFIED" ? s.mode : "SENTRA_REJECT";
+  const s = dependencies.getAuthorityState();
+  const authority = authoritativeTripwireState(s);
+  const effectiveMode: ImmuneMode = authority.mode;
 
   // SENTRA inspects the FULL intent (base fields + any agent extra) so the gate
   // sees exactly what will be governed.
@@ -49,7 +91,7 @@ export async function runGovernedCycle(
   let payloadBytes = 0;
   let pass = false;
 
-  if (s.deadman) {
+  if (authority.deadman) {
     pass = false;
   } else if (sentra.accepted) {
     const payload: Record<string, unknown> = {
@@ -60,40 +102,57 @@ export async function runGovernedCycle(
         accepted: true,
         signatureMatched: sentra.signatureMatched ?? "intent.required",
       },
+      authority: {
+        version: s.authority.version,
+        keyId: s.authority.keyId,
+        revision: authority.revision,
+        requestId: authority.requestId,
+        receiptHash: s.authorityReceiptHash,
+        validUntil: authority.validUntil,
+      },
     };
     if (extra) payload.agent = extra;
     try {
       payloadBytes = canonicalBytes({ payload }).byteLength;
-      receiptOut = await appendReceipt({ payload });
+      receiptOut = await dependencies.appendReceipt({ payload }, () => {
+        if (!sameAuthority(s, dependencies.getAuthorityState())) {
+          throw new AuthorityRevisionError();
+        }
+      });
       pass = true;
     } catch (err) {
-      const detail = err instanceof CanonicalError ? err.message : (err as Error).message;
+      const detail = err instanceof Error ? err.message : String(err);
       receiptOut = null;
       pass = false;
       sentra.accepted = false;
-      sentra.reason = `canonicalize: ${detail}`;
-      sentra.signatureMatched = "guard.canonical";
+      if (err instanceof AuthorityRevisionError) {
+        sentra.reason = detail;
+        sentra.signatureMatched = "guard.authority-revision";
+      } else {
+        sentra.reason = `canonicalize: ${detail}`;
+        sentra.signatureMatched = "guard.canonical";
+      }
     }
   }
 
   const huklla = evaluateTripwires({
     mode: effectiveMode,
-    selectedTripwire: s.tripwire,
+    selectedTripwire: authority.tripwire,
     sentraAccepted: sentra.accepted,
     payloadBytes,
     receiptWritten: receiptOut !== null,
   });
 
-  appendEvidence({
+  dependencies.appendEvidence({
     ts: new Date().toISOString(),
-    cycleSeq: ledgerCount(),
+    cycleSeq: dependencies.ledgerCount(),
     fired: huklla,
   });
 
   return {
     pass,
     mode: effectiveMode,
-    deadman: s.deadman,
+    deadman: authority.deadman,
     sentra,
     huklla,
     receipt: receiptOut,
