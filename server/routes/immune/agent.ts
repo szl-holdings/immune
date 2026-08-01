@@ -25,7 +25,8 @@ import {
   type DecisionState,
   type SourceState,
 } from "../../contracts/decision-genome";
-import { runGovernedCycle } from "./cycle";
+import { CycleReadinessError, runGovernedCycle } from "./cycle";
+import { readinessStatus } from "../../readiness";
 import { getState, type EvidenceState } from "./state";
 import { ledgerCount, ledgerLastHash, verifyLedger } from "./ledger";
 import { HUKLLA_REGISTRY } from "./huklla";
@@ -36,6 +37,16 @@ import { chatComplete, inferenceConfigured, inferenceInfo, type ChatMessage } fr
 const MAX_STEPS = 5;
 const MAX_GOAL_LEN = 500;
 const MAX_TOKENS = 400;
+
+function requireWriteReadiness(res: Response): boolean {
+  const readiness = readinessStatus();
+  if (readiness.write_ready) return true;
+  res.status(503).json({
+    error: "WRITE_NOT_READY",
+    blockers: readiness.blockers,
+  });
+  return false;
+}
 
 // ---- Real, read-only tools. Each returns LIVE data about IMMUNE itself. ----
 type ToolFn = (args: Record<string, unknown>) => {
@@ -428,6 +439,7 @@ router.post("/frontier/evaluate", async (req: Request, res: Response) => {
   }
 
   const input = parsed.data;
+  if (!requireWriteReadiness(res)) return;
   const ip = req.ip || "unknown";
   const gate = rateCheck(ip);
   if (!gate.ok) {
@@ -437,22 +449,31 @@ router.post("/frontier/evaluate", async (req: Request, res: Response) => {
   }
 
   const genome = buildShadowDecisionGenome(input);
-  const cycle = await runGovernedCycle(
-    { actor: "immune:frontier-shadow", intent: "seal defensive shadow recommendation" },
-    {
-      schemaId: genome.schemaId,
-      decisionId: genome.decisionId,
-      genomeDigest: genome.digest,
-      subjectDigest: genome.subject.digest,
-      policyVersion: FRONTIER_POLICY_VERSION,
-      recommendation: {
-        state: genome.recommendation.state,
-        action: genome.recommendation.action,
-        executable: genome.recommendation.executable,
-        evidenceLabel: genome.recommendation.evidenceLabel,
+  let cycle;
+  try {
+    cycle = await runGovernedCycle(
+      { actor: "immune:frontier-shadow", intent: "seal defensive shadow recommendation" },
+      {
+        schemaId: genome.schemaId,
+        decisionId: genome.decisionId,
+        genomeDigest: genome.digest,
+        subjectDigest: genome.subject.digest,
+        policyVersion: FRONTIER_POLICY_VERSION,
+        recommendation: {
+          state: genome.recommendation.state,
+          action: genome.recommendation.action,
+          executable: genome.recommendation.executable,
+          evidenceLabel: genome.recommendation.evidenceLabel,
+        },
       },
-    },
-  );
+    );
+  } catch (error) {
+    if (error instanceof CycleReadinessError) {
+      res.status(503).json({ error: "WRITE_NOT_READY", blockers: error.blockers });
+      return;
+    }
+    throw error;
+  }
 
   res.status(cycle.pass ? 200 : 409).json({
     genome,
@@ -496,6 +517,7 @@ router.post("/run", async (req: Request, res: Response) => {
     res.status(400).json({ error: `goal exceeds ${MAX_GOAL_LEN} characters` });
     return;
   }
+  if (!requireWriteReadiness(res)) return;
 
   const ip = req.ip || "unknown";
   const gate = rateCheck(ip);
@@ -620,6 +642,13 @@ router.post("/run", async (req: Request, res: Response) => {
         role: "user",
         content: `Observation (LIVE) for ${tool}: ${JSON.stringify(observation)}`,
       });
+    }
+  } catch (error) {
+    if (error instanceof CycleReadinessError) {
+      blocked = true;
+      stoppedReason = `write readiness lost: ${error.blockers.join(", ")}`;
+    } else {
+      throw error;
     }
   } finally {
     concurrent = Math.max(0, concurrent - 1);

@@ -14,6 +14,7 @@ import {
   type Receipt,
 } from "./ledger";
 import { canonicalBytes } from "./canonical";
+import { readinessStatus } from "../../readiness";
 
 export interface GovernedCycleResult {
   pass: boolean;
@@ -31,6 +32,7 @@ export interface GovernedIntent {
 }
 
 export interface GovernedCycleDependencies {
+  readiness: () => { write_ready: boolean; blockers: string[] };
   getAuthorityState: () => AuthoritySnapshot;
   appendReceipt: (input: AppendInput, beforeAppend?: () => void) => Promise<Receipt>;
   appendEvidence: typeof appendEvidence;
@@ -38,11 +40,29 @@ export interface GovernedCycleDependencies {
 }
 
 const DEFAULT_DEPENDENCIES: GovernedCycleDependencies = {
+  readiness: () => readinessStatus(),
   getAuthorityState: getState,
   appendReceipt,
   appendEvidence,
   ledgerCount,
 };
+
+export class CycleReadinessError extends Error {
+  readonly blockers: string[];
+
+  constructor(blockers: string[]) {
+    super("full Immune write-readiness contract is not satisfied");
+    this.name = "CycleReadinessError";
+    this.blockers = [...new Set(blockers)];
+  }
+}
+
+function assertWriteReady(
+  dependencies: GovernedCycleDependencies,
+): void {
+  const readiness = dependencies.readiness();
+  if (!readiness.write_ready) throw new CycleReadinessError(readiness.blockers);
+}
 
 class AuthorityRevisionError extends Error {
   constructor() {
@@ -78,6 +98,7 @@ export async function runGovernedCycle(
   extra?: Record<string, unknown>,
   dependencies: GovernedCycleDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<GovernedCycleResult> {
+  assertWriteReady(dependencies);
   const s = dependencies.getAuthorityState();
   const authority = authoritativeTripwireState(s);
   const effectiveMode: ImmuneMode = authority.mode;
@@ -115,12 +136,14 @@ export async function runGovernedCycle(
     try {
       payloadBytes = canonicalBytes({ payload }).byteLength;
       receiptOut = await dependencies.appendReceipt({ payload }, () => {
+        assertWriteReady(dependencies);
         if (!sameAuthority(s, dependencies.getAuthorityState())) {
           throw new AuthorityRevisionError();
         }
       });
       pass = true;
     } catch (err) {
+      if (err instanceof CycleReadinessError) throw err;
       const detail = err instanceof Error ? err.message : String(err);
       receiptOut = null;
       pass = false;

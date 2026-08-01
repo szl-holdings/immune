@@ -15,6 +15,7 @@ import {
   type SignedActionEnvelope,
 } from "../server/routes/immune/state";
 import {
+  CycleReadinessError,
   runGovernedCycle,
   type GovernedCycleDependencies,
 } from "../server/routes/immune/cycle";
@@ -271,6 +272,7 @@ test("concurrent signed DEADMAN prevents a stale PASS receipt", async (t) => {
   });
   let persisted = 0;
   const dependencies: GovernedCycleDependencies = {
+    readiness: () => ({ write_ready: true, blockers: [] }),
     getAuthorityState: () => store.snapshot(),
     appendReceipt: async (input, beforeAppend) => {
       signalAppendStarted();
@@ -311,6 +313,103 @@ test("concurrent signed DEADMAN prevents a stale PASS receipt", async (t) => {
   assert.equal(result.sentra.signatureMatched, "guard.authority-revision");
   assert.equal(persisted, 0);
   assert.equal(authoritativeTripwireState(store.snapshot()).deadman, true);
+});
+
+test("governed cycles refuse every write before authority or ledger access when readiness is false", async () => {
+  const calls = { authority: 0, receipt: 0, evidence: 0, ledger: 0 };
+  const dependencies: GovernedCycleDependencies = {
+    readiness: () => ({
+      write_ready: false,
+      blockers: ["RUNTIME_ARTIFACT_INTEGRITY_UNVERIFIED"],
+    }),
+    getAuthorityState: () => {
+      calls.authority += 1;
+      throw new Error("authority must not be read");
+    },
+    appendReceipt: async () => {
+      calls.receipt += 1;
+      throw new Error("receipt must not be written");
+    },
+    appendEvidence: () => {
+      calls.evidence += 1;
+    },
+    ledgerCount: () => {
+      calls.ledger += 1;
+      return 0;
+    },
+  };
+
+  await assert.rejects(
+    runGovernedCycle(
+      { actor: "operator:test-suite", intent: "attempt blocked write" },
+      undefined,
+      dependencies,
+    ),
+    (error: unknown) =>
+      error instanceof CycleReadinessError &&
+      error.blockers.includes("RUNTIME_ARTIFACT_INTEGRITY_UNVERIFIED"),
+  );
+  assert.deepEqual(calls, { authority: 0, receipt: 0, evidence: 0, ledger: 0 });
+});
+
+test("readiness drift before O_EXCL-style receipt persistence leaves no receipt or evidence", async (t) => {
+  const id = identity();
+  const databasePath = temporaryDatabase();
+  const now = new Date("2026-08-01T12:00:00.000Z");
+  const store = new AuthorityStore({
+    databasePath,
+    publicKeyB64: id.publicKeyB64,
+    now: () => now,
+  });
+  cleanup(t, databasePath, store);
+  store.apply(
+    signedEnvelope(id.privateKey, id.keyId, now, "readiness-pass-state-0001", {
+      type: "SET_MODE",
+      mode: "PASS",
+    }),
+  );
+
+  let readinessReads = 0;
+  let persisted = 0;
+  let evidence = 0;
+  const dependencies: GovernedCycleDependencies = {
+    readiness: () => {
+      readinessReads += 1;
+      return readinessReads === 1
+        ? { write_ready: true, blockers: [] }
+        : { write_ready: false, blockers: ["RECEIPT_LEDGER_INTEGRITY_FAILED"] };
+    },
+    getAuthorityState: () => store.snapshot(),
+    appendReceipt: async (input, beforeAppend) => {
+      beforeAppend?.();
+      persisted += 1;
+      return {
+        seq: persisted,
+        ts: now.toISOString(),
+        prevHash: "GENESIS",
+        hash: "d".repeat(64),
+        payload: input.payload,
+      };
+    },
+    appendEvidence: () => {
+      evidence += 1;
+    },
+    ledgerCount: () => persisted,
+  };
+
+  await assert.rejects(
+    runGovernedCycle(
+      { actor: "operator:test-suite", intent: "persist a guarded receipt" },
+      undefined,
+      dependencies,
+    ),
+    (error: unknown) =>
+      error instanceof CycleReadinessError &&
+      error.blockers.includes("RECEIPT_LEDGER_INTEGRITY_FAILED"),
+  );
+  assert.equal(readinessReads, 2);
+  assert.equal(persisted, 0);
+  assert.equal(evidence, 0);
 });
 
 test("receipt tampering fails closed and append-only triggers reject mutation", (t) => {

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,6 +32,7 @@ type DeployManifest = {
 export type SourceAlignment =
   | "INVALID_MANIFEST"
   | "ARTIFACT_HASH_MISMATCH"
+  | "RUNTIME_ARTIFACT_UNAVAILABLE"
   | "REVISION_UNAVAILABLE"
   | "REVISION_DRIFT"
   | "OBSERVED_RUNTIME_HASH_MATCH";
@@ -94,6 +95,7 @@ export type BuildInfo = {
 };
 
 export type RuntimeHashBinding = {
+  state: "MATCH" | "MISMATCH" | "UNAVAILABLE";
   available: boolean;
   reason: string | null;
   source_repository: string | null;
@@ -256,6 +258,7 @@ export function getRuntimeHashBinding(
   const result = readManifest();
   if (!result.ok) {
     return {
+      state: "UNAVAILABLE",
       available: false,
       reason: result.reason,
       source_repository: null,
@@ -282,6 +285,7 @@ export function getRuntimeHashBinding(
     manifestBytes = readFileSync(result.path);
   } catch {
     return {
+      state: "UNAVAILABLE",
       available: false,
       reason: "deployment manifest became unavailable during verification",
       source_repository: result.manifest.source.repository,
@@ -300,33 +304,117 @@ export function getRuntimeHashBinding(
       : selection.staticDir;
   let observedServerSha256: string | null = null;
   let observedIndexSha256: string | null = null;
+  let runtimeState: RuntimeHashBinding["state"] = "MATCH";
   let runtimeReason: string | null = null;
+  const markUnavailable = (reason: string): void => {
+    if (runtimeState === "MISMATCH") return;
+    runtimeState = "UNAVAILABLE";
+    runtimeReason ??= reason;
+  };
+  const markMismatch = (reason: string): void => {
+    if (runtimeState !== "MISMATCH") runtimeReason = reason;
+    runtimeState = "MISMATCH";
+  };
   try {
-    observedServerSha256 = digest(readFileSync(serverPath));
+    const serverStat = lstatSync(serverPath);
+    if (!serverStat.isFile() || serverStat.isSymbolicLink()) {
+      markMismatch("running server bundle is not a regular non-symlink file");
+    } else {
+      observedServerSha256 = digest(readFileSync(serverPath));
+    }
   } catch {
-    runtimeReason = "running server bundle is unavailable";
+    markUnavailable("running server bundle is unavailable");
   }
   if (staticDir === null) {
-    runtimeReason ??= "selected runtime static directory is unavailable";
+    markUnavailable("selected runtime static directory is unavailable");
   } else {
+    const staticRoot = path.resolve(staticDir);
+    let staticRootSafe = true;
     try {
-      observedIndexSha256 = digest(readFileSync(path.join(staticDir, "index.html")));
+      const rootStat = lstatSync(staticRoot);
+      if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+        staticRootSafe = false;
+        markMismatch(
+          "selected runtime static root is not a regular non-symlink directory",
+        );
+      }
     } catch {
-      runtimeReason ??= "selected runtime index is unavailable";
+      staticRootSafe = false;
+      markUnavailable("selected runtime static directory is unavailable");
+    }
+
+    const publicArtifacts = entries.filter(([relative]) =>
+      relative.startsWith("public/"),
+    );
+    if (publicArtifacts.length === 0) {
+      markUnavailable("deployment manifest has no public runtime artifacts");
+    }
+    for (const [relative, expected] of staticRootSafe ? publicArtifacts : []) {
+      const selectedRelative = relative.slice("public/".length);
+      const segments = selectedRelative.split("/");
+      let selectedPath = staticRoot;
+      let unsafeReason: string | null = null;
+      let artifactUnavailable = false;
+      for (const [index, segment] of segments.entries()) {
+        selectedPath = path.resolve(selectedPath, segment);
+        if (
+          selectedPath === staticRoot ||
+          !selectedPath.startsWith(`${staticRoot}${path.sep}`)
+        ) {
+          unsafeReason = `${relative}: selected runtime path escaped static root`;
+          break;
+        }
+        try {
+          const selectedStat = lstatSync(selectedPath);
+          if (selectedStat.isSymbolicLink()) {
+            unsafeReason = `${relative}: selected runtime path contains a symlink`;
+            break;
+          }
+          const isLast = index === segments.length - 1;
+          if (isLast ? !selectedStat.isFile() : !selectedStat.isDirectory()) {
+            unsafeReason = `${relative}: selected runtime path has an invalid file type`;
+            break;
+          }
+        } catch {
+          artifactUnavailable = true;
+          markUnavailable(`${relative}: selected runtime artifact is unavailable`);
+          break;
+        }
+      }
+      if (unsafeReason !== null) {
+        markMismatch(unsafeReason);
+        continue;
+      }
+      if (artifactUnavailable) continue;
+      let observed: string;
+      try {
+        observed = digest(readFileSync(selectedPath));
+      } catch {
+        markUnavailable(`${relative}: selected runtime artifact is unavailable`);
+        continue;
+      }
+      if (relative === "public/index.html") observedIndexSha256 = observed;
+      if (observed !== expected) {
+        markMismatch(`${relative}: selected runtime artifact digest mismatch`);
+      }
     }
   }
-  if (runtimeReason === null && observedServerSha256 !== immuneServerSha256) {
-    runtimeReason = "running server bundle digest does not match the deployment manifest";
-  }
-  if (runtimeReason === null && observedIndexSha256 !== publicIndexSha256) {
-    runtimeReason = "selected runtime index digest does not match the deployment manifest";
+  if (
+    observedServerSha256 !== null &&
+    SHA256_PATTERN.test(immuneServerSha256 ?? "") &&
+    observedServerSha256 !== immuneServerSha256
+  ) {
+    markMismatch(
+      "running server bundle digest does not match the deployment manifest",
+    );
   }
   if (!requiredHashesPresent) {
-    runtimeReason = "deployment manifest is missing required runtime artifact hashes";
+    markUnavailable("deployment manifest is missing required runtime artifact hashes");
   }
 
   return {
-    available: requiredHashesPresent && runtimeReason === null,
+    state: runtimeState,
+    available: requiredHashesPresent && runtimeState === "MATCH",
     reason: runtimeReason,
     source_repository: result.manifest.source.repository,
     source_revision: result.manifest.source.revision,
@@ -364,8 +452,10 @@ export function getSourceAttestation(): SourceAttestation {
   let alignment: SourceAlignment;
   if (!result.ok) {
     alignment = "INVALID_MANIFEST";
-  } else if (integrity.status !== "MATCH" || !runtime.available) {
+  } else if (integrity.status !== "MATCH" || runtime.state === "MISMATCH") {
     alignment = "ARTIFACT_HASH_MISMATCH";
+  } else if (runtime.state === "UNAVAILABLE") {
+    alignment = "RUNTIME_ARTIFACT_UNAVAILABLE";
   } else if (expectedRevision === null || observedRevision === null) {
     alignment = "REVISION_UNAVAILABLE";
   } else if (!revisionMatch) {

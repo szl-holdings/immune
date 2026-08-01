@@ -167,6 +167,32 @@ try {
   assert.equal(rejectedBody.state.evidenceState, "UNAVAILABLE");
   assert.equal(rejectedBody.state.mode, "SENTRA_REJECT");
 
+  const ledgerBeforeCycle = state.ledgerCount;
+  const invalidCycle = await fetch(base + "/api/immune/cycle", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(invalidCycle.status, 400);
+  assert.equal((await invalidCycle.json()).error, "invalid body");
+
+  const refusedCycle = await fetch(base + "/api/immune/cycle", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      actor: "operator:standalone-smoke",
+      intent: "prove the full write-readiness boundary",
+    }),
+  });
+  assert.equal(refusedCycle.status, 503);
+  const refusedCycleBody = await refusedCycle.json();
+  assert.equal(refusedCycleBody.error, "WRITE_NOT_READY");
+  assert.ok(
+    refusedCycleBody.blockers.includes("ACTION_TRUST_ROOT_UNCONFIGURED"),
+  );
+  const stateAfterCycle = await getJson("/api/immune/state");
+  assert.equal(stateAfterCycle.ledgerCount, ledgerBeforeCycle);
+
   const verification = await getJson("/api/immune/ledger/verify");
   assert.equal(verification.ok, true);
 
@@ -212,7 +238,7 @@ try {
   const stillLiveBody = await stillLive.json();
   assert.equal(stillLiveBody.transport_state, "REACHABLE");
   assert.equal(stillLiveBody.write_ready, false);
-  console.log("IMMUNE standalone smoke: 9/9 PASS");
+  console.log("IMMUNE standalone smoke: 11/11 PASS");
 } finally {
   if (child.exitCode === null) {
     const closed = new Promise((resolve) => child.once("close", resolve));

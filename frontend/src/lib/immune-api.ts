@@ -181,7 +181,7 @@ export function useSubmitImmuneAction(): UseMutationResult<
 export function useRunImmuneCycle(): UseMutationResult<
   ImmuneCycleResult,
   Error,
-  DataEnvelope<{ actor?: string; intent?: string }>
+  DataEnvelope<{ actor: string; intent: string }>
 > {
   return useMutation({
     mutationFn: ({ data }) =>
