@@ -93,7 +93,10 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
           setCycleIntent("");
           invalidateAll();
         },
-        onError: (error) => setCycleError(summarizeOperatorError(error)),
+        onError: (error) =>
+          setCycleError(
+            summarizeOperatorError(error, { method: "POST", path: "/cycle" }),
+          ),
       },
     );
   };

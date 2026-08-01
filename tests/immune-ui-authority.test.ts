@@ -243,17 +243,49 @@ test("agent status polling fails closed on refresh error, hidden, offline, and s
   );
 });
 
-test("operator errors are bounded, normalized, and secret assignments are redacted", () => {
-  const summary = summarizeOperatorError(
-    new Error(`request\u0000 failed token=do-not-render ${"x".repeat(400)}`),
+test("operator errors allowlist only the expected route and HTTP status", () => {
+  const expected = { method: "POST", path: "/cycle" };
+  const known = summarizeOperatorError(
+    new Error(
+      'IMMUNE API POST /cycle failed: HTTP 503 {"token":"do-not-render"}',
+    ),
+    expected,
   );
-  assert.ok(summary.length <= OPERATOR_ERROR_SUMMARY_MAX_LENGTH);
-  assert.doesNotMatch(summary, /[\u0000-\u001f\u007f-\u009f]/);
-  assert.doesNotMatch(summary, /do-not-render/);
-  assert.match(summary, /token=\[REDACTED\]/i);
+  assert.equal(known, "IMMUNE API POST /cycle failed: HTTP 503.");
+  assert.ok(known.length <= OPERATOR_ERROR_SUMMARY_MAX_LENGTH);
+  assert.doesNotMatch(known, /do-not-render/);
+
+  for (const hostile of [
+    "Authorization: Bearer secret123",
+    "authorization=Basic Zm9vOmJhcg==",
+    'request failed token="quoted-secret"',
+    'request failed {"api_key":"json-secret"}',
+    "Cookie: session=secret-cookie; csrf=secret-csrf",
+    "secret=hidden C:\\private\\stack.ts:42",
+    "IMMUNE API POST /state failed: HTTP 503 token=wrong-route",
+  ]) {
+    const summary = summarizeOperatorError(new Error(hostile), expected);
+    assert.equal(
+      summary,
+      "Request failed. No response detail is shown; verify the ledger before retrying.",
+    );
+    assert.ok(summary.length <= OPERATOR_ERROR_SUMMARY_MAX_LENGTH);
+    for (const secret of [
+      "secret123",
+      "Zm9vOmJhcg",
+      "quoted-secret",
+      "json-secret",
+      "secret-cookie",
+      "secret-csrf",
+      "private",
+      "wrong-route",
+    ]) {
+      assert.doesNotMatch(summary, new RegExp(secret, "i"));
+    }
+  }
   assert.equal(
-    summarizeOperatorError({}),
-    "Request failed without a usable error message.",
+    summarizeOperatorError({}, expected),
+    "Request failed. No response detail is shown; verify the ledger before retrying.",
   );
 });
 
@@ -401,7 +433,7 @@ test("governed-cycle UX requires real input and keeps proof labels evidence-scop
   );
   assert.match(
     controls,
-    /onError: \(error\) => setCycleError\(summarizeOperatorError\(error\)\)/,
+    /summarizeOperatorError\(error, \{ method: "POST", path: "\/cycle" \}\)/,
   );
   assert.match(controls, /maxLength=\{256\}/);
   assert.match(controls, /maxLength=\{4_096\}/);
