@@ -14,6 +14,7 @@ import { fileURLToPath } from "url";
 import immuneRouter from "./routes/immune";
 import { getState } from "./routes/immune/state";
 import { buildInfo, sourceAttestation } from "./source-attestation";
+import { readinessStatus } from "./readiness";
 
 const __serverDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -36,6 +37,17 @@ app.get("/healthz", (_req: Request, res: Response) => {
     authority_state: authority.authority.enabled ? "SIGNED_ADVISORY_ONLY" : "UNAVAILABLE",
     write_ready: authority.evidenceState === "VERIFIED",
   });
+});
+
+// Truthful readiness is registered before static hosting and the SPA fallback.
+// Runtime/read integrity is independent from signed authority/write readiness.
+app.get("/readyz", (_req: Request, res: Response) => {
+  const readiness = readinessStatus();
+  res.setHeader("Cache-Control", "no-store");
+  res
+    .status(readiness.runtime_ready ? 200 : 503)
+    .type("application/json")
+    .json(readiness);
 });
 
 app.get("/api/build-info", (_req: Request, res: Response) => {

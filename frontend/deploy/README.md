@@ -66,6 +66,7 @@ Verify:
 ```bash
 curl -s localhost:7878/api/immune/state          # authoritative evidence state + receipt heads
 curl -s localhost:7878/api/immune/ledger/verify  # 200, ok:true over the real chain
+curl -s localhost:7878/readyz                     # exact hashes + read/write readiness and blockers
 curl -s localhost:7878/                           # the static demo UI
 ```
 

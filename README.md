@@ -33,6 +33,7 @@ AI-agent action.
 
 | Endpoint | What |
 |---|---|
+| `GET /readyz` | Exact source/build/runtime hash binding plus ledger integrity; reports runtime/read readiness separately from signed-authority/write readiness |
 | `GET /api/immune/state` | Authoritative `VERIFIED / FAILED / UNAVAILABLE / STALE` state, signed-action receipt head, mode, tripwire, and YAWAR chain head |
 | `POST /api/immune/state` | Verify and atomically apply an `immune.action.v1` Ed25519 envelope; unsigned controls are rejected |
 | `POST /api/immune/cycle` | Run one governed cycle: SENTRA inspect → (if accepted) append receipt → HUKLLA evaluate |
@@ -59,6 +60,11 @@ holds no operator private key: it accepts an already-signed envelope and is
 otherwise read-only. `IMMUNE_EVIDENCE_MAX_AGE_MS` may override the default
 15-minute freshness window; stale state remains observable but cannot authorize
 a governed cycle.
+
+`/readyz` remains explicit while that trust root is absent: verified immutable
+runtime bytes and a clean receipt ledger may be `read_ready: true`, but the
+contract stays `status: READ_ONLY`, `ready: false`, `authority_ready: false`,
+and `write_ready: false` with blocker `ACTION_TRUST_ROOT_UNCONFIGURED`.
 
 The frontier evaluator consumes the shared
 `@szl-holdings/contracts/decision-genome` schema from Platform. It does not
@@ -101,7 +107,9 @@ cross-platform Node builder. It:
 > whitelist, and verifies `/.well-known/szl-source.json` plus the live ledger
 > before it reports success. Shared Decision Genome concepts retain their
 > canonical Platform origin; the Apache-2.0 schema is mirrored locally so the
-> runtime no longer depends on a private workspace link.
+> runtime no longer depends on a private workspace link. `/readyz` binds the
+> exact source and build revisions to the deployment-manifest digest, canonical
+> artifact-set digest, server/UI artifact hashes, and current ledger audit.
 
 ---
 

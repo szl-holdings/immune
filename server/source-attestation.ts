@@ -92,6 +92,17 @@ export type BuildInfo = {
   };
 };
 
+export type RuntimeHashBinding = {
+  available: boolean;
+  reason: string | null;
+  source_repository: string | null;
+  source_revision: string | null;
+  deployment_manifest_sha256: string | null;
+  artifact_set_sha256: string | null;
+  immune_server_sha256: string | null;
+  public_index_sha256: string | null;
+};
+
 type ManifestResult =
   | {
       ok: true;
@@ -211,6 +222,61 @@ function verifyArtifacts(result: ManifestResult): {
     status: failures.length === 0 ? "MATCH" : "MISMATCH",
     checked,
     failures,
+  };
+}
+
+export function getRuntimeHashBinding(): RuntimeHashBinding {
+  const result = readManifest();
+  if (!result.ok) {
+    return {
+      available: false,
+      reason: result.reason,
+      source_repository: null,
+      source_revision: null,
+      deployment_manifest_sha256: null,
+      artifact_set_sha256: null,
+      immune_server_sha256: null,
+      public_index_sha256: null,
+    };
+  }
+
+  const entries = Object.entries(result.manifest.artifacts).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
+  const digest = (value: string | Buffer) =>
+    createHash("sha256").update(value).digest("hex");
+  const immuneServerSha256 = result.manifest.artifacts["immune-server.js"] ?? null;
+  const publicIndexSha256 = result.manifest.artifacts["public/index.html"] ?? null;
+  const requiredHashesPresent =
+    SHA256_PATTERN.test(immuneServerSha256 ?? "") &&
+    SHA256_PATTERN.test(publicIndexSha256 ?? "");
+  let manifestBytes: Buffer;
+  try {
+    manifestBytes = readFileSync(result.path);
+  } catch {
+    return {
+      available: false,
+      reason: "deployment manifest became unavailable during verification",
+      source_repository: result.manifest.source.repository,
+      source_revision: result.manifest.source.revision,
+      deployment_manifest_sha256: null,
+      artifact_set_sha256: null,
+      immune_server_sha256: null,
+      public_index_sha256: null,
+    };
+  }
+
+  return {
+    available: requiredHashesPresent,
+    reason: requiredHashesPresent
+      ? null
+      : "deployment manifest is missing required runtime artifact hashes",
+    source_repository: result.manifest.source.repository,
+    source_revision: result.manifest.source.revision,
+    deployment_manifest_sha256: digest(manifestBytes),
+    artifact_set_sha256: digest(JSON.stringify(entries)),
+    immune_server_sha256: immuneServerSha256,
+    public_index_sha256: publicIndexSha256,
   };
 }
 
