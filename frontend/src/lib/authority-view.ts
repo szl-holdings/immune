@@ -5,6 +5,42 @@ import type {
   ImmuneState,
 } from "./immune-api";
 
+export interface AuthorityTransportState {
+  visible: boolean;
+  online: boolean;
+  requiredObservationAfterMs: number;
+}
+
+export function initialAuthorityTransportState(
+  nowMs = Date.now(),
+  visible = typeof document === "undefined" || document.visibilityState === "visible",
+  online = typeof navigator === "undefined" || navigator.onLine,
+): AuthorityTransportState {
+  return {
+    visible,
+    online,
+    requiredObservationAfterMs: visible && online ? 0 : nowMs,
+  };
+}
+
+export function transitionAuthorityTransportState(
+  current: AuthorityTransportState,
+  nowMs: number,
+  visible: boolean,
+  online: boolean,
+): AuthorityTransportState {
+  const resumed = visible && online && (!current.visible || !current.online);
+  const unavailable = !visible || !online;
+  return {
+    visible,
+    online,
+    requiredObservationAfterMs:
+      resumed || unavailable
+        ? Math.max(current.requiredObservationAfterMs, nowMs)
+        : current.requiredObservationAfterMs,
+  };
+}
+
 const EVIDENCE_STATES = new Set<EvidenceState>([
   "VERIFIED",
   "FAILED",

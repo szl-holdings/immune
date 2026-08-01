@@ -5,6 +5,8 @@ import test from "node:test";
 import {
   authorityVisualState,
   deriveAuthorityView,
+  initialAuthorityTransportState,
+  transitionAuthorityTransportState,
 } from "../frontend/src/lib/authority-view";
 import { startAnimationLoop } from "../frontend/src/lib/animation-loop";
 import type { ImmuneState } from "../frontend/src/lib/immune-api";
@@ -148,6 +150,53 @@ test("background, offline, and resume-without-refresh states stay unavailable", 
   );
 });
 
+test("hidden mount cannot reuse a cached success while resume refetch is pending", () => {
+  const mountTime = OBSERVED_AT;
+  const hiddenMount = initialAuthorityTransportState(mountTime, false, true);
+  assert.equal(hiddenMount.requiredObservationAfterMs, mountTime);
+
+  const hiddenObservation = mountTime + 500;
+  assert.equal(
+    deriveAuthorityView(snapshot(), null, {
+      nowMs: hiddenObservation,
+      visible: hiddenMount.visible,
+      online: hiddenMount.online,
+      observedAtMs: hiddenObservation,
+      requiredObservationAfterMs: hiddenMount.requiredObservationAfterMs,
+    }).evidenceState,
+    "UNAVAILABLE",
+  );
+
+  const resumeTime = mountTime + 1_000;
+  const resumed = transitionAuthorityTransportState(
+    hiddenMount,
+    resumeTime,
+    true,
+    true,
+  );
+  assert.equal(resumed.requiredObservationAfterMs, resumeTime);
+  assert.equal(
+    deriveAuthorityView(snapshot(), null, {
+      nowMs: resumeTime,
+      visible: resumed.visible,
+      online: resumed.online,
+      observedAtMs: hiddenObservation,
+      requiredObservationAfterMs: resumed.requiredObservationAfterMs,
+    }).evidenceState,
+    "UNAVAILABLE",
+  );
+  assert.equal(
+    deriveAuthorityView(snapshot(), null, {
+      nowMs: resumeTime + 100,
+      visible: resumed.visible,
+      online: resumed.online,
+      observedAtMs: resumeTime + 1,
+      requiredObservationAfterMs: resumed.requiredObservationAfterMs,
+    }).evidenceState,
+    "VERIFIED",
+  );
+});
+
 test("animation loop cleanup cancels repeated transitions and prevents rescheduling", () => {
   let nextId = 0;
   const callbacks = new Map<number, (timestamp: number) => void>();
@@ -186,6 +235,9 @@ test("Home is the sole authority query and every security surface consumes its p
 
   assert.equal((home.match(/useGetImmuneState\(\)/g) ?? []).length, 1);
   assert.match(home, /deriveAuthorityView\(stateQuery\.data, stateQuery\.error,/);
+  assert.match(home, /useState\(initialAuthorityTransportState\)/);
+  assert.match(home, /transitionAuthorityTransportState/);
+  assert.match(home, /updateTransport\(\);/);
   assert.doesNotMatch(home, /lastCycleResult/);
   for (const relative of surfaces) {
     const source = fs.readFileSync(path.join(repoRoot, relative), "utf8");
