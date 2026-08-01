@@ -44,6 +44,8 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
   const [envelopeDraft, setEnvelopeDraft] = useState("");
   const [envelopeError, setEnvelopeError] = useState<string | null>(null);
   const [verifierBusy, setVerifierBusy] = useState(false);
+  const [cycleActor, setCycleActor] = useState("");
+  const [cycleIntent, setCycleIntent] = useState("");
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: getGetImmuneStateQueryKey() });
@@ -74,10 +76,14 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
   };
 
   const handleRun = () => {
+    const actor = cycleActor.trim();
+    const intent = cycleIntent.trim();
+    if (!actor || !intent) return;
     runCycle.mutate(
-      { data: { actor: "operator@immune.demo", intent: "DEMO: inject payload" } },
+      { data: { actor, intent } },
       {
         onSuccess: () => {
+          setCycleIntent("");
           invalidateAll();
         },
       },
@@ -203,10 +209,41 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
           )}
         </div>
 
+        <div className="flex flex-col gap-2 rounded-sm border border-warning/30 bg-warning/5 p-3">
+          <p id="cycle-write-warning" className="font-mono text-[9px] leading-relaxed text-warning">
+            Accepted input writes a real governed-cycle receipt. Enter the actual actor and intent; no demo payload is supplied.
+          </p>
+          <label htmlFor="cycle-actor" className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
+            Actor
+          </label>
+          <input
+            id="cycle-actor"
+            value={cycleActor}
+            onChange={(event) => setCycleActor(event.target.value)}
+            autoComplete="off"
+            className="rounded-sm border border-border/50 bg-black/70 px-3 py-2 font-mono text-[10px] text-foreground focus:border-primary focus:outline-none"
+          />
+          <label htmlFor="cycle-intent" className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
+            Intent
+          </label>
+          <textarea
+            id="cycle-intent"
+            value={cycleIntent}
+            onChange={(event) => setCycleIntent(event.target.value)}
+            className="min-h-20 resize-y rounded-sm border border-border/50 bg-black/70 p-3 font-mono text-[10px] text-foreground focus:border-primary focus:outline-none"
+          />
+        </div>
+
         <button
           data-testid="button-run-cycle"
           onClick={handleRun}
-          disabled={runCycle.isPending || evidenceState !== "VERIFIED"}
+          disabled={
+            runCycle.isPending ||
+            evidenceState !== "VERIFIED" ||
+            cycleActor.trim().length === 0 ||
+            cycleIntent.trim().length === 0
+          }
+          aria-describedby="cycle-write-warning"
           className={`
             group relative w-full overflow-hidden rounded-sm font-display font-bold text-xs uppercase tracking-[0.2em] py-4 transition-all
             ${currentMode === "DEADMAN" 
@@ -224,7 +261,7 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
             {runCycle.isPending
               ? "Executing..."
               : evidenceState === "VERIFIED"
-                ? "Inject Intent"
+                ? "Run Governed Cycle"
                 : "Evidence unavailable"}
           </span>
         </button>
