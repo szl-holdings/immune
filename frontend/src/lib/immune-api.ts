@@ -27,6 +27,7 @@ export interface AuthoritativeTripwireState {
   deadman: boolean;
   tripwire: string | null;
   reason: string;
+  validUntil: string | null;
   updatedAt: string | null;
   requestId: string | null;
   revision: number;
@@ -40,6 +41,7 @@ export interface ImmuneState {
   lastHash: string | null;
   evidenceState: EvidenceState;
   reason: string;
+  validUntil: string | null;
   updatedAt: string | null;
   requestId: string | null;
   revision: number;
@@ -49,6 +51,14 @@ export interface ImmuneState {
     enabled: boolean;
     version: "immune.action.v1";
     keyId: string | null;
+  };
+  durableState: {
+    mode: ImmuneMode;
+    tripwire: string | null;
+    deadman: boolean;
+    updatedAt: string | null;
+    requestId: string | null;
+    revision: number;
   };
   tripwireState: AuthoritativeTripwireState;
 }

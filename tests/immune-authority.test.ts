@@ -11,8 +11,13 @@ import {
   AuthorityStore,
   actionEnvelopeBytes,
   authoritativeTripwireState,
+  publicAuthoritySnapshot,
   type SignedActionEnvelope,
 } from "../server/routes/immune/state";
+import {
+  runGovernedCycle,
+  type GovernedCycleDependencies,
+} from "../server/routes/immune/cycle";
 
 function identity(): {
   privateKey: crypto.KeyObject;
@@ -89,6 +94,7 @@ test("fresh authority is UNAVAILABLE and fail-closed in WAL mode", (t) => {
       deadman: false,
       tripwire: null,
       reason: "no verified signed action receipt exists",
+      validUntil: null,
       updatedAt: null,
       requestId: null,
       revision: 0,
@@ -118,6 +124,7 @@ test("valid signed action persists across restart and requestId replay is reject
       deadman: true,
       tripwire: "T07",
       reason: "signed action and receipt chain verified",
+      validUntil: "2026-08-01T12:01:00.000Z",
       updatedAt: now.toISOString(),
       requestId: "restart-proof-0001",
       revision: 1,
@@ -131,6 +138,7 @@ test("valid signed action persists across restart and requestId replay is reject
       deadman: false,
       tripwire: null,
       reason: "verified authority state contains an inconsistent tripwire binding",
+      validUntil: "2026-08-01T12:01:00.000Z",
       updatedAt: now.toISOString(),
       requestId: "restart-proof-0001",
       revision: 1,
@@ -209,10 +217,100 @@ test("fresh signed evidence becomes STALE without becoming green", (t) => {
   const stale = store.snapshot();
   assert.equal(stale.evidenceState, "STALE");
   assert.equal(stale.mode, "PASS");
-  assert.match(stale.reason, /freshness window/);
+  assert.match(stale.reason, /signed validity window/);
   assert.equal(authoritativeTripwireState(stale).mode, "SENTRA_REJECT");
   assert.equal(authoritativeTripwireState(stale).deadman, false);
   assert.equal(authoritativeTripwireState(stale).tripwire, null);
+  const publicState = publicAuthoritySnapshot(stale);
+  assert.equal(publicState.mode, "SENTRA_REJECT");
+  assert.equal(publicState.deadman, false);
+  assert.equal(publicState.tripwire, null);
+  assert.equal(publicState.durableState.mode, "PASS");
+  assert.deepEqual(
+    {
+      evidenceState: publicState.evidenceState,
+      mode: publicState.mode,
+      deadman: publicState.deadman,
+      tripwire: publicState.tripwire,
+      validUntil: publicState.validUntil,
+    },
+    {
+      evidenceState: publicState.tripwireState.evidenceState,
+      mode: publicState.tripwireState.mode,
+      deadman: publicState.tripwireState.deadman,
+      tripwire: publicState.tripwireState.tripwire,
+      validUntil: publicState.tripwireState.validUntil,
+    },
+  );
+});
+
+test("concurrent signed DEADMAN prevents a stale PASS receipt", async (t) => {
+  const id = identity();
+  const databasePath = temporaryDatabase();
+  const now = new Date("2026-08-01T12:00:00.000Z");
+  const store = new AuthorityStore({
+    databasePath,
+    publicKeyB64: id.publicKeyB64,
+    now: () => now,
+  });
+  cleanup(t, databasePath, store);
+  store.apply(
+    signedEnvelope(id.privateKey, id.keyId, now, "cycle-pass-state-0001", {
+      type: "SET_MODE",
+      mode: "PASS",
+    }),
+  );
+
+  let signalAppendStarted = () => undefined;
+  const appendStarted = new Promise<void>((resolve) => {
+    signalAppendStarted = resolve;
+  });
+  let releaseAppend = () => undefined;
+  const appendBarrier = new Promise<void>((resolve) => {
+    releaseAppend = resolve;
+  });
+  let persisted = 0;
+  const dependencies: GovernedCycleDependencies = {
+    getAuthorityState: () => store.snapshot(),
+    appendReceipt: async (input, beforeAppend) => {
+      signalAppendStarted();
+      await appendBarrier;
+      beforeAppend?.();
+      persisted += 1;
+      return {
+        seq: persisted,
+        ts: now.toISOString(),
+        prevHash: "GENESIS",
+        hash: "c".repeat(64),
+        payload: input.payload,
+      };
+    },
+    appendEvidence: () => undefined,
+    ledgerCount: () => persisted,
+  };
+
+  const cycle = runGovernedCycle(
+    { actor: "operator:test-suite", intent: "read verified system state" },
+    undefined,
+    dependencies,
+  );
+  await appendStarted;
+  store.apply(
+    signedEnvelope(id.privateKey, id.keyId, now, "cycle-deadman-0002", {
+      type: "SET_MODE",
+      mode: "DEADMAN",
+      tripwire: "T07",
+    }),
+  );
+  releaseAppend();
+
+  const result = await cycle;
+  assert.equal(result.pass, false);
+  assert.equal(result.receipt, null);
+  assert.equal(result.sentra.accepted, false);
+  assert.equal(result.sentra.signatureMatched, "guard.authority-revision");
+  assert.equal(persisted, 0);
+  assert.equal(authoritativeTripwireState(store.snapshot()).deadman, true);
 });
 
 test("receipt tampering fails closed and append-only triggers reject mutation", (t) => {

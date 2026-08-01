@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useGetImmuneState } from "@/lib/immune-api";
 import { deriveAuthorityView } from "@/lib/authority-view";
 import { ControlsPanel } from "@/components/ControlsPanel";
@@ -18,7 +18,54 @@ export default function Home() {
   }, []);
 
   const stateQuery = useGetImmuneState();
-  const authority = deriveAuthorityView(stateQuery.data, stateQuery.error);
+  const [authorityClock, setAuthorityClock] = useState(() => Date.now());
+  const [transport, setTransport] = useState(() => ({
+    visible: typeof document === "undefined" || document.visibilityState === "visible",
+    online: typeof navigator === "undefined" || navigator.onLine,
+    requiredObservationAfterMs: 0,
+  }));
+
+  useEffect(() => {
+    const updateTransport = () => {
+      const visible = document.visibilityState === "visible";
+      const online = navigator.onLine;
+      const now = Date.now();
+      setAuthorityClock(now);
+      setTransport((current) => ({
+        visible,
+        online,
+        requiredObservationAfterMs:
+          !visible || !online
+            ? Math.max(current.requiredObservationAfterMs, now)
+            : current.requiredObservationAfterMs,
+      }));
+      if (visible && online) void stateQuery.refetch();
+    };
+    document.addEventListener("visibilitychange", updateTransport);
+    window.addEventListener("online", updateTransport);
+    window.addEventListener("offline", updateTransport);
+    return () => {
+      document.removeEventListener("visibilitychange", updateTransport);
+      window.removeEventListener("online", updateTransport);
+      window.removeEventListener("offline", updateTransport);
+    };
+  }, [stateQuery.refetch]);
+
+  useEffect(() => {
+    const validUntilMs = Date.parse(stateQuery.data?.tripwireState?.validUntil ?? "");
+    if (!Number.isFinite(validUntilMs)) return;
+    const delay = Math.max(0, Math.min(validUntilMs - Date.now() + 1, 2_147_483_647));
+    const timer = window.setTimeout(() => setAuthorityClock(Date.now()), delay);
+    return () => window.clearTimeout(timer);
+  }, [stateQuery.data?.tripwireState?.validUntil]);
+
+  const authority = deriveAuthorityView(stateQuery.data, stateQuery.error, {
+    nowMs: authorityClock,
+    visible: transport.visible,
+    online: transport.online,
+    observedAtMs: stateQuery.dataUpdatedAt,
+    requiredObservationAfterMs: transport.requiredObservationAfterMs,
+  });
   const { mode, deadman, evidenceState } = authority;
 
   const getStatusColor = () => {

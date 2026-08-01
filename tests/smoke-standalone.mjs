@@ -79,6 +79,9 @@ try {
   assert.ok(state.ledgerCount > 0);
   assert.equal(state.evidenceState, "UNAVAILABLE");
   assert.equal(state.mode, "SENTRA_REJECT");
+  assert.equal(state.deadman, false);
+  assert.equal(state.tripwire, null);
+  assert.equal(state.validUntil, null);
   assert.equal(state.authority.enabled, false);
   assert.deepEqual(state.tripwireState, {
     evidenceState: "UNAVAILABLE",
@@ -89,7 +92,49 @@ try {
     updatedAt: null,
     requestId: null,
     revision: 0,
+    validUntil: null,
   });
+  assert.deepEqual(
+    {
+      evidenceState: state.evidenceState,
+      mode: state.mode,
+      deadman: state.deadman,
+      tripwire: state.tripwire,
+      reason: state.reason,
+      updatedAt: state.updatedAt,
+      requestId: state.requestId,
+      revision: state.revision,
+      validUntil: state.validUntil,
+    },
+    state.tripwireState,
+  );
+  assert.equal(state.durableState.mode, "SENTRA_REJECT");
+  assert.equal(state.durableState.deadman, false);
+
+  const rejectedAction = await fetch(base + "/api/immune/state", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(rejectedAction.status, 503);
+  const rejectedBody = await rejectedAction.json();
+  assert.equal(rejectedBody.error, "AUTHORITY_UNAVAILABLE");
+  assert.deepEqual(
+    {
+      evidenceState: rejectedBody.state.evidenceState,
+      mode: rejectedBody.state.mode,
+      deadman: rejectedBody.state.deadman,
+      tripwire: rejectedBody.state.tripwire,
+      reason: rejectedBody.state.reason,
+      updatedAt: rejectedBody.state.updatedAt,
+      requestId: rejectedBody.state.requestId,
+      revision: rejectedBody.state.revision,
+      validUntil: rejectedBody.state.validUntil,
+    },
+    rejectedBody.state.tripwireState,
+  );
+  assert.equal(rejectedBody.state.evidenceState, "UNAVAILABLE");
+  assert.equal(rejectedBody.state.mode, "SENTRA_REJECT");
 
   const verification = await getJson("/api/immune/ledger/verify");
   assert.equal(verification.ok, true);

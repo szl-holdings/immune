@@ -20,6 +20,7 @@ function unavailable(reason: string): AuthoritativeTripwireState {
     deadman: false,
     tripwire: null,
     reason,
+    validUntil: null,
     updatedAt: null,
     requestId: null,
     revision: 0,
@@ -42,6 +43,7 @@ function isTripwireState(value: unknown): value is AuthoritativeTripwireState {
     typeof candidate.deadman === "boolean" &&
     (candidate.tripwire === null || typeof candidate.tripwire === "string") &&
     typeof candidate.reason === "string" &&
+    (candidate.validUntil === null || typeof candidate.validUntil === "string") &&
     (candidate.updatedAt === null || typeof candidate.updatedAt === "string") &&
     (candidate.requestId === null || typeof candidate.requestId === "string") &&
     Number.isSafeInteger(candidate.revision) &&
@@ -57,11 +59,40 @@ function isTripwireState(value: unknown): value is AuthoritativeTripwireState {
 export function deriveAuthorityView(
   snapshot: ImmuneState | undefined,
   queryError: unknown,
+  context: {
+    nowMs?: number;
+    visible?: boolean;
+    online?: boolean;
+    observedAtMs?: number;
+    requiredObservationAfterMs?: number;
+  } = {},
 ): AuthoritativeTripwireState {
+  if (context.visible === false) {
+    return unavailable("authoritative state is unavailable while the client is backgrounded");
+  }
+  if (context.online === false) {
+    return unavailable("authoritative state is unavailable while the client is offline");
+  }
   if (queryError) return unavailable("authoritative state refresh unavailable");
   if (!snapshot) return unavailable("authoritative state has not been observed");
+  if (
+    context.requiredObservationAfterMs !== undefined &&
+    (context.observedAtMs ?? 0) <= context.requiredObservationAfterMs
+  ) {
+    return unavailable("awaiting a fresh authority response after transport resumed");
+  }
   const state = snapshot.tripwireState;
   if (!isTripwireState(state)) return failed("authoritative tripwire response is invalid");
+
+  if (
+    snapshot.evidenceState !== state.evidenceState ||
+    snapshot.mode !== state.mode ||
+    snapshot.deadman !== state.deadman ||
+    snapshot.tripwire !== state.tripwire ||
+    snapshot.validUntil !== state.validUntil
+  ) {
+    return failed("top-level authority fields contradict the authoritative tripwire projection");
+  }
 
   if (state.evidenceState !== "VERIFIED") {
     if (state.mode !== "SENTRA_REJECT" || state.deadman || state.tripwire !== null) {
@@ -76,6 +107,20 @@ export function deriveAuthorityView(
       : !state.deadman && state.tripwire === null;
   if (!deadmanConsistent) {
     return failed("verified authority response contains inconsistent tripwire state");
+  }
+  const validUntilMs = Date.parse(state.validUntil ?? "");
+  if (!Number.isFinite(validUntilMs)) {
+    return failed("verified authority response is missing a valid signed expiry");
+  }
+  if ((context.nowMs ?? Date.now()) >= validUntilMs) {
+    return {
+      ...state,
+      evidenceState: "STALE",
+      mode: "SENTRA_REJECT",
+      deadman: false,
+      tripwire: null,
+      reason: "signed authority evidence expired without a fresh server response",
+    };
   }
   return state;
 }

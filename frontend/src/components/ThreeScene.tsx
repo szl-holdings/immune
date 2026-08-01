@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import type { AuthoritativeTripwireState } from "@/lib/immune-api";
 import { authorityVisualState } from "@/lib/authority-view";
+import { startAnimationLoop } from "@/lib/animation-loop";
 
 export function ThreeScene({ authority }: { authority: AuthoritativeTripwireState }) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -176,9 +177,7 @@ export function ThreeScene({ authority }: { authority: AuthoritativeTripwireStat
     };
     window.addEventListener('resize', handleResize);
     
-    const animate = () => {
-      requestAnimationFrame(animate);
-      
+    const stopAnimation = startAnimationLoop(() => {
       time += 0.01 * pulseSpeed;
       
       if (isDeadman) {
@@ -262,12 +261,11 @@ export function ThreeScene({ authority }: { authority: AuthoritativeTripwireStat
       }
       
       renderer.render(scene, camera);
-    };
-    
-    animate();
+    });
     
     return () => {
       window.removeEventListener('resize', handleResize);
+      stopAnimation();
       renderer.dispose();
       if (mountRef.current && renderer.domElement.parentNode === mountRef.current) {
         mountRef.current.removeChild(renderer.domElement);
