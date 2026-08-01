@@ -31,6 +31,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck
         run: pnpm run typecheck
+      - name: Authority persistence, signature, replay, and tamper tests
+        run: pnpm test
       - name: Foundations honesty guard (dependency-free)
         working-directory: frontend
         run: node scripts/check-foundations-corpus.mjs

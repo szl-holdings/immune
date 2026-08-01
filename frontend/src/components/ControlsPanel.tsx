@@ -1,18 +1,18 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ShieldCheck, ShieldAlert, Skull, Activity, Play, RotateCcw, AlertTriangle } from "lucide-react";
+import { ShieldCheck, ShieldAlert, Skull, Activity, Play, FileSignature, AlertTriangle } from "lucide-react";
 import {
   useGetImmuneState,
-  useSetImmuneState,
+  useSubmitImmuneAction,
   useRunImmuneCycle,
-  useResetImmune,
   getGetImmuneStateQueryKey,
   getGetImmuneLedgerLatestQueryKey,
   getVerifyImmuneLedgerQueryKey,
   getGetImmuneEvidenceLatestQueryKey,
   type ImmuneCycleResult,
   type ImmuneMode,
+  type SignedActionEnvelope,
 } from "@/lib/immune-api";
 
 const MODES: { id: ImmuneMode; label: string; sub: string; icon: React.FC<any> }[] = [
@@ -41,13 +41,14 @@ export function ControlsPanel({
 }) {
   const qc = useQueryClient();
   const stateQuery = useGetImmuneState();
-  const setMode = useSetImmuneState();
+  const submitAction = useSubmitImmuneAction();
   const runCycle = useRunImmuneCycle();
-  const resetMutation = useResetImmune();
 
-  const currentMode: ImmuneMode = stateQuery.data?.mode ?? "PASS";
+  const currentMode: ImmuneMode = stateQuery.data?.mode ?? "SENTRA_REJECT";
   const currentTripwire = stateQuery.data?.tripwire ?? "T07";
-  const [pendingTripwire, setPendingTripwire] = useState<string>(currentTripwire ?? "T07");
+  const evidenceState = stateQuery.data?.evidenceState ?? "UNAVAILABLE";
+  const [envelopeDraft, setEnvelopeDraft] = useState("");
+  const [envelopeError, setEnvelopeError] = useState<string | null>(null);
   const [verifierBusy, setVerifierBusy] = useState(false);
 
   const invalidateAll = () => {
@@ -57,11 +58,24 @@ export function ControlsPanel({
     qc.invalidateQueries({ queryKey: getGetImmuneEvidenceLatestQueryKey() });
   };
 
-  const handleSetMode = (mode: ImmuneMode) => {
-    const tripwire = mode === "DEADMAN" ? pendingTripwire : undefined;
-    setMode.mutate(
-      { data: { mode, tripwire: tripwire as any } },
-      { onSuccess: invalidateAll },
+  const handleSignedAction = () => {
+    setEnvelopeError(null);
+    let envelope: SignedActionEnvelope;
+    try {
+      envelope = JSON.parse(envelopeDraft) as SignedActionEnvelope;
+    } catch {
+      setEnvelopeError("Envelope must be valid JSON.");
+      return;
+    }
+    submitAction.mutate(
+      { data: envelope },
+      {
+        onSuccess: () => {
+          setEnvelopeDraft("");
+          invalidateAll();
+        },
+        onError: (error) => setEnvelopeError(error.message),
+      },
     );
   };
 
@@ -86,16 +100,18 @@ export function ControlsPanel({
     }
   };
 
-  const handleReset = () => {
-    resetMutation.mutate(undefined, { onSuccess: invalidateAll });
-  };
-
   return (
     <div className="flex flex-col h-full gap-8 z-10 relative">
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-          <h2 className="text-primary text-[10px] font-mono uppercase tracking-[0.3em]">Threat Vector</h2>
+          <div
+            className={`w-1.5 h-1.5 rounded-full ${
+              evidenceState === "VERIFIED" ? "bg-primary animate-pulse" : "bg-warning"
+            }`}
+          />
+          <h2 className="text-primary text-[10px] font-mono uppercase tracking-[0.3em]">
+            Authoritative State · {evidenceState}
+          </h2>
         </div>
         
         <div className="flex flex-col gap-2">
@@ -108,8 +124,8 @@ export function ControlsPanel({
               <button
                 key={m.id}
                 data-testid={`button-mode-${m.id}`}
-                onClick={() => handleSetMode(m.id)}
-                disabled={setMode.isPending}
+                disabled
+                aria-pressed={active}
                 className={`
                   relative overflow-hidden text-left rounded-sm border p-3 transition-all duration-300 flex items-center gap-3
                   ${active
@@ -118,7 +134,7 @@ export function ControlsPanel({
                         ? "border-destructive bg-destructive/20 text-destructive shadow-[0_0_15px_rgba(255,0,0,0.3)]"
                         : "border-warning bg-warning/20 text-warning shadow-[0_0_15px_rgba(255,170,0,0.3)]"
                       : "border-primary bg-primary/20 text-primary shadow-[0_0_15px_rgba(0,255,255,0.2)]"
-                    : "border-border bg-black/40 hover:border-primary/50 hover:bg-black/60 text-muted-foreground"
+                    : "border-border bg-black/40 text-muted-foreground"
                   }
                 `}
               >
@@ -149,32 +165,55 @@ export function ControlsPanel({
             <AlertTriangle className="w-3 h-3" />
             <h2 className="text-[10px] font-mono uppercase tracking-[0.3em]">Select Tripwire</h2>
           </div>
-          <select
-            data-testid="select-tripwire"
-            value={pendingTripwire}
-            onChange={(e) => {
-              setPendingTripwire(e.target.value);
-              setMode.mutate(
-                { data: { mode: "DEADMAN", tripwire: e.target.value as any } },
-                { onSuccess: invalidateAll },
-              );
-            }}
-            className="w-full bg-black/60 border border-destructive/50 rounded-sm px-3 py-2.5 text-xs font-mono text-destructive focus:outline-none focus:border-destructive focus:ring-1 focus:ring-destructive"
+          <div
+            data-testid="active-tripwire"
+            className="w-full bg-black/60 border border-destructive/50 rounded-sm px-3 py-2.5 text-xs font-mono text-destructive"
           >
-            {TRIPWIRES.map((t) => (
-              <option key={t.id} value={t.id} className="bg-background text-destructive">
-                {t.id} // {t.name}
-              </option>
-            ))}
-          </select>
+            {currentTripwire} // {TRIPWIRES.find((item) => item.id === currentTripwire)?.name ?? "unknown"}
+          </div>
         </motion.div>
       )}
 
       <div className="mt-auto flex flex-col gap-3">
+        <div className="flex flex-col gap-2 rounded-sm border border-primary/30 bg-black/50 p-3">
+          <label
+            htmlFor="signed-action-envelope"
+            className="flex items-center gap-2 text-[9px] font-mono uppercase tracking-[0.2em] text-primary"
+          >
+            <FileSignature className="h-3.5 w-3.5" /> Signed advisory envelope
+          </label>
+          <textarea
+            id="signed-action-envelope"
+            data-testid="input-signed-action-envelope"
+            value={envelopeDraft}
+            onChange={(event) => setEnvelopeDraft(event.target.value)}
+            placeholder='{"version":"immune.action.v1", ...}'
+            className="min-h-20 w-full resize-y rounded-sm border border-border/50 bg-black/70 p-2 font-mono text-[9px] text-foreground focus:border-primary focus:outline-none"
+          />
+          <button
+            data-testid="button-submit-signed-action"
+            onClick={handleSignedAction}
+            disabled={submitAction.isPending || envelopeDraft.trim().length === 0}
+            className="rounded-sm border border-primary/40 bg-primary/10 py-2 font-mono text-[9px] uppercase tracking-widest text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {submitAction.isPending ? "Verifying + persisting…" : "Apply verified advisory"}
+          </button>
+          {(envelopeError || evidenceState !== "VERIFIED") && (
+            <p
+              className="font-mono text-[8px] leading-relaxed text-warning"
+              data-testid="action-authority-status"
+              role="status"
+              aria-live="polite"
+            >
+              {envelopeError ?? stateQuery.data?.reason ?? "Authority state unavailable."}
+            </p>
+          )}
+        </div>
+
         <button
           data-testid="button-run-cycle"
           onClick={handleRun}
-          disabled={runCycle.isPending}
+          disabled={runCycle.isPending || evidenceState !== "VERIFIED"}
           className={`
             group relative w-full overflow-hidden rounded-sm font-display font-bold text-xs uppercase tracking-[0.2em] py-4 transition-all
             ${currentMode === "DEADMAN" 
@@ -189,11 +228,15 @@ export function ControlsPanel({
           <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
           <span className="relative z-10 flex items-center justify-center gap-2">
             <Play className="w-4 h-4 fill-current" />
-            {runCycle.isPending ? "Executing..." : "Inject Intent"}
+            {runCycle.isPending
+              ? "Executing..."
+              : evidenceState === "VERIFIED"
+                ? "Inject Intent"
+                : "Evidence unavailable"}
           </span>
         </button>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2">
           <button
             data-testid="button-verify-ledger"
             onClick={handleVerify}
@@ -202,16 +245,6 @@ export function ControlsPanel({
           >
             <Activity className={`w-4 h-4 ${verifierBusy ? 'animate-spin' : ''}`} />
             {verifierBusy ? "Verifying..." : "Verify Chain"}
-          </button>
-          
-          <button
-            data-testid="button-reset"
-            onClick={handleReset}
-            disabled={resetMutation.isPending}
-            className="flex flex-col items-center justify-center gap-1 rounded-sm border border-border/50 bg-black/40 hover:bg-white/5 hover:text-foreground hover:border-border text-muted-foreground font-mono text-[10px] uppercase tracking-widest py-3 transition disabled:opacity-50"
-          >
-            <RotateCcw className={`w-4 h-4 ${resetMutation.isPending ? 'animate-spin' : ''}`} />
-            Reset State
           </button>
         </div>
       </div>

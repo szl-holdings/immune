@@ -114,6 +114,12 @@ export default function PulsePanel() {
 
   const vulns = state.status === "ok" ? state.data.vulnerabilities : null;
   const eco = state.status === "ok" ? state.data.ecosystem : null;
+  const ecosystemProvenance: Prov =
+    eco &&
+    eco.repos.every((item) => item.provenance === "LIVE") &&
+    eco.models.every((item) => item.provenance === "LIVE")
+      ? "LIVE"
+      : "UNAVAILABLE";
 
   return (
     <div className="grid lg:grid-cols-2 gap-6 text-xs relative z-10">
@@ -210,7 +216,7 @@ export default function PulsePanel() {
           {state.status === "loading" ? (
             <Loader2 className="w-3 h-3 text-primary animate-spin" />
           ) : (
-            <Pill kind="LIVE" />
+            <Pill kind={ecosystemProvenance} />
           )}
         </div>
 
