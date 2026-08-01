@@ -74,6 +74,16 @@ try {
     `server did not start: ${lastReadyError}\n${output}`,
   );
 
+  const readiness = await getJson("/readyz");
+  assert.equal(readiness.status, "READY_READONLY");
+  assert.equal(readiness.ready, true);
+  assert.equal(readiness.access_mode, "PUBLIC_READONLY");
+  assert.equal(readiness.ledger_state, "VERIFIED");
+  assert.ok(readiness.ledger_count > 0);
+  assert.equal(readiness.first_bad_seq, null);
+  assert.equal(readiness.authority_state, "UNAVAILABLE");
+  assert.equal(readiness.write_ready, false);
+
   const state = await getJson("/api/immune/state");
   assert.equal(typeof state.ledgerCount, "number");
   assert.ok(state.ledgerCount > 0);
@@ -157,7 +167,22 @@ try {
   const page = await fetch(base + "/");
   assert.equal(page.status, 200);
   assert.match(await page.text(), /<div id="root"><\/div>/);
-  console.log("IMMUNE standalone smoke: 7/7 PASS");
+
+  // A corrupted evidence ledger must take readiness down without lying about
+  // process liveness. This exercises the real built server and filesystem.
+  fs.appendFileSync(path.join(dataDir, "ledger.jsonl"), "not-json\n", "utf8");
+  const refusedReadiness = await fetch(base + "/readyz");
+  assert.equal(refusedReadiness.status, 503);
+  const refusedReadinessBody = await refusedReadiness.json();
+  assert.equal(refusedReadinessBody.status, "NOT_READY");
+  assert.equal(refusedReadinessBody.ready, false);
+  assert.equal(refusedReadinessBody.ledger_state, "CONFLICT");
+  assert.notEqual(refusedReadinessBody.first_bad_seq, null);
+
+  const stillLive = await fetch(base + "/healthz");
+  assert.equal(stillLive.status, 200);
+  assert.equal((await stillLive.json()).transport_state, "REACHABLE");
+  console.log("IMMUNE standalone smoke: 9/9 PASS");
 } finally {
   if (child.exitCode === null) {
     const closed = new Promise((resolve) => child.once("close", resolve));

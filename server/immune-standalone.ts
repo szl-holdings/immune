@@ -13,6 +13,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import immuneRouter from "./routes/immune";
 import { getState } from "./routes/immune/state";
+import { verifyLedger } from "./routes/immune/ledger";
 import { buildInfo, sourceAttestation } from "./source-attestation";
 
 const __serverDir = path.dirname(fileURLToPath(import.meta.url));
@@ -35,6 +36,32 @@ app.get("/healthz", (_req: Request, res: Response) => {
     verification_state: authority.evidenceState,
     authority_state: authority.authority.enabled ? "SIGNED_ADVISORY_ONLY" : "UNAVAILABLE",
     write_ready: authority.evidenceState === "VERIFIED",
+  });
+});
+
+// Readiness is intentionally distinct from liveness. The public investor
+// surface can be READY_READONLY while signed operator authority remains
+// unavailable, but it must fail closed when the packaged evidence ledger is
+// absent or fails byte-for-byte verification.
+app.get("/readyz", (_req: Request, res: Response) => {
+  const authority = getState();
+  const ledger = verifyLedger();
+  const ready = ledger.ok && ledger.count > 0;
+  res.setHeader("Cache-Control", "no-store");
+  res.status(ready ? 200 : 503).json({
+    status: ready ? "READY_READONLY" : "NOT_READY",
+    ready,
+    service: "immune-standalone",
+    access_mode: "PUBLIC_READONLY",
+    transport_state: "REACHABLE",
+    ledger_state: ledger.ok ? (ledger.count > 0 ? "VERIFIED" : "UNAVAILABLE") : "CONFLICT",
+    ledger_count: ledger.count,
+    first_bad_seq: ledger.firstBadSeq,
+    verification_state: authority.evidenceState,
+    authority_state: authority.authority.enabled ? "SIGNED_ADVISORY_ONLY" : "UNAVAILABLE",
+    write_ready: authority.evidenceState === "VERIFIED",
+    scope:
+      "readiness covers the public read-only evidence surface; operator writes require separately verified signed authority",
   });
 });
 
