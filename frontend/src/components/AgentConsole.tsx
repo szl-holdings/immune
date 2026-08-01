@@ -16,6 +16,12 @@ import {
   Ban,
   CheckCircle2,
 } from "lucide-react";
+import {
+  AGENT_STATUS_MAX_AGE_MS,
+  AGENT_STATUS_POLL_MS,
+  projectFreshAgentStatus,
+  type FreshAgentStatusShape,
+} from "@/lib/agent-status-freshness";
 
 const API_BASE = `${import.meta.env.BASE_URL || "/"}api/immune`;
 
@@ -25,16 +31,11 @@ interface InferenceInfo {
   provider: string | null;
   model: string | null;
 }
-interface AgentStatus {
-  available: boolean;
-  provenance: "LIVE" | "UNAVAILABLE";
-  blockers: string[];
-  readiness: { status: "READY" | "READ_ONLY" | "NOT_READY"; write_ready: boolean };
+interface AgentStatus extends FreshAgentStatusShape {
   inference: InferenceInfo;
   signing: "ed25519" | "hash-only";
   tools: string[];
   maxSteps: number;
-  note: string;
 }
 interface SentraVerdict {
   accepted: boolean;
@@ -118,27 +119,107 @@ function StatusPill({ kind }: { kind: "LIVE" | "UNAVAILABLE" }) {
 }
 
 export default function AgentConsole() {
-  const [status, setStatus] = useState<AgentStatus | null>(null);
-  const [statusErr, setStatusErr] = useState(false);
+  const [statusObservation, setStatusObservation] = useState<{
+    data: AgentStatus | null;
+    error: boolean;
+    observedAtMs: number | null;
+  }>({ data: null, error: false, observedAtMs: null });
+  const [refreshBoundary, setRefreshBoundary] = useState(() => ({
+    pending: true,
+    requiredObservationAfterMs: Date.now(),
+  }));
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [visible, setVisible] = useState(() => document.visibilityState === "visible");
+  const [online, setOnline] = useState(() => navigator.onLine);
   const [goal, setGoal] = useState("");
   const [run, setRun] = useState<RunState>({ status: "idle" });
 
   useEffect(() => {
-    const controller = new AbortController();
-    (async () => {
+    let active = true;
+    let controller: AbortController | null = null;
+    let staleTimer: number | null = null;
+    const refresh = async () => {
+      if (document.visibilityState !== "visible" || !navigator.onLine) return;
+      controller?.abort();
+      const requestController = new AbortController();
+      controller = requestController;
       try {
         const res = await fetch(`${API_BASE}/agent/status`, {
-          signal: controller.signal,
+          cache: "no-store",
+          signal: requestController.signal,
           headers: { Accept: "application/json" },
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        setStatus((await res.json()) as AgentStatus);
+        const data = (await res.json()) as AgentStatus;
+        if (!active || requestController.signal.aborted) return;
+        const observedAtMs = Date.now();
+        setNowMs(observedAtMs);
+        setStatusObservation({ data, error: false, observedAtMs });
+        if (staleTimer !== null) window.clearTimeout(staleTimer);
+        staleTimer = window.setTimeout(() => {
+          if (active) setNowMs(Date.now());
+        }, AGENT_STATUS_MAX_AGE_MS + 1);
+        setRefreshBoundary((current) =>
+          observedAtMs >= current.requiredObservationAfterMs
+            ? { ...current, pending: false }
+            : current,
+        );
       } catch {
-        if (!controller.signal.aborted) setStatusErr(true);
+        if (!active || requestController.signal.aborted) return;
+        setNowMs(Date.now());
+        setStatusObservation((current) => ({ ...current, error: true }));
       }
-    })();
-    return () => controller.abort();
+    };
+    const updateTransport = () => {
+      const transitionAtMs = Date.now();
+      const nextVisible = document.visibilityState === "visible";
+      const nextOnline = navigator.onLine;
+      setVisible(nextVisible);
+      setOnline(nextOnline);
+      setNowMs(transitionAtMs);
+      setRefreshBoundary({
+        pending: true,
+        requiredObservationAfterMs: transitionAtMs,
+      });
+      if (!nextVisible || !nextOnline) {
+        controller?.abort();
+        return;
+      }
+      void refresh();
+    };
+    const poll = window.setInterval(() => {
+      setNowMs(Date.now());
+      if (document.visibilityState === "visible" && navigator.onLine) {
+        void refresh();
+      }
+    }, AGENT_STATUS_POLL_MS);
+    document.addEventListener("visibilitychange", updateTransport);
+    window.addEventListener("focus", updateTransport);
+    window.addEventListener("online", updateTransport);
+    window.addEventListener("offline", updateTransport);
+    updateTransport();
+    return () => {
+      active = false;
+      controller?.abort();
+      window.clearInterval(poll);
+      if (staleTimer !== null) window.clearTimeout(staleTimer);
+      document.removeEventListener("visibilitychange", updateTransport);
+      window.removeEventListener("focus", updateTransport);
+      window.removeEventListener("online", updateTransport);
+      window.removeEventListener("offline", updateTransport);
+    };
   }, []);
+
+  const status = projectFreshAgentStatus(statusObservation.data, {
+    error: statusObservation.error,
+    observedAtMs: statusObservation.observedAtMs,
+    nowMs,
+    visible,
+    online,
+    refreshPending: refreshBoundary.pending,
+    requiredObservationAfterMs: refreshBoundary.requiredObservationAfterMs,
+  });
+  const statusErr = statusObservation.error || !visible || !online;
 
   const available = status?.available === true;
 

@@ -13,6 +13,7 @@ import {
   type ImmuneMode,
   type SignedActionEnvelope,
 } from "@/lib/immune-api";
+import { summarizeOperatorError } from "@/lib/operator-error";
 
 const MODES: { id: ImmuneMode; label: string; sub: string; icon: React.FC<any> }[] = [
   { id: "PASS", label: "PASS", sub: "Clean payload · Signature match", icon: ShieldCheck },
@@ -46,6 +47,7 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
   const [verifierBusy, setVerifierBusy] = useState(false);
   const [cycleActor, setCycleActor] = useState("");
   const [cycleIntent, setCycleIntent] = useState("");
+  const [cycleError, setCycleError] = useState<string | null>(null);
   const canRunCycle =
     evidenceState === "VERIFIED" &&
     currentMode === "PASS" &&
@@ -83,6 +85,7 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
     const actor = cycleActor.trim();
     const intent = cycleIntent.trim();
     if (!canRunCycle || !actor || !intent) return;
+    setCycleError(null);
     runCycle.mutate(
       { data: { actor, intent } },
       {
@@ -90,6 +93,7 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
           setCycleIntent("");
           invalidateAll();
         },
+        onError: (error) => setCycleError(summarizeOperatorError(error)),
       },
     );
   };
@@ -223,8 +227,13 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
           <input
             id="cycle-actor"
             value={cycleActor}
-            onChange={(event) => setCycleActor(event.target.value)}
+            onChange={(event) => {
+              setCycleActor(event.target.value);
+              setCycleError(null);
+            }}
             autoComplete="off"
+            maxLength={256}
+            aria-invalid={cycleError !== null}
             className="rounded-sm border border-border/50 bg-black/70 px-3 py-2 font-mono text-[10px] text-foreground focus:border-primary focus:outline-none"
           />
           <label htmlFor="cycle-intent" className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
@@ -233,10 +242,26 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
           <textarea
             id="cycle-intent"
             value={cycleIntent}
-            onChange={(event) => setCycleIntent(event.target.value)}
+            onChange={(event) => {
+              setCycleIntent(event.target.value);
+              setCycleError(null);
+            }}
+            maxLength={4_096}
+            aria-invalid={cycleError !== null}
             className="min-h-20 resize-y rounded-sm border border-border/50 bg-black/70 p-3 font-mono text-[10px] text-foreground focus:border-primary focus:outline-none"
           />
         </div>
+
+        {cycleError ? (
+          <p
+            className="rounded-sm border border-destructive/50 bg-destructive/10 p-3 font-mono text-[9px] leading-relaxed text-destructive"
+            data-testid="cycle-request-error"
+            role="alert"
+          >
+            Governed-cycle result was not confirmed. Verify the ledger before
+            retrying. Error summary: {cycleError}
+          </p>
+        ) : null}
 
         <button
           data-testid="button-run-cycle"
