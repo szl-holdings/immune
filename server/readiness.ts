@@ -156,7 +156,12 @@ export function buildReadinessContract(inputs: ReadinessInputs): ImmuneReadiness
     REVISION_PATTERN.test(sourceRevision ?? "") &&
     sourceRevision === build.build.revision &&
     source.manifest_schema === "szl.hf-deploy-manifest/v2" &&
-    !["INVALID_MANIFEST", "ARTIFACT_HASH_MISMATCH", "REVISION_DRIFT"].includes(
+    ![
+      "INVALID_MANIFEST",
+      "ARTIFACT_HASH_MISMATCH",
+      "RUNTIME_ARTIFACT_UNAVAILABLE",
+      "REVISION_DRIFT",
+    ].includes(
       source.alignment_state,
     );
   const runtimeBound =

@@ -25,8 +25,9 @@ import {
   type DecisionState,
   type SourceState,
 } from "../../contracts/decision-genome";
-import { runGovernedCycle } from "./cycle";
-import { getState, type EvidenceState } from "./state";
+import { CycleReadinessError, runGovernedCycle } from "./cycle";
+import { readinessStatus, type ImmuneReadiness } from "../../readiness";
+import { getState, type AuthoritySnapshot, type EvidenceState } from "./state";
 import { ledgerCount, ledgerLastHash, verifyLedger } from "./ledger";
 import { HUKLLA_REGISTRY } from "./huklla";
 import { listSentraSignatures } from "./sentra";
@@ -36,6 +37,16 @@ import { chatComplete, inferenceConfigured, inferenceInfo, type ChatMessage } fr
 const MAX_STEPS = 5;
 const MAX_GOAL_LEN = 500;
 const MAX_TOKENS = 400;
+
+function requireWriteReadiness(res: Response): boolean {
+  const readiness = readinessStatus();
+  if (readiness.write_ready) return true;
+  res.status(503).json({
+    error: "WRITE_NOT_READY",
+    blockers: readiness.blockers,
+  });
+  return false;
+}
 
 // ---- Real, read-only tools. Each returns LIVE data about IMMUNE itself. ----
 type ToolFn = (args: Record<string, unknown>) => {
@@ -166,25 +177,70 @@ function rateCheck(ip: string): { ok: true } | { ok: false; reason: string; retr
   return { ok: true };
 }
 
-export function agentStatus(): Record<string, unknown> {
-  const inf = inferenceInfo();
-  const authority = getState();
-  const available = inf.configured && authority.evidenceState === "VERIFIED";
+export type AgentStatusView = {
+  available: boolean;
+  provenance: "LIVE" | "UNAVAILABLE";
+  blockers: string[];
+  inference: ReturnType<typeof inferenceInfo>;
+  readiness: Pick<ImmuneReadiness, "status" | "write_ready">;
+  authority: {
+    evidenceState: EvidenceState;
+    reason: string;
+    receiptHash: string | null;
+  };
+  signing: "ed25519" | "hash-only";
+  tools: string[];
+  maxSteps: number;
+  note: string;
+};
+
+export type AgentStatusDependencies = {
+  inferenceInfo: () => ReturnType<typeof inferenceInfo>;
+  readinessStatus: () => ImmuneReadiness;
+  getState: () => AuthoritySnapshot;
+  signingEnabled: () => boolean;
+};
+
+const DEFAULT_AGENT_STATUS_DEPENDENCIES: AgentStatusDependencies = {
+  inferenceInfo,
+  readinessStatus,
+  getState,
+  signingEnabled,
+};
+
+export function agentStatus(
+  dependencies: AgentStatusDependencies = DEFAULT_AGENT_STATUS_DEPENDENCIES,
+): AgentStatusView {
+  const inf = dependencies.inferenceInfo();
+  const readiness = dependencies.readinessStatus();
+  const authority = dependencies.getState();
+  const available = inf.configured && readiness.write_ready;
+  const blockers = [
+    ...(inf.configured ? [] : ["INFERENCE_UNCONFIGURED"]),
+    ...readiness.blockers,
+  ];
   return {
     available,
-    provenance: available ? "LIVE" : inf.configured ? authority.evidenceState : "UNAVAILABLE",
+    provenance: available ? "LIVE" : "UNAVAILABLE",
+    blockers: [...new Set(blockers)],
     inference: inf,
+    readiness: {
+      status: readiness.status,
+      write_ready: readiness.write_ready,
+    },
     authority: {
       evidenceState: authority.evidenceState,
       reason: authority.reason,
       receiptHash: authority.authorityReceiptHash,
     },
-    signing: signingEnabled() ? "ed25519" : "hash-only",
+    signing: dependencies.signingEnabled() ? "ed25519" : "hash-only",
     tools: TOOL_NAMES,
     maxSteps: MAX_STEPS,
     note: available
       ? "Live governed agent ready — every action is SENTRA-gated and receipted."
-      : "Governed agent unavailable until inference and signed action authority are both verified.",
+      : !inf.configured
+        ? "Governed agent unavailable because inference is not configured."
+        : `Governed agent unavailable until the full server write-readiness contract is satisfied: ${readiness.blockers.join(", ")}.`,
   };
 }
 
@@ -428,6 +484,7 @@ router.post("/frontier/evaluate", async (req: Request, res: Response) => {
   }
 
   const input = parsed.data;
+  if (!requireWriteReadiness(res)) return;
   const ip = req.ip || "unknown";
   const gate = rateCheck(ip);
   if (!gate.ok) {
@@ -437,22 +494,31 @@ router.post("/frontier/evaluate", async (req: Request, res: Response) => {
   }
 
   const genome = buildShadowDecisionGenome(input);
-  const cycle = await runGovernedCycle(
-    { actor: "immune:frontier-shadow", intent: "seal defensive shadow recommendation" },
-    {
-      schemaId: genome.schemaId,
-      decisionId: genome.decisionId,
-      genomeDigest: genome.digest,
-      subjectDigest: genome.subject.digest,
-      policyVersion: FRONTIER_POLICY_VERSION,
-      recommendation: {
-        state: genome.recommendation.state,
-        action: genome.recommendation.action,
-        executable: genome.recommendation.executable,
-        evidenceLabel: genome.recommendation.evidenceLabel,
+  let cycle;
+  try {
+    cycle = await runGovernedCycle(
+      { actor: "immune:frontier-shadow", intent: "seal defensive shadow recommendation" },
+      {
+        schemaId: genome.schemaId,
+        decisionId: genome.decisionId,
+        genomeDigest: genome.digest,
+        subjectDigest: genome.subject.digest,
+        policyVersion: FRONTIER_POLICY_VERSION,
+        recommendation: {
+          state: genome.recommendation.state,
+          action: genome.recommendation.action,
+          executable: genome.recommendation.executable,
+          evidenceLabel: genome.recommendation.evidenceLabel,
+        },
       },
-    },
-  );
+    );
+  } catch (error) {
+    if (error instanceof CycleReadinessError) {
+      res.status(503).json({ error: "WRITE_NOT_READY", blockers: error.blockers });
+      return;
+    }
+    throw error;
+  }
 
   res.status(cycle.pass ? 200 : 409).json({
     genome,
@@ -496,6 +562,7 @@ router.post("/run", async (req: Request, res: Response) => {
     res.status(400).json({ error: `goal exceeds ${MAX_GOAL_LEN} characters` });
     return;
   }
+  if (!requireWriteReadiness(res)) return;
 
   const ip = req.ip || "unknown";
   const gate = rateCheck(ip);
@@ -620,6 +687,13 @@ router.post("/run", async (req: Request, res: Response) => {
         role: "user",
         content: `Observation (LIVE) for ${tool}: ${JSON.stringify(observation)}`,
       });
+    }
+  } catch (error) {
+    if (error instanceof CycleReadinessError) {
+      blocked = true;
+      stoppedReason = `write readiness lost: ${error.blockers.join(", ")}`;
+    } else {
+      throw error;
     }
   } finally {
     concurrent = Math.max(0, concurrent - 1);

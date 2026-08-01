@@ -13,6 +13,7 @@ import {
   type ImmuneMode,
   type SignedActionEnvelope,
 } from "@/lib/immune-api";
+import { summarizeOperatorError } from "@/lib/operator-error";
 
 const MODES: { id: ImmuneMode; label: string; sub: string; icon: React.FC<any> }[] = [
   { id: "PASS", label: "PASS", sub: "Clean payload · Signature match", icon: ShieldCheck },
@@ -44,6 +45,13 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
   const [envelopeDraft, setEnvelopeDraft] = useState("");
   const [envelopeError, setEnvelopeError] = useState<string | null>(null);
   const [verifierBusy, setVerifierBusy] = useState(false);
+  const [cycleActor, setCycleActor] = useState("");
+  const [cycleIntent, setCycleIntent] = useState("");
+  const [cycleError, setCycleError] = useState<string | null>(null);
+  const canRunCycle =
+    evidenceState === "VERIFIED" &&
+    currentMode === "PASS" &&
+    !authority.deadman;
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: getGetImmuneStateQueryKey() });
@@ -74,12 +82,21 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
   };
 
   const handleRun = () => {
+    const actor = cycleActor.trim();
+    const intent = cycleIntent.trim();
+    if (!canRunCycle || !actor || !intent) return;
+    setCycleError(null);
     runCycle.mutate(
-      { data: { actor: "operator@immune.demo", intent: "DEMO: inject payload" } },
+      { data: { actor, intent } },
       {
         onSuccess: () => {
+          setCycleIntent("");
           invalidateAll();
         },
+        onError: (error) =>
+          setCycleError(
+            summarizeOperatorError(error, { method: "POST", path: "/cycle" }),
+          ),
       },
     );
   };
@@ -203,10 +220,62 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
           )}
         </div>
 
+        <div className="flex flex-col gap-2 rounded-sm border border-warning/30 bg-warning/5 p-3">
+          <p id="cycle-write-warning" className="font-mono text-[9px] leading-relaxed text-warning">
+            Accepted input writes a real governed-cycle receipt. Enter the actual actor and intent; no demo payload is supplied.
+          </p>
+          <label htmlFor="cycle-actor" className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
+            Actor
+          </label>
+          <input
+            id="cycle-actor"
+            value={cycleActor}
+            onChange={(event) => {
+              setCycleActor(event.target.value);
+              setCycleError(null);
+            }}
+            autoComplete="off"
+            maxLength={256}
+            aria-invalid={cycleError !== null}
+            className="rounded-sm border border-border/50 bg-black/70 px-3 py-2 font-mono text-[10px] text-foreground focus:border-primary focus:outline-none"
+          />
+          <label htmlFor="cycle-intent" className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
+            Intent
+          </label>
+          <textarea
+            id="cycle-intent"
+            value={cycleIntent}
+            onChange={(event) => {
+              setCycleIntent(event.target.value);
+              setCycleError(null);
+            }}
+            maxLength={4_096}
+            aria-invalid={cycleError !== null}
+            className="min-h-20 resize-y rounded-sm border border-border/50 bg-black/70 p-3 font-mono text-[10px] text-foreground focus:border-primary focus:outline-none"
+          />
+        </div>
+
+        {cycleError ? (
+          <p
+            className="rounded-sm border border-destructive/50 bg-destructive/10 p-3 font-mono text-[9px] leading-relaxed text-destructive"
+            data-testid="cycle-request-error"
+            role="alert"
+          >
+            Governed-cycle result was not confirmed. Verify the ledger before
+            retrying. Error summary: {cycleError}
+          </p>
+        ) : null}
+
         <button
           data-testid="button-run-cycle"
           onClick={handleRun}
-          disabled={runCycle.isPending || evidenceState !== "VERIFIED"}
+          disabled={
+            runCycle.isPending ||
+            !canRunCycle ||
+            cycleActor.trim().length === 0 ||
+            cycleIntent.trim().length === 0
+          }
+          aria-describedby="cycle-write-warning"
           className={`
             group relative w-full overflow-hidden rounded-sm font-display font-bold text-xs uppercase tracking-[0.2em] py-4 transition-all
             ${currentMode === "DEADMAN" 
@@ -223,8 +292,10 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
             <Play className="w-4 h-4 fill-current" />
             {runCycle.isPending
               ? "Executing..."
-              : evidenceState === "VERIFIED"
-                ? "Inject Intent"
+              : canRunCycle
+                ? "Run Governed Cycle"
+                : evidenceState === "VERIFIED"
+                  ? "Authority not write-ready"
                 : "Evidence unavailable"}
           </span>
         </button>

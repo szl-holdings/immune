@@ -2,9 +2,9 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
 
 const RunImmuneCycleBody = z.object({
-  actor: z.string().optional(),
-  intent: z.string().optional(),
-});
+  actor: z.string().trim().min(1).max(256),
+  intent: z.string().trim().min(1).max(4_096),
+}).strict();
 import {
   AuthorityError,
   applySignedAction,
@@ -19,7 +19,7 @@ import {
   evidenceLatest,
 } from "./ledger";
 import { getFrameworks, getTransparency, getIncidents, getLeaders, getPulse } from "./intel";
-import { runGovernedCycle } from "./cycle";
+import { CycleReadinessError, runGovernedCycle } from "./cycle";
 import { publicKeyInfo } from "./signing";
 import agentRouter, { agentStatus } from "./agent";
 
@@ -71,14 +71,19 @@ router.post("/cycle", async (req: Request, res: Response) => {
     res.status(400).json({ error: "invalid body", detail: parsed.error.flatten() });
     return;
   }
-  const { actor, intent } = parsed.data;
-
-  const intentPayload = {
-    actor: actor ?? "operator@immune.demo",
-    intent: intent ?? "DEMO: read public market snapshot",
-  };
-
-  const result = await runGovernedCycle(intentPayload);
+  let result;
+  try {
+    result = await runGovernedCycle(parsed.data);
+  } catch (error) {
+    if (error instanceof CycleReadinessError) {
+      res.status(503).json({
+        error: "WRITE_NOT_READY",
+        blockers: error.blockers,
+      });
+      return;
+    }
+    throw error;
+  }
 
   res.json({
     pass: result.pass,

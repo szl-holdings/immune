@@ -80,9 +80,16 @@ export default function Home() {
   };
 
   return (
-    <div className="relative w-full bg-background text-foreground font-sans">
+    <>
+      <a className="kanchay-skip" href="#main-content">
+        Skip to evidence
+      </a>
+      <main id="main-content" className="relative w-full bg-background text-foreground font-sans">
       {/* ============================ HERO ============================ */}
-      <section className="relative flex min-h-[100svh] w-full flex-col overflow-x-hidden lg:h-screen lg:block lg:overflow-hidden">
+      <section
+        className="relative flex min-h-[100svh] w-full flex-col overflow-x-hidden lg:h-screen lg:block lg:overflow-hidden"
+        aria-labelledby="immune-title"
+      >
         {/* 3D Background */}
         <div className="absolute inset-0 z-0">
           <ThreeScene authority={authority} />
@@ -103,7 +110,7 @@ export default function Home() {
         </AnimatePresence>
 
         {/* Top HUD */}
-        <div className="absolute top-0 left-0 w-full p-4 sm:p-6 z-30 flex justify-between items-start gap-3 pointer-events-none">
+        <header className="absolute top-0 left-0 w-full p-4 sm:p-6 z-30 flex justify-between items-start gap-3 pointer-events-none">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-4">
               <motion.div
@@ -115,7 +122,7 @@ export default function Home() {
                 <StatusIcon />
               </motion.div>
               <div>
-                <h1 className="text-2xl sm:text-3xl font-display font-bold tracking-widest leading-none flex items-center gap-3">
+                <h1 id="immune-title" className="text-2xl sm:text-3xl font-display font-bold tracking-widest leading-none flex items-center gap-3">
                   <span className={deadman ? "glitch-text text-destructive" : ""}>IMMUNE</span>
                 </h1>
                 <p className="hidden sm:block text-muted-foreground font-mono text-xs uppercase tracking-[0.2em] mt-1">
@@ -143,18 +150,24 @@ export default function Home() {
               </span>
             </div>
           </div>
-        </div>
+        </header>
 
         {/* Panels: stacked in normal flow on mobile/tablet, absolute HUD on desktop (lg:contents) */}
-        <div className="relative z-20 flex w-full flex-col gap-4 px-4 pb-10 pt-24 sm:px-6 lg:contents">
+        <div className="kanchay-safe relative z-20 flex w-full flex-col gap-4 px-4 pb-10 pt-24 sm:px-6 lg:contents">
           {/* Left Panel: Controls */}
           <motion.div
             initial={{ x: -60, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ delay: 0.2, type: "spring", stiffness: 200, damping: 20 }}
-            className="w-full pointer-events-auto flex flex-col gap-6 lg:absolute lg:left-6 lg:top-32 lg:bottom-6 lg:w-[320px]"
+            className="w-full pointer-events-auto flex flex-col gap-6 lg:absolute lg:left-6 lg:top-32 lg:bottom-6 lg:min-h-0 lg:w-[320px]"
           >
-            <div className="flex-1 bg-black/40 backdrop-blur-md border border-border/50 p-5 sm:p-6 flex flex-col relative overflow-hidden group">
+            <div
+              aria-label="Governed controls"
+              className="group relative flex flex-1 flex-col border border-border/50 bg-black/40 p-5 backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-6 lg:min-h-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-contain [scrollbar-gutter:stable]"
+              data-testid="controls-scroll-region"
+              role="region"
+              tabIndex={0}
+            >
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/50 to-transparent" />
               <ControlsPanel authority={authority} />
             </div>
@@ -202,16 +215,64 @@ export default function Home() {
         </motion.div>
       </section>
 
+      {/* ===================== VALUE + PROOF BOUNDARY ===================== */}
+      <section className="relative z-20 border-y border-primary/10 bg-black/70" aria-labelledby="proof-boundary-title">
+        <div className="mx-auto grid max-w-6xl gap-8 px-6 py-14 lg:grid-cols-[1.05fr_1.95fr]">
+          <header>
+            <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-secondary">
+              Investor brief · proof before posture
+            </p>
+            <h2 id="proof-boundary-title" className="mt-3 font-display text-2xl font-bold tracking-widest">
+              GOVERNED ACTIONS WITH A REPLAYABLE AUDIT PATH
+            </h2>
+            <p className="mt-4 max-w-xl font-mono text-[11px] leading-relaxed text-muted-foreground">
+              IMMUNE places admission, tripwire evaluation, and an append-only receipt between intent and execution.
+              The value is inspectability: authority and ledger evidence can fail closed without turning an outage into a green claim.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <a className="kanchay-action" href="/api/immune/state">Inspect authority JSON</a>
+              <a className="kanchay-action" href="/api/immune/ledger/verify">Verify the ledger</a>
+            </div>
+          </header>
+
+          <div className="grid gap-3 sm:grid-cols-2" aria-label="Evidence state contract">
+            <article className="kanchay-proof-card">
+              <h3>LIVE / MEASURED</h3>
+              <p>Reserved for a current successful API observation. Authority expires and transport loss invalidates cached green state.</p>
+            </article>
+            <article className="kanchay-proof-card">
+              <h3>DERIVED</h3>
+              <p>Chain verification and summaries are computed from retrieved receipt bytes; they do not establish outcome quality.</p>
+            </article>
+            <article className="kanchay-proof-card">
+              <h3>MODELED / SAMPLE</h3>
+              <p>Frontier recommendations are non-executable MODELED output. Sample or demonstration input is never promoted to measured evidence.</p>
+            </article>
+            <article className="kanchay-proof-card">
+              <h3>UNAVAILABLE / LIMITS</h3>
+              <p>Missing, stale, contradictory, or unreachable authority fails closed. Public readback is not an ATO or a performance claim.</p>
+            </article>
+            <aside className="kanchay-quickstart sm:col-span-2" aria-label="Developer quickstart">
+              <strong>Developer quickstart</strong>
+              <code>pnpm install --frozen-lockfile</code>
+              <code>pnpm run typecheck</code>
+              <code>pnpm run build</code>
+              <span>Run locally before treating any UI state as observed.</span>
+            </aside>
+          </div>
+        </div>
+      </section>
+
       {/* ===================== LIVE INTELLIGENCE ===================== */}
-      <section className="relative z-20 bg-background border-t border-primary/10">
+      <section className="relative z-20 bg-background border-t border-primary/10" aria-labelledby="intelligence-title">
         <div className="max-w-6xl mx-auto px-6 py-20 flex flex-col gap-12">
           <header className="flex flex-col gap-3">
             <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.3em] text-primary/70">
               <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
               Verifiable AI · You Can't Fake It
             </div>
-            <h2 className="text-2xl md:text-3xl font-display font-bold tracking-widest">
-              WIRED TO REAL, LIVE, INDUSTRY-STANDARD DATA
+            <h2 id="intelligence-title" className="text-2xl md:text-3xl font-display font-bold tracking-widest">
+              EVIDENCE FEEDS WITH SOURCE-BY-SOURCE STATE
             </h2>
             <p className="font-mono text-[11px] text-muted-foreground leading-relaxed max-w-3xl">
               IMMUNE's append-only receipt chain is the same principle public transparency logs use —
@@ -239,12 +300,13 @@ export default function Home() {
           </div>
 
           <footer className="border-t border-border/40 pt-6 font-mono text-[9px] text-muted-foreground/50 leading-relaxed">
-            Provenance is enforced end-to-end: the receipt chain is real SHA-256 over canonical bytes,
-            the transparency count is a live read of Sigstore Rekor, and every external link resolves to
-            its real public source. Nothing on this page is fabricated.
+            The server recomputes the SHA-256 receipt chain over canonical bytes. External feeds retain
+            their individual provenance state; unavailable sources remain visible and are never promoted
+            to live evidence.
           </footer>
         </div>
       </section>
-    </div>
+      </main>
+    </>
   );
 }

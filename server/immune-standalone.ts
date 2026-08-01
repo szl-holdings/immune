@@ -12,12 +12,17 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import immuneRouter from "./routes/immune";
-import { getState } from "./routes/immune/state";
 import { verifyLedger } from "./routes/immune/ledger";
-import { buildInfo, sourceAttestation } from "./source-attestation";
-import { isActionReady, readinessHttpResult } from "./readiness";
+import {
+  bindRuntimeStaticDir,
+  buildInfo,
+  resolveRuntimeStaticDir,
+  sourceAttestation,
+} from "./source-attestation";
+import { readinessHttpResult } from "./readiness";
 
 const __serverDir = path.dirname(fileURLToPath(import.meta.url));
+const staticDir = bindRuntimeStaticDir(resolveRuntimeStaticDir(__serverDir));
 
 const app = express();
 
@@ -29,14 +34,12 @@ app.use(express.json({ limit: "2mb" }));
 
 // Lightweight liveness probe (handy for Docker/HF healthchecks).
 app.get("/healthz", (_req: Request, res: Response) => {
-  const authority = getState();
   res.json({
     ok: true,
     service: "immune-standalone",
     transport_state: "REACHABLE",
-    verification_state: authority.evidenceState,
-    authority_state: authority.authority.enabled ? "SIGNED_ADVISORY_ONLY" : "UNAVAILABLE",
-    write_ready: isActionReady(authority),
+    readiness_state: "NOT_EVALUATED",
+    readiness_endpoint: "/readyz",
   });
 });
 
@@ -76,24 +79,6 @@ app.use("/api", (_req: Request, res: Response) => {
 // Resolve the vite-built static frontend (dist/public). Checked in priority order
 // so the same bundle works whether run from its dist dir (Docker /app/public),
 // from the deploy dir, or straight from the workspace during local testing.
-function resolveStaticDir(): string | null {
-  const candidates = [
-    process.env.IMMUNE_STATIC_DIR,
-    path.resolve(__serverDir, "public"),
-    path.resolve(__serverDir, "dist", "public"),
-    path.resolve(process.cwd(), "public"),
-    path.resolve(process.cwd(), "dist", "public"),
-    path.resolve(__serverDir, "..", "..", "immune-demo", "dist", "public"),
-  ].filter((c): c is string => typeof c === "string" && c.length > 0);
-
-  for (const dir of candidates) {
-    if (fs.existsSync(path.join(dir, "index.html"))) return dir;
-  }
-  return null;
-}
-
-const staticDir = resolveStaticDir();
-
 if (staticDir) {
   app.use(
     express.static(staticDir, {

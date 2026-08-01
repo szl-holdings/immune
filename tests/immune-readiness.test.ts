@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import {
+  bindRuntimeStaticDir,
+  getRuntimeHashBinding,
+} from "../server/source-attestation";
+import {
+  agentStatus,
+  type AgentStatusDependencies,
+} from "../server/routes/immune/agent";
 import {
   buildReadinessContract,
   readinessHttpResult,
@@ -64,6 +74,7 @@ function inputs(): ReadinessInputs {
       },
     },
     runtime: {
+      state: "MATCH",
       available: true,
       reason: null,
       source_repository: "szl-holdings/immune",
@@ -216,6 +227,67 @@ test("full READY requires both verified runtime and verified signed authority", 
   assert.deepEqual(readiness.blockers, []);
 });
 
+test("agent status is LIVE only when inference and full server write readiness pass", () => {
+  const blocked = inputs();
+  blocked.authority = {
+    ...blocked.authority,
+    mode: "PASS",
+    evidenceState: "VERIFIED",
+    reason: "signed action and receipt chain verified",
+    validUntil: "2026-08-01T19:00:00.000Z",
+    updatedAt: "2026-08-01T18:59:00.000Z",
+    requestId: "agent-status-authority-0001",
+    revision: 1,
+    authorityReceiptCount: 1,
+    authorityReceiptHash: DIGEST,
+    authority: {
+      enabled: true,
+      version: "immune.action.v1",
+      keyId: "0123456789abcdef",
+    },
+  };
+  blocked.runtime.state = "MISMATCH";
+  blocked.runtime.available = false;
+  blocked.runtime.reason = "served artifact mismatch";
+  blocked.source.alignment_state = "ARTIFACT_HASH_MISMATCH";
+  blocked.source.alignment = "ARTIFACT_HASH_MISMATCH";
+  blocked.source.state = "ARTIFACT_HASH_MISMATCH";
+  blocked.source.claims.runtime_whitelist_hash_match = false;
+  blocked.build.runtime_hash_match = false;
+  blocked.build.build.runtime_hash_match = false;
+  const blockedReadiness = buildReadinessContract(blocked);
+  const dependencies: AgentStatusDependencies = {
+    inferenceInfo: () => ({
+      configured: true,
+      provider: "test-provider",
+      model: "test-model",
+    }),
+    readinessStatus: () => blockedReadiness,
+    getState: () => blocked.authority,
+    signingEnabled: () => true,
+  };
+
+  let status = agentStatus(dependencies);
+  assert.equal(status.available, false);
+  assert.equal(status.provenance, "UNAVAILABLE");
+  assert.equal(status.readiness.status, "NOT_READY");
+  assert.equal(status.readiness.write_ready, false);
+  assert.ok(status.blockers.includes("RUNTIME_ARTIFACT_INTEGRITY_UNVERIFIED"));
+  assert.match(status.note, /full server write-readiness contract/);
+
+  const ready = inputs();
+  ready.authority = blocked.authority;
+  const readyReadiness = buildReadinessContract(ready);
+  status = agentStatus({
+    ...dependencies,
+    readinessStatus: () => readyReadiness,
+    getState: () => ready.authority,
+  });
+  assert.equal(status.available, true);
+  assert.equal(status.provenance, "LIVE");
+  assert.deepEqual(status.blockers, []);
+});
+
 test("verified reject and deadman authority never become write-ready", () => {
   for (const mode of ["SENTRA_REJECT", "DEADMAN"] as const) {
     const guarded = inputs();
@@ -248,20 +320,256 @@ test("verified reject and deadman authority never become write-ready", () => {
   }
 });
 
+test("runtime binding hashes the executed bundle and selected static tree", {
+  concurrency: false,
+}, (t) => {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "immune-runtime-binding-"));
+  const manifestRoot = path.join(temporary, "manifest");
+  const runtimeRoot = path.join(temporary, "runtime");
+  const runtimePublic = path.join(runtimeRoot, "public");
+  const runtimeAssets = path.join(runtimePublic, "assets");
+  fs.mkdirSync(path.join(manifestRoot, "public", "assets"), { recursive: true });
+  fs.mkdirSync(runtimeAssets, { recursive: true });
+  const serverBytes = "console.log('bound server');\n";
+  const indexBytes = "<!doctype html><title>bound</title>\n";
+  const scriptBytes = "console.log('bound client');\n";
+  const styleBytes = ":root { color-scheme: dark; }\n";
+  const digest = (value: string) =>
+    createHash("sha256").update(value).digest("hex");
+  fs.writeFileSync(path.join(manifestRoot, "immune-server.js"), serverBytes);
+  fs.writeFileSync(path.join(manifestRoot, "public", "index.html"), indexBytes);
+  fs.writeFileSync(
+    path.join(manifestRoot, "public", "assets", "app.js"),
+    scriptBytes,
+  );
+  fs.writeFileSync(
+    path.join(manifestRoot, "public", "assets", "app.css"),
+    styleBytes,
+  );
+  const runtimeServer = path.join(runtimeRoot, "immune-server.js");
+  const runtimeIndex = path.join(runtimePublic, "index.html");
+  const runtimeScript = path.join(runtimeAssets, "app.js");
+  const runtimeStyle = path.join(runtimeAssets, "app.css");
+  fs.writeFileSync(runtimeServer, serverBytes);
+  fs.writeFileSync(runtimeIndex, indexBytes);
+  fs.writeFileSync(runtimeScript, scriptBytes);
+  fs.writeFileSync(runtimeStyle, styleBytes);
+  const manifestPath = path.join(manifestRoot, "hf-deploy-manifest.json");
+  const writeManifest = (artifacts: Record<string, string>) => {
+    fs.writeFileSync(manifestPath, JSON.stringify({
+      schema: "szl.hf-deploy-manifest/v2",
+      source: {
+        repository: "szl-holdings/immune",
+        revision: REVISION,
+        ref: "refs/heads/main",
+      },
+      workflow: { repository: null, run_id: null, run_attempt: null, ref: null },
+      destination: "SZLHOLDINGS/immune",
+      artifacts,
+      claims: {
+        github_actions_provenance_verified: false,
+        cryptographic_release_receipt: false,
+      },
+    }));
+  };
+  const artifacts = {
+    "immune-server.js": digest(serverBytes),
+    "public/index.html": digest(indexBytes),
+    "public/assets/app.js": digest(scriptBytes),
+    "public/assets/app.css": digest(styleBytes),
+  };
+  writeManifest(artifacts);
+
+  const names = [
+    "IMMUNE_DEPLOY_MANIFEST_PATH",
+    "IMMUNE_DEPLOY_MANIFEST",
+    "IMMUNE_STATIC_DIR",
+  ] as const;
+  const before = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+  try {
+    process.env.IMMUNE_DEPLOY_MANIFEST_PATH = manifestPath;
+    process.env.IMMUNE_DEPLOY_MANIFEST = manifestPath;
+    process.env.IMMUNE_STATIC_DIR = runtimePublic;
+    const selection = { serverPath: runtimeServer, staticDir: runtimePublic };
+    let binding = getRuntimeHashBinding(selection);
+    assert.equal(binding.state, "MATCH");
+    assert.equal(binding.available, true);
+    assert.equal(binding.reason, null);
+    assert.equal(binding.immune_server_sha256, digest(serverBytes));
+    assert.equal(binding.public_index_sha256, digest(indexBytes));
+
+    fs.writeFileSync(runtimeServer, "console.log('unbound server');\n");
+    binding = getRuntimeHashBinding(selection);
+    assert.equal(binding.state, "MISMATCH");
+    assert.equal(binding.available, false);
+    assert.equal(
+      binding.reason,
+      "running server bundle digest does not match the deployment manifest",
+    );
+    assert.notEqual(binding.immune_server_sha256, digest(serverBytes));
+
+    fs.rmSync(runtimeIndex);
+    binding = getRuntimeHashBinding(selection);
+    assert.equal(binding.state, "MISMATCH");
+    assert.equal(
+      binding.reason,
+      "running server bundle digest does not match the deployment manifest",
+    );
+
+    fs.writeFileSync(runtimeServer, serverBytes);
+    fs.writeFileSync(runtimeIndex, indexBytes);
+    fs.writeFileSync(runtimeScript, "console.log('tampered client');\n");
+    binding = getRuntimeHashBinding(selection);
+    assert.equal(binding.state, "MISMATCH");
+    assert.equal(
+      binding.reason,
+      "public/assets/app.js: selected runtime artifact digest mismatch",
+    );
+
+    fs.writeFileSync(runtimeScript, scriptBytes);
+    fs.writeFileSync(runtimeIndex, "<!doctype html><title>unbound</title>\n");
+    binding = getRuntimeHashBinding(selection);
+    assert.equal(binding.state, "MISMATCH");
+    assert.equal(binding.available, false);
+    assert.equal(
+      binding.reason,
+      "public/index.html: selected runtime artifact digest mismatch",
+    );
+    assert.notEqual(binding.public_index_sha256, digest(indexBytes));
+
+    fs.writeFileSync(runtimeIndex, indexBytes);
+    fs.rmSync(runtimeStyle);
+    binding = getRuntimeHashBinding(selection);
+    assert.equal(binding.state, "UNAVAILABLE");
+    assert.equal(
+      binding.reason,
+      "public/assets/app.css: selected runtime artifact is unavailable",
+    );
+    fs.writeFileSync(runtimeStyle, styleBytes);
+
+    binding = getRuntimeHashBinding({ serverPath: runtimeServer, staticDir: null });
+    assert.equal(binding.state, "UNAVAILABLE");
+    assert.equal(binding.reason, "selected runtime static directory is unavailable");
+
+    fs.writeFileSync(runtimeServer, "console.log('unbound server');\n");
+    const withoutRequiredIndex = { ...artifacts };
+    delete (withoutRequiredIndex as Partial<typeof artifacts>)["public/index.html"];
+    writeManifest(withoutRequiredIndex);
+    binding = getRuntimeHashBinding(selection);
+    assert.equal(binding.state, "MISMATCH");
+    assert.equal(
+      binding.reason,
+      "running server bundle digest does not match the deployment manifest",
+    );
+
+    fs.writeFileSync(runtimeServer, serverBytes);
+    writeManifest({ "immune-server.js": digest(serverBytes) });
+    binding = getRuntimeHashBinding({ serverPath: runtimeRoot, staticDir: runtimePublic });
+    assert.equal(binding.state, "MISMATCH");
+    assert.equal(
+      binding.reason,
+      "running server bundle is not a regular non-symlink file",
+    );
+
+    writeManifest(artifacts);
+    const externalScript = path.join(temporary, "outside.js");
+    fs.writeFileSync(externalScript, scriptBytes);
+    fs.rmSync(runtimeScript);
+    let symlinkCreated = false;
+    try {
+      fs.symlinkSync(externalScript, runtimeScript, "file");
+      symlinkCreated = true;
+    } catch (error) {
+      const code = error instanceof Error && "code" in error
+        ? String((error as NodeJS.ErrnoException).code)
+        : "UNKNOWN";
+      assert.ok(["EPERM", "EACCES"].includes(code));
+      t.diagnostic(`runtime symlink negative unavailable on this host: ${code}`);
+      if (fs.existsSync(runtimeScript)) fs.rmSync(runtimeScript, { force: true });
+    }
+    if (symlinkCreated) {
+      binding = getRuntimeHashBinding(selection);
+      assert.equal(binding.state, "MISMATCH");
+      assert.equal(
+        binding.reason,
+        "public/assets/app.js: selected runtime path contains a symlink",
+      );
+      fs.rmSync(runtimeScript);
+    }
+    fs.writeFileSync(runtimeScript, scriptBytes);
+
+    writeManifest({
+      "immune-server.js": digest(serverBytes),
+      "public/index.html": digest(indexBytes),
+      "public/../outside.js": digest(scriptBytes),
+    });
+    binding = getRuntimeHashBinding(selection);
+    assert.equal(binding.state, "UNAVAILABLE");
+    assert.equal(binding.reason, "deployment manifest artifact map is unsafe");
+
+    writeManifest(artifacts);
+    fs.writeFileSync(runtimeServer, serverBytes);
+    fs.writeFileSync(runtimeIndex, indexBytes);
+    fs.writeFileSync(runtimeScript, scriptBytes);
+    fs.writeFileSync(runtimeStyle, styleBytes);
+    const alternatePublic = path.join(temporary, "alternate-public");
+    fs.mkdirSync(path.join(alternatePublic, "assets"), { recursive: true });
+    fs.writeFileSync(path.join(alternatePublic, "index.html"), indexBytes);
+    fs.writeFileSync(path.join(alternatePublic, "assets", "app.js"), scriptBytes);
+    fs.writeFileSync(path.join(alternatePublic, "assets", "app.css"), styleBytes);
+
+    assert.equal(bindRuntimeStaticDir(runtimePublic), path.resolve(runtimePublic));
+    process.env.IMMUNE_STATIC_DIR = alternatePublic;
+    fs.writeFileSync(runtimeScript, "console.log('startup tree tampered');\n");
+    binding = getRuntimeHashBinding({ serverPath: runtimeServer });
+    assert.equal(binding.state, "MISMATCH");
+    assert.equal(
+      binding.reason,
+      "public/assets/app.js: selected runtime artifact digest mismatch",
+    );
+    assert.throws(
+      () => bindRuntimeStaticDir(alternatePublic),
+      /runtime static directory is already bound/,
+    );
+  } finally {
+    for (const name of names) {
+      const value = before[name];
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
 test("readyz is registered before static hosting and metadata is evidence-scoped", () => {
   const root = path.resolve(import.meta.dirname, "..");
   const server = fs.readFileSync(path.join(root, "server/immune-standalone.ts"), "utf8");
   const readyRoute = server.indexOf('app.get("/readyz"');
+  const healthRoute = server.indexOf('app.get("/healthz"');
   const staticHosting = server.indexOf("express.static(staticDir");
   const spaFallback = server.indexOf('app.get("/{*splat}"');
+  const healthHandler = server.slice(healthRoute, readyRoute);
+  assert.ok(healthRoute >= 0);
   assert.ok(readyRoute >= 0);
   assert.ok(staticHosting > readyRoute);
   assert.ok(spaFallback > readyRoute);
   assert.match(server, /const \{ statusCode, body \} = readinessHttpResult\(\)/);
+  assert.match(
+    server,
+    /const staticDir = bindRuntimeStaticDir\(resolveRuntimeStaticDir\(__serverDir\)\)/,
+  );
+  assert.match(healthHandler, /readiness_state: "NOT_EVALUATED"/);
+  assert.match(healthHandler, /readiness_endpoint: "\/readyz"/);
+  assert.doesNotMatch(healthHandler, /readinessStatus|verifyLedger|getRuntimeHashBinding/);
+  assert.doesNotMatch(healthHandler, /write_ready|verification_state|authority_state/);
   assert.match(server, /res\.status\(statusCode\)\.type\("application\/json"\)\.json\(body\)/);
 
   const html = fs.readFileSync(path.join(root, "frontend/index.html"), "utf8");
   const home = fs.readFileSync(path.join(root, "frontend/src/pages/Home.tsx"), "utf8");
+  const agentConsole = fs.readFileSync(
+    path.join(root, "frontend/src/components/AgentConsole.tsx"),
+    "utf8",
+  );
   assert.match(html, /<title>IMMUNE \| Evidence-Scoped AI Defense<\/title>/);
   assert.match(html, /rel="canonical" href="https:\/\/szlholdings-immune\.hf\.space\/"/);
   assert.match(html, /rel="source" href="https:\/\/github\.com\/szl-holdings\/immune"/);
@@ -270,4 +578,12 @@ test("readyz is registered before static hosting and metadata is evidence-scoped
   assert.doesNotMatch(html, /Investor Demo|built on Replit|Update this description/);
   assert.match(home, /document\.title = "IMMUNE \| Evidence-Scoped AI Defense"/);
   assert.doesNotMatch(home, /document\.title = "IMMUNE — Verifiable-AI Defense"/);
+  assert.match(home, /data-testid="controls-scroll-region"/);
+  assert.match(home, /lg:overflow-y-auto/);
+  assert.match(home, /lg:overscroll-contain/);
+  assert.match(home, /tabIndex=\{0\}/);
+  assert.match(home, /focus-visible:ring-2/);
+  assert.match(agentConsole, /Governed agent blocked/);
+  assert.match(agentConsole, /All write paths stay fail-closed/);
+  assert.doesNotMatch(agentConsole, /manual governed cycle above still runs/iu);
 });
