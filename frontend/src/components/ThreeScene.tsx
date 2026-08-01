@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { ImmuneCycleResult } from "@/lib/immune-api";
+import type { AuthoritativeTripwireState } from "@/lib/immune-api";
+import { authorityVisualState } from "@/lib/authority-view";
 
-export function ThreeScene({ lastCycleResult }: { lastCycleResult: ImmuneCycleResult | null }) {
+export function ThreeScene({ authority }: { authority: AuthoritativeTripwireState }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [webglError, setWebglError] = useState<string | null>(null);
+  const visualState = authorityVisualState(authority);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -157,8 +159,12 @@ export function ThreeScene({ lastCycleResult }: { lastCycleResult: ImmuneCycleRe
     
     let time = 0;
     
-    let isDeadman = false;
-    let isReject = false;
+    const isDeadman = visualState === "VERIFIED_DEADMAN";
+    const isReject =
+      visualState === "VERIFIED_REJECT" ||
+      visualState === "FAILED" ||
+      visualState === "UNAVAILABLE" ||
+      visualState === "STALE";
     let pulseSpeed = 1;
     let targetIntensity = 1;
     
@@ -174,11 +180,6 @@ export function ThreeScene({ lastCycleResult }: { lastCycleResult: ImmuneCycleRe
       requestAnimationFrame(animate);
       
       time += 0.01 * pulseSpeed;
-      
-      if (lastCycleResult) {
-        isDeadman = lastCycleResult.deadman;
-        isReject = lastCycleResult.mode === "SENTRA_REJECT";
-      }
       
       if (isDeadman) {
         // DEADMAN: Red alert, frozen motion
@@ -272,10 +273,11 @@ export function ThreeScene({ lastCycleResult }: { lastCycleResult: ImmuneCycleRe
         mountRef.current.removeChild(renderer.domElement);
       }
     };
-  }, [lastCycleResult]);
+  }, [visualState]);
 
   if (webglError) {
-    const deadman = lastCycleResult?.deadman ?? false;
+    const deadman = visualState === "VERIFIED_DEADMAN";
+    const unavailable = authority.evidenceState !== "VERIFIED";
     return (
       <div className="w-full h-full flex items-center justify-center bg-[#050508] text-slate-200 font-mono text-sm p-6 relative">
         {deadman && <div className="absolute inset-0 border-4 border-red-500/50 animate-pulse" />}
@@ -309,6 +311,11 @@ export function ThreeScene({ lastCycleResult }: { lastCycleResult: ImmuneCycleRe
               ▲ DEADMAN ENGAGED — pipeline frozen
             </div>
           )}
+          {unavailable && (
+            <div className="border border-amber-500/50 bg-amber-500/10 px-6 py-2 text-sm font-bold uppercase tracking-widest text-amber-400">
+              Authority {authority.evidenceState} — no green control claim
+            </div>
+          )}
           <div className="text-slate-500 text-[10px] mt-8 max-w-md text-center opacity-50">
             WebGL unavailable in this preview.
           </div>
@@ -317,5 +324,12 @@ export function ThreeScene({ lastCycleResult }: { lastCycleResult: ImmuneCycleRe
     );
   }
 
-  return <div ref={mountRef} className="w-full h-full" />;
+  return (
+    <div
+      ref={mountRef}
+      className="w-full h-full"
+      data-authority-state={visualState}
+      aria-label={`Immune authority visualization: ${visualState}`}
+    />
+  );
 }

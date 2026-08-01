@@ -10,6 +10,7 @@ import {
   AuthorityError,
   AuthorityStore,
   actionEnvelopeBytes,
+  authoritativeTripwireState,
   type SignedActionEnvelope,
 } from "../server/routes/immune/state";
 
@@ -80,6 +81,19 @@ test("fresh authority is UNAVAILABLE and fail-closed in WAL mode", (t) => {
     },
     { evidenceState: "UNAVAILABLE", mode: "SENTRA_REJECT", receiptCount: 0 },
   );
+  assert.deepEqual(
+    authoritativeTripwireState(store.snapshot()),
+    {
+      evidenceState: "UNAVAILABLE",
+      mode: "SENTRA_REJECT",
+      deadman: false,
+      tripwire: null,
+      reason: "no verified signed action receipt exists",
+      updatedAt: null,
+      requestId: null,
+      revision: 0,
+    },
+  );
 });
 
 test("valid signed action persists across restart and requestId replay is rejected", (t) => {
@@ -96,6 +110,32 @@ test("valid signed action persists across restart and requestId replay is reject
   assert.equal(applied.evidenceState, "VERIFIED");
   assert.equal(applied.deadman, true);
   assert.equal(applied.authorityReceiptCount, 1);
+  assert.deepEqual(
+    authoritativeTripwireState(applied),
+    {
+      evidenceState: "VERIFIED",
+      mode: "DEADMAN",
+      deadman: true,
+      tripwire: "T07",
+      reason: "signed action and receipt chain verified",
+      updatedAt: now.toISOString(),
+      requestId: "restart-proof-0001",
+      revision: 1,
+    },
+  );
+  assert.deepEqual(
+    authoritativeTripwireState({ ...applied, mode: "PASS" }),
+    {
+      evidenceState: "FAILED",
+      mode: "SENTRA_REJECT",
+      deadman: false,
+      tripwire: null,
+      reason: "verified authority state contains an inconsistent tripwire binding",
+      updatedAt: now.toISOString(),
+      requestId: "restart-proof-0001",
+      revision: 1,
+    },
+  );
   first.close();
 
   const restarted = new AuthorityStore({ databasePath, publicKeyB64: id.publicKeyB64, now: () => now });
@@ -170,6 +210,9 @@ test("fresh signed evidence becomes STALE without becoming green", (t) => {
   assert.equal(stale.evidenceState, "STALE");
   assert.equal(stale.mode, "PASS");
   assert.match(stale.reason, /freshness window/);
+  assert.equal(authoritativeTripwireState(stale).mode, "SENTRA_REJECT");
+  assert.equal(authoritativeTripwireState(stale).deadman, false);
+  assert.equal(authoritativeTripwireState(stale).tripwire, null);
 });
 
 test("receipt tampering fails closed and append-only triggers reject mutation", (t) => {

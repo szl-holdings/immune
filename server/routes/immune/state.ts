@@ -63,6 +63,56 @@ export interface AuthoritySnapshot extends StoredState {
   };
 }
 
+export interface AuthoritativeTripwireState {
+  evidenceState: EvidenceState;
+  mode: ImmuneMode;
+  deadman: boolean;
+  tripwire: string | null;
+  reason: string;
+  updatedAt: string | null;
+  requestId: string | null;
+  revision: number;
+}
+
+/**
+ * The single effective authority projection used by execution and every public
+ * operator surface. Durable state remains observable, but it cannot become an
+ * active tripwire or PASS claim unless its signed evidence is freshly VERIFIED.
+ */
+export function authoritativeTripwireState(
+  snapshot: AuthoritySnapshot,
+): AuthoritativeTripwireState {
+  const verified = snapshot.evidenceState === "VERIFIED";
+  const consistent =
+    !verified ||
+    (snapshot.mode === "DEADMAN"
+      ? snapshot.deadman && snapshot.tripwire !== null
+      : !snapshot.deadman && snapshot.tripwire === null);
+  if (!consistent) {
+    return {
+      evidenceState: "FAILED",
+      mode: "SENTRA_REJECT",
+      deadman: false,
+      tripwire: null,
+      reason: "verified authority state contains an inconsistent tripwire binding",
+      updatedAt: snapshot.updatedAt,
+      requestId: snapshot.requestId,
+      revision: snapshot.revision,
+    };
+  }
+  const deadman = verified && snapshot.mode === "DEADMAN" && snapshot.deadman;
+  return {
+    evidenceState: snapshot.evidenceState,
+    mode: verified ? snapshot.mode : "SENTRA_REJECT",
+    deadman,
+    tripwire: deadman ? snapshot.tripwire : null,
+    reason: snapshot.reason,
+    updatedAt: snapshot.updatedAt,
+    requestId: snapshot.requestId,
+    revision: snapshot.revision,
+  };
+}
+
 export interface AuthorityReceipt {
   seq: number;
   requestId: string;

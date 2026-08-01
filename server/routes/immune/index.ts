@@ -5,7 +5,12 @@ const RunImmuneCycleBody = z.object({
   actor: z.string().optional(),
   intent: z.string().optional(),
 });
-import { AuthorityError, applySignedAction, getState } from "./state";
+import {
+  AuthorityError,
+  applySignedAction,
+  authoritativeTripwireState,
+  getState,
+} from "./state";
 import {
   ledgerCount,
   ledgerLastHash,
@@ -24,6 +29,7 @@ router.get("/state", (_req: Request, res: Response) => {
   const s = getState();
   res.json({
     ...s,
+    tripwireState: authoritativeTripwireState(s),
     ledgerCount: ledgerCount(),
     lastHash: ledgerLastHash(),
   });
@@ -32,7 +38,12 @@ router.get("/state", (_req: Request, res: Response) => {
 function applyAction(req: Request, res: Response): void {
   try {
     const s = applySignedAction(req.body);
-    res.status(201).json({ ...s, ledgerCount: ledgerCount(), lastHash: ledgerLastHash() });
+    res.status(201).json({
+      ...s,
+      tripwireState: authoritativeTripwireState(s),
+      ledgerCount: ledgerCount(),
+      lastHash: ledgerLastHash(),
+    });
   } catch (error) {
     const authorityError =
       error instanceof AuthorityError

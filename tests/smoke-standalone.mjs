@@ -80,6 +80,16 @@ try {
   assert.equal(state.evidenceState, "UNAVAILABLE");
   assert.equal(state.mode, "SENTRA_REJECT");
   assert.equal(state.authority.enabled, false);
+  assert.deepEqual(state.tripwireState, {
+    evidenceState: "UNAVAILABLE",
+    mode: "SENTRA_REJECT",
+    deadman: false,
+    tripwire: null,
+    reason: "signed action trust root is not configured",
+    updatedAt: null,
+    requestId: null,
+    revision: 0,
+  });
 
   const verification = await getJson("/api/immune/ledger/verify");
   assert.equal(verification.ok, true);

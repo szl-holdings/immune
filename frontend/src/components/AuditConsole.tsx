@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  useGetImmuneState,
   useGetImmuneLedgerLatest,
   useVerifyImmuneLedger,
+  type AuthoritativeTripwireState,
   type ImmuneReceipt,
 } from "@/lib/immune-api";
 import { motion, AnimatePresence } from "framer-motion";
@@ -37,8 +37,7 @@ function shortHash(h: string | null | undefined): string {
   return h.slice(0, 16) + "…";
 }
 
-export function AuditConsole() {
-  const stateQuery = useGetImmuneState();
+export function AuditConsole({ authority }: { authority: AuthoritativeTripwireState }) {
   const ledgerQuery = useGetImmuneLedgerLatest();
   const verifierQuery = useVerifyImmuneLedger();
   const [openReceipt, setOpenReceipt] = useState<number | null>(null);
@@ -65,7 +64,6 @@ export function AuditConsole() {
     return () => controller.abort();
   }, []);
 
-  const state = stateQuery.data;
   const ledger = ledgerQuery.data;
   const verifier = verifierQuery.data;
 
@@ -88,14 +86,24 @@ export function AuditConsole() {
       : { kind: "head" as const, tamperedSeq, brokenSeq: null as number | null };
   }, [tamperedSeq, sortedAsc]);
 
-  const isDeadman = state?.mode === "DEADMAN";
-  const isReject = state?.mode === "SENTRA_REJECT";
+  const isDeadman = authority.deadman;
+  const isReject = authority.mode === "SENTRA_REJECT";
+  const authorityLabel =
+    authority.evidenceState === "VERIFIED" ? authority.mode : authority.evidenceState;
   
-  const modeBadgeClass = isDeadman
-    ? "border-destructive text-destructive bg-destructive/10"
-    : isReject
-      ? "border-warning text-warning bg-warning/10"
-      : "border-primary text-primary bg-primary/10";
+  const modeBadgeClass =
+    authority.evidenceState === "FAILED" || isDeadman
+      ? "border-destructive text-destructive bg-destructive/10"
+      : authority.evidenceState !== "VERIFIED" || isReject
+        ? "border-warning text-warning bg-warning/10"
+        : "border-primary text-primary bg-primary/10";
+  const killSwitchClass = isDeadman
+    ? "text-destructive glitch-text"
+    : authority.evidenceState === "FAILED"
+      ? "text-destructive"
+      : authority.evidenceState === "VERIFIED"
+        ? "text-primary/70"
+        : "text-warning";
 
   return (
     <div className="flex flex-col gap-6 text-xs overflow-y-auto pr-2 custom-scrollbar h-full relative z-10">
@@ -107,7 +115,7 @@ export function AuditConsole() {
             <Terminal className="w-3 h-3" /> Mode
           </div>
           <div className={`inline-block px-2 py-1 rounded-sm border font-display font-bold text-[10px] tracking-widest ${modeBadgeClass}`}>
-            {state?.mode ?? "—"}
+            {authorityLabel}
           </div>
         </div>
 
@@ -115,8 +123,12 @@ export function AuditConsole() {
           <div className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground mb-2 font-mono flex items-center gap-1.5">
             <ShieldAlert className="w-3 h-3" /> Kill-Switch
           </div>
-          <div className={`font-display font-bold text-xs tracking-widest ${isDeadman ? "text-destructive glitch-text" : "text-primary/70"}`}>
-            {isDeadman ? "ENGAGED" : "STANDBY"}
+          <div className={`font-display font-bold text-xs tracking-widest ${killSwitchClass}`}>
+            {isDeadman
+              ? "ENGAGED"
+              : authority.evidenceState === "VERIFIED"
+                ? "STANDBY"
+                : authority.evidenceState}
           </div>
         </div>
       </div>
@@ -131,13 +143,16 @@ export function AuditConsole() {
           <div>
             <div className="text-[9px] text-muted-foreground font-mono mb-1">Receipts</div>
             <div className="font-display font-bold text-xl text-foreground">
-              {state?.ledgerCount ?? 0}
+              {ledger?.count ?? 0}
             </div>
           </div>
           <div>
             <div className="text-[9px] text-muted-foreground font-mono mb-1">Latest Hash (SHA-256)</div>
-            <div className="font-mono text-[10px] text-primary break-all leading-tight" title={state?.lastHash ?? ""}>
-              {shortHash(state?.lastHash)}
+            <div
+              className="font-mono text-[10px] text-primary break-all leading-tight"
+              title={ledger?.entries[0]?.hash ?? ""}
+            >
+              {shortHash(ledger?.entries[0]?.hash)}
             </div>
           </div>
         </div>
@@ -238,7 +253,7 @@ export function AuditConsole() {
         </div>
         <div className="flex flex-col gap-1.5">
           {Object.entries(HUKLLA_NAMES).map(([id, name]) => {
-            const isFired = isDeadman && state?.tripwire === id;
+            const isFired = isDeadman && authority.tripwire === id;
             const fw = getWatcherFramework(id);
             return (
               <div

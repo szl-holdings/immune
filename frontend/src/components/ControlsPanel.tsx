@@ -3,14 +3,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ShieldCheck, ShieldAlert, Skull, Activity, Play, FileSignature, AlertTriangle } from "lucide-react";
 import {
-  useGetImmuneState,
   useSubmitImmuneAction,
   useRunImmuneCycle,
   getGetImmuneStateQueryKey,
   getGetImmuneLedgerLatestQueryKey,
   getVerifyImmuneLedgerQueryKey,
   getGetImmuneEvidenceLatestQueryKey,
-  type ImmuneCycleResult,
+  type AuthoritativeTripwireState,
   type ImmuneMode,
   type SignedActionEnvelope,
 } from "@/lib/immune-api";
@@ -34,19 +33,14 @@ const TRIPWIRES = [
   { id: "T10", name: "evidence.gap" },
 ];
 
-export function ControlsPanel({
-  onCycleComplete,
-}: {
-  onCycleComplete: (r: ImmuneCycleResult) => void;
-}) {
+export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireState }) {
   const qc = useQueryClient();
-  const stateQuery = useGetImmuneState();
   const submitAction = useSubmitImmuneAction();
   const runCycle = useRunImmuneCycle();
 
-  const currentMode: ImmuneMode = stateQuery.data?.mode ?? "SENTRA_REJECT";
-  const currentTripwire = stateQuery.data?.tripwire ?? "T07";
-  const evidenceState = stateQuery.data?.evidenceState ?? "UNAVAILABLE";
+  const currentMode: ImmuneMode = authority.mode;
+  const currentTripwire = authority.tripwire;
+  const evidenceState = authority.evidenceState;
   const [envelopeDraft, setEnvelopeDraft] = useState("");
   const [envelopeError, setEnvelopeError] = useState<string | null>(null);
   const [verifierBusy, setVerifierBusy] = useState(false);
@@ -83,8 +77,7 @@ export function ControlsPanel({
     runCycle.mutate(
       { data: { actor: "operator@immune.demo", intent: "DEMO: inject payload" } },
       {
-        onSuccess: (result) => {
-          onCycleComplete(result);
+        onSuccess: () => {
           invalidateAll();
         },
       },
@@ -205,7 +198,7 @@ export function ControlsPanel({
               role="status"
               aria-live="polite"
             >
-              {envelopeError ?? stateQuery.data?.reason ?? "Authority state unavailable."}
+              {envelopeError ?? authority.reason}
             </p>
           )}
         </div>

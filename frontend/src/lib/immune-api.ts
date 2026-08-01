@@ -21,6 +21,17 @@ export interface SignedActionEnvelope {
   signature: string;
 }
 
+export interface AuthoritativeTripwireState {
+  evidenceState: EvidenceState;
+  mode: ImmuneMode;
+  deadman: boolean;
+  tripwire: string | null;
+  reason: string;
+  updatedAt: string | null;
+  requestId: string | null;
+  revision: number;
+}
+
 export interface ImmuneState {
   mode: ImmuneMode;
   tripwire: string | null;
@@ -39,6 +50,7 @@ export interface ImmuneState {
     version: "immune.action.v1";
     keyId: string | null;
   };
+  tripwireState: AuthoritativeTripwireState;
 }
 
 export interface ImmuneReceipt {

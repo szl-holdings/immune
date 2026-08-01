@@ -2,7 +2,7 @@
 // live-agent loop (agent.ts) run the EXACT same path — SENTRA gate -> (if
 // accepted) append a SHA-256 hash-linked + optionally Ed25519-signed YAWAR
 // receipt -> evaluate HUKLLA tripwires -> append evidence. No forked logic.
-import { getState } from "./state";
+import { authoritativeTripwireState, getState } from "./state";
 import type { ImmuneMode } from "./state";
 import { sentraInspect, type SentraVerdict } from "./sentra";
 import { evaluateTripwires, type HukllaFiredTripwire } from "./huklla";
@@ -34,11 +34,8 @@ export async function runGovernedCycle(
   extra?: Record<string, unknown>,
 ): Promise<GovernedCycleResult> {
   const s = getState();
-  // A stale, unavailable, or failed authority read can never inherit PASS.
-  // The last durable mode is observable, but execution is fail-closed until
-  // the signed authority evidence is freshly VERIFIED again.
-  const effectiveMode: ImmuneMode =
-    s.evidenceState === "VERIFIED" ? s.mode : "SENTRA_REJECT";
+  const authority = authoritativeTripwireState(s);
+  const effectiveMode: ImmuneMode = authority.mode;
 
   // SENTRA inspects the FULL intent (base fields + any agent extra) so the gate
   // sees exactly what will be governed.
@@ -49,7 +46,7 @@ export async function runGovernedCycle(
   let payloadBytes = 0;
   let pass = false;
 
-  if (s.deadman) {
+  if (authority.deadman) {
     pass = false;
   } else if (sentra.accepted) {
     const payload: Record<string, unknown> = {
@@ -78,7 +75,7 @@ export async function runGovernedCycle(
 
   const huklla = evaluateTripwires({
     mode: effectiveMode,
-    selectedTripwire: s.tripwire,
+    selectedTripwire: authority.tripwire,
     sentraAccepted: sentra.accepted,
     payloadBytes,
     receiptWritten: receiptOut !== null,
@@ -93,7 +90,7 @@ export async function runGovernedCycle(
   return {
     pass,
     mode: effectiveMode,
-    deadman: s.deadman,
+    deadman: authority.deadman,
     sentra,
     huklla,
     receipt: receiptOut,

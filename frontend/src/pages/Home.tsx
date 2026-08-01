@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
-import { ImmuneCycleResult, useGetImmuneState } from "@/lib/immune-api";
+import { useEffect } from "react";
+import { useGetImmuneState } from "@/lib/immune-api";
+import { deriveAuthorityView } from "@/lib/authority-view";
 import { ControlsPanel } from "@/components/ControlsPanel";
 import { AuditConsole } from "@/components/AuditConsole";
 import { ThreeScene } from "@/components/ThreeScene";
@@ -16,17 +17,9 @@ export default function Home() {
     document.title = "IMMUNE — Verifiable-AI Defense";
   }, []);
 
-  const [lastCycleResult, setLastCycleResult] = useState<ImmuneCycleResult | null>(null);
   const stateQuery = useGetImmuneState();
-  const state = stateQuery.data;
-
-  const handleCycleResult = useCallback((result: ImmuneCycleResult) => {
-    setLastCycleResult(result);
-  }, []);
-
-  const mode = state?.mode ?? "SENTRA_REJECT";
-  const deadman = state?.deadman ?? false;
-  const evidenceState = state?.evidenceState ?? "UNAVAILABLE";
+  const authority = deriveAuthorityView(stateQuery.data, stateQuery.error);
+  const { mode, deadman, evidenceState } = authority;
 
   const getStatusColor = () => {
     if (evidenceState === "FAILED") return "text-destructive shadow-destructive border-destructive/50";
@@ -49,7 +42,7 @@ export default function Home() {
       <section className="relative flex min-h-[100svh] w-full flex-col overflow-x-hidden lg:h-screen lg:block lg:overflow-hidden">
         {/* 3D Background */}
         <div className="absolute inset-0 z-0">
-          <ThreeScene lastCycleResult={lastCycleResult} />
+          <ThreeScene authority={authority} />
         </div>
 
         {/* DEADMAN Overlay */}
@@ -120,7 +113,7 @@ export default function Home() {
           >
             <div className="flex-1 bg-black/40 backdrop-blur-md border border-border/50 p-5 sm:p-6 flex flex-col relative overflow-hidden group">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/50 to-transparent" />
-              <ControlsPanel onCycleComplete={handleCycleResult} />
+              <ControlsPanel authority={authority} />
             </div>
           </motion.div>
 
@@ -137,7 +130,7 @@ export default function Home() {
                 <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                 Cryptographic Audit
               </div>
-              <AuditConsole />
+              <AuditConsole authority={authority} />
             </div>
           </motion.div>
         </div>
