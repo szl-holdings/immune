@@ -13,6 +13,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import immuneRouter from "./routes/immune";
 import { getState } from "./routes/immune/state";
+import { verifyLedger } from "./routes/immune/ledger";
 import { buildInfo, sourceAttestation } from "./source-attestation";
 import { readinessStatus } from "./readiness";
 

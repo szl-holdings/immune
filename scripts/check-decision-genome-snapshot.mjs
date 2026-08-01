@@ -8,13 +8,18 @@ const provenanceUrl = new URL(
   import.meta.url,
 );
 
-const [contract, provenanceText] = await Promise.all([
-  readFile(contractUrl),
+const [contractText, provenanceText] = await Promise.all([
+  readFile(contractUrl, "utf8"),
   readFile(provenanceUrl, "utf8"),
 ]);
 
 const provenance = JSON.parse(provenanceText);
-const digest = createHash("sha256").update(contract).digest("hex");
+// The snapshot digest is bound to the canonical Git blob, whose text uses LF.
+// Windows checkouts may materialize the same tracked file with CRLF; normalize
+// only that transport representation so an identical Git blob verifies on
+// every supported development host without weakening the content check.
+const canonicalContract = contractText.replace(/\r\n/gu, "\n");
+const digest = createHash("sha256").update(canonicalContract, "utf8").digest("hex");
 const sha256Pattern = /^[0-9a-f]{64}$/u;
 const revisionPattern = /^[0-9a-f]{40}$/u;
 

@@ -192,7 +192,25 @@ try {
   assert.match(html, /IMMUNE \| Evidence-Scoped AI Defense/);
   assert.match(html, /rel="canonical" href="https:\/\/szlholdings-immune\.hf\.space\/"/);
   assert.doesNotMatch(html, /Investor Demo|built on Replit/);
-  console.log("IMMUNE standalone smoke: 8/8 PASS");
+
+  // A corrupted evidence ledger must take readiness down without lying about
+  // process liveness. This exercises the real built server and filesystem.
+  fs.appendFileSync(path.join(dataDir, "ledger.jsonl"), "not-json\n", "utf8");
+  const refusedReadiness = await fetch(base + "/readyz");
+  assert.equal(refusedReadiness.status, 503);
+  const refusedReadinessBody = await refusedReadiness.json();
+  assert.equal(refusedReadinessBody.status, "NOT_READY");
+  assert.equal(refusedReadinessBody.ready, false);
+  assert.equal(refusedReadinessBody.runtime_ready, false);
+  assert.equal(refusedReadinessBody.read_ready, false);
+  assert.equal(refusedReadinessBody.ledger.ok, false);
+  assert.notEqual(refusedReadinessBody.ledger.first_bad_seq, null);
+  assert.ok(refusedReadinessBody.blockers.includes("RECEIPT_LEDGER_INTEGRITY_FAILED"));
+
+  const stillLive = await fetch(base + "/healthz");
+  assert.equal(stillLive.status, 200);
+  assert.equal((await stillLive.json()).transport_state, "REACHABLE");
+  console.log("IMMUNE standalone smoke: 9/9 PASS");
 } finally {
   if (child.exitCode === null) {
     const closed = new Promise((resolve) => child.once("close", resolve));
