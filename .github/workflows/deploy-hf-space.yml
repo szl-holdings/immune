@@ -4,7 +4,19 @@ name: Deploy to HF Space
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      restart_repository:
+        description: >-
+          Explicitly authorize a repository-level restart after publication.
+          Exact source identity is attested separately.
+        required: true
+        type: boolean
+        default: false
+      restart_confirmation:
+        description: 'When restarting, enter: restart repository SZLHOLDINGS/immune'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -65,6 +77,8 @@ jobs:
       - name: Publish fresh runtime whitelist and verify live source
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          RESTART_REPOSITORY: ${{ github.event_name == 'workflow_dispatch' && inputs.restart_repository }}
+          RESTART_CONFIRMATION: ${{ inputs.restart_confirmation || '' }}
         run: |
           set -euo pipefail
           python3 <<'PYEOF'
@@ -79,7 +93,7 @@ jobs:
               CommitOperationDelete,
               hf_hub_download,
           )
-          from scripts.restart_hf_space import restart_if_paused
+          from scripts.restart_hf_space import restart_repository_space
 
           token = os.environ["HF_TOKEN"]
           space = os.environ["HF_SPACE"]
@@ -117,7 +131,17 @@ jobs:
               key="IMMUNE_EXPECTED_HF_REVISION",
               value=target,
           )
-          restart_if_paused(space, target, token, api=api)
+          if os.environ["RESTART_REPOSITORY"].lower() == "true":
+              evidence = restart_repository_space(
+                  space,
+                  os.environ["RESTART_CONFIRMATION"],
+                  token,
+                  api=api,
+              )
+              print(
+                  "REPOSITORY-LEVEL RESTART EVIDENCE:",
+                  json.dumps(evidence.as_dict(), sort_keys=True),
+              )
 
           deadline = time.monotonic() + 720
           while time.monotonic() < deadline:
