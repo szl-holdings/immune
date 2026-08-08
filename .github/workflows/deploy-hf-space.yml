@@ -79,6 +79,7 @@ jobs:
               CommitOperationDelete,
               hf_hub_download,
           )
+          from scripts.restart_hf_space import restart_if_paused
 
           token = os.environ["HF_TOKEN"]
           space = os.environ["HF_SPACE"]
@@ -116,6 +117,7 @@ jobs:
               key="IMMUNE_EXPECTED_HF_REVISION",
               value=target,
           )
+          restart_if_paused(space, target, token, api=api)
 
           deadline = time.monotonic() + 720
           while time.monotonic() < deadline:
