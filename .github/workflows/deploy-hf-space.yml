@@ -72,6 +72,7 @@ jobs:
           import json
           import os
           import time
+          import urllib.parse
           import urllib.request
           from huggingface_hub import (
               HfApi,
@@ -79,6 +80,7 @@ jobs:
               CommitOperationDelete,
               hf_hub_download,
           )
+          from scripts.assert_hf_space_operational import inspect_space_state
 
           token = os.environ["HF_TOKEN"]
           space = os.environ["HF_SPACE"]
@@ -119,14 +121,33 @@ jobs:
 
           deadline = time.monotonic() + 720
           while time.monotonic() < deadline:
-              info = api.space_info(space)
-              runtime = api.get_space_runtime(space)
-              stage = getattr(runtime.stage, "value", str(runtime.stage))
-              print("Observed:", info.sha, stage)
-              if info.sha == target and stage == "RUNNING":
+              state_url = "https://huggingface.co/api/spaces/" + urllib.parse.quote(
+                  space,
+                  safe="/",
+              )
+              request = urllib.request.Request(
+                  state_url,
+                  headers={"User-Agent": "szl-immune-runtime-attestation"},
+              )
+              with urllib.request.urlopen(request, timeout=15) as response:
+                  state_payload = json.load(response)
+              observation = inspect_space_state(state_payload, target)
+              print(
+                  "Observed:",
+                  observation.observed_revision,
+                  observation.stage,
+                  "exact=" + str(observation.revision_matches).lower(),
+              )
+              if observation.revision_matches and observation.stage == "RUNNING":
                   break
-              if info.sha == target and stage in {"BUILD_ERROR", "RUNTIME_ERROR", "CONFIG_ERROR"}:
-                  raise RuntimeError(f"Space reached {stage} at {target}")
+              if observation.revision_matches and observation.stage in {
+                  "BUILD_ERROR",
+                  "RUNTIME_ERROR",
+                  "CONFIG_ERROR",
+              }:
+                  raise RuntimeError(
+                      f"Space reached {observation.stage} at {target}"
+                  )
               time.sleep(10)
           else:
               raise TimeoutError(f"Space did not reach RUNNING at {target}")

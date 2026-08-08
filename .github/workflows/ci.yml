@@ -27,6 +27,11 @@ jobs:
         with:
           node-version: "24"
           cache: pnpm
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11"
+      - name: Fail-closed HF operational-state contract
+        run: python3 -m unittest tests.test_assert_hf_space_operational -v
       - name: Install exact dependency graph
         run: pnpm install --frozen-lockfile
       - name: Typecheck
