@@ -1,0 +1,16 @@
+name: Lockfile Registry Check
+
+# Fails fast when a committed lockfile references an internal-only registry.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lockfiles:
+    uses: szl-holdings/.github/.github/workflows/reusable-lockfile-registry-check.yml@79cb06b79d6a3156a5796948295617ff6b207683 # main
