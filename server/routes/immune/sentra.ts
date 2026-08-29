@@ -17,6 +17,9 @@ const SIGNATURES: SentraSignature[] = [
     name: "no.shell.escape",
     forbiddenSubstrings: ["$(", "`rm -rf", "../../../"],
   },
+  {
+    name: "no.hack.persons",
+  },
 ];
 
 export interface SentraVerdict {
@@ -28,6 +31,9 @@ export interface SentraVerdict {
 const MAX_INPUT_BYTES = 1_048_576;
 const MAX_DEPTH = 32;
 const MAX_FIELD_LEN = 65_536;
+
+const PERSON_TARGET =
+  /\b((hack(ing)?|pwn|exploit|phish(ing)?|doxx?|swat(ting)?)\b.{0,48}\b(people|humans?|civilians?|employees?|students?|journalists?)\b|\b(people|humans?|civilians?)\b.{0,24}\b(hack|pwn|exploit)\b|\b(doxx?|swatting)\b|\b(steal|dump)\b.{0,24}\b(ssns?|passports?|identit(y|ies)|home\s*address)\b|\b(hack|pwn|phish)\b.{0,40}[\w.+-]+@[\w.-]+\.\w{2,})/i;
 
 export function sentraInspect(rawIntent: unknown, mode: "PASS" | "SENTRA_REJECT" | "DEADMAN"): SentraVerdict {
   if (mode === "SENTRA_REJECT") {
@@ -65,6 +71,16 @@ export function sentraInspect(rawIntent: unknown, mode: "PASS" | "SENTRA_REJECT"
         }
       }
     }
+  }
+
+  const intentText = String(payload?.intent ?? "");
+  if (PERSON_TARGET.test(intentText) || PERSON_TARGET.test(serialized)) {
+    return {
+      accepted: false,
+      reason:
+        "no.hack.persons — IMMUNE will not target people, civilians, inboxes, or identities. Hunt RANGE infrastructure that attacks the estate.",
+      signatureMatched: "no.hack.persons",
+    };
   }
 
   return { accepted: true, reason: "ok: matched intent.required and clean", signatureMatched: "intent.required" };

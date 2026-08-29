@@ -29,7 +29,7 @@ that the governance actually happened:
 The receipt chain is the same principle public transparency logs use, applied to every
 AI-agent action.
 
-## Lattice COP (RANGE / MESH / GRAPH)
+## Lattice COP (RANGE / GHOST / MESH / GRAPH)
 
 Additive command surface on the live Space. Palantir object model, Anduril effector
 tasking, CIA-style OSINT attribution — independently implemented under Doctrine v11.
@@ -37,6 +37,7 @@ tasking, CIA-style OSINT attribution — independently implemented under Doctrin
 | Tab | What it does | Honesty bound |
 |---|---|---|
 | **RANGE** | White-hat counter-ops (`HUNT` `ISOLATE` `PATCH` `INTERDICT` `DECEIVE` `STRIKE`) against simulated adversary infrastructure. Sweep inbound RANGE in one governed pass. | `STRIKE` is RANGE-only. Live CISA/KEV objects accept isolate / hunt / patch. No packets at the public internet. |
+| **GHOST** | RANGE hunter. Kill-chain against simulated C2. Operator command `hack people` is refused by SENTRA (`no.hack.persons`) and the refusal is logged. | Civilian, inbox, and identity targeting is fail-closed. Collapse RANGE personas only. |
 | **MESH** | Four-organ fusion: IMMUNE, a11oy, killinchu, Khipu-1.5B. 3-of-4 BFT silhouette. | Quorum is MODELED until a live BFT observation is wired. |
 | **GRAPH** | Typed object graph: campaigns, organs, receipts, CVEs, named relations. | Nothing is a blended green blob. |
 

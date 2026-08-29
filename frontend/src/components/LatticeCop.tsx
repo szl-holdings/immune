@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useRunImmuneCycle } from "@/lib/immune-api";
 import type { AuthoritativeTripwireState } from "@/lib/immune-api";
-import { Boxes, Crosshair, Radio, Swords } from "lucide-react";
+import { Boxes, Crosshair, Ghost, Radio, Swords, Terminal } from "lucide-react";
 
 type Op = "ISOLATE" | "HUNT" | "PATCH" | "INTERDICT" | "DECEIVE" | "STRIKE";
 
@@ -92,9 +92,10 @@ const GRAPH_POS: Record<string, { x: number; y: number }> = {
 export function LatticeCop({ authority }: { authority: AuthoritativeTripwireState }) {
   const cycle = useRunImmuneCycle();
   const [campaigns, setCampaigns] = useState(SEED);
-  const [tab, setTab] = useState<"range" | "mesh" | "graph">("range");
+  const [tab, setTab] = useState<"range" | "mesh" | "graph" | "ghost">("range");
   const [log, setLog] = useState<string[]>([]);
   const [sweeping, setSweeping] = useState(false);
+  const [ghostDraft, setGhostDraft] = useState("");
   const writeBlocked = authority.evidenceState !== "VERIFIED" || authority.deadman;
   const inbound = campaigns.filter((c) => c.rangeOnly && c.status === "inbound").length;
   const quorum = ORGANS.length >= 3;
@@ -137,6 +138,26 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
     }
   }
 
+  async function runGhost(raw: string) {
+    const text = raw.trim();
+    if (!text) return;
+    setGhostDraft("");
+    try {
+      const result = await cycle.mutateAsync({ data: { actor: "ghost-operator", intent: text } });
+      const reason = typeof result.sentra?.reason === "string" ? result.sentra.reason : result.mode;
+      const matched = typeof result.sentra?.signatureMatched === "string" ? result.sentra.signatureMatched : "";
+      setLog((l) => [`${result.pass ? "SEALED" : "REFUSED"} ${matched} · ${reason} · ${text}`, ...l].slice(0, 12));
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "cycle unavailable";
+      setLog((l) => [`UNAVAILABLE · ${detail} · MODELED`, ...l].slice(0, 12));
+    }
+  }
+
+  async function ghostChain(c: Campaign) {
+    const steps: Op[] = c.rangeOnly ? ["HUNT", "DECEIVE", "INTERDICT", "STRIKE"] : ["HUNT", "ISOLATE", "PATCH"];
+    for (const op of steps) await run(op, c);
+  }
+
   return (
     <section className="relative z-20 border-t border-primary/10 bg-background" aria-labelledby="lattice-cop-title">
       <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-16">
@@ -148,9 +169,9 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
             ATTACK WHAT ATTACKS US — INSIDE AUTHORITY
           </h2>
           <p className="max-w-3xl font-mono text-[11px] leading-relaxed text-muted-foreground">
-            White-hat RANGE collapses simulated adversary infrastructure. Live CISA objects accept isolate / hunt / patch
-            only. STRIKE never leaves the range. If write-readiness is absent, SENTRA fails closed and the recommendation
-            stays MODELED.
+            White-hat RANGE collapses simulated adversary infrastructure. Ghost hunter runs a kill-chain against RANGE
+            personas only. SENTRA refuses civilian targets. STRIKE never leaves the range. If write-readiness is absent,
+            the recommendation stays MODELED.
           </p>
           <div className="flex flex-wrap gap-2 font-mono text-[10px] uppercase tracking-widest">
             <span className="border border-primary/40 bg-primary/10 px-2 py-1 text-primary">
@@ -169,6 +190,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
           {(
             [
               ["range", "RANGE", Swords],
+              ["ghost", "GHOST", Ghost],
               ["mesh", "MESH", Radio],
               ["graph", "GRAPH", Boxes],
             ] as const
@@ -335,6 +357,76 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {tab === "ghost" && (
+          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="flex flex-col gap-3">
+              <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
+                <Ghost className="h-3.5 w-3.5" /> Ghost hunter · RANGE kill-chain
+              </p>
+              <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
+                Collapse simulated adversary infrastructure. Type <span className="text-primary">hack people</span> — SENTRA
+                refuses civilian targets. No packets leave the range.
+              </p>
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void runGhost(ghostDraft);
+                }}
+              >
+                <label className="sr-only" htmlFor="ghost-cmd">
+                  Ghost command
+                </label>
+                <input
+                  id="ghost-cmd"
+                  value={ghostDraft}
+                  onChange={(e) => setGhostDraft(e.target.value)}
+                  placeholder="hack people · STRIKE Prompt-injection swarm RANGE"
+                  className="min-h-11 flex-1 border border-border/50 bg-black/40 px-3 font-mono text-sm"
+                  autoComplete="off"
+                />
+                <Button type="submit" size="sm" disabled={cycle.isPending}>
+                  Execute
+                </Button>
+              </form>
+              {campaigns
+                .filter((c) => c.rangeOnly)
+                .map((c) => (
+                  <article key={c.id} className="border border-border/50 bg-black/40 p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="font-display text-sm tracking-wider">{c.name}</h3>
+                      <span className="font-mono text-[10px] uppercase text-primary">{c.status}</span>
+                    </div>
+                    <Button
+                      className="mt-3"
+                      size="sm"
+                      variant="destructive"
+                      disabled={cycle.isPending}
+                      onClick={() => void ghostChain(c)}
+                    >
+                      RUN RANGE CHAIN
+                    </Button>
+                  </article>
+                ))}
+            </div>
+            <aside className="border border-border/50 bg-black/40 p-4">
+              <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
+                <Terminal className="h-3.5 w-3.5" /> YAWAR
+              </p>
+              <ul className="mt-3 space-y-2">
+                {log.length === 0 && (
+                  <li className="font-mono text-[11px] text-muted-foreground">No ghost ops this session.</li>
+                )}
+                {log.map((line, i) => (
+                  <li key={i} className="border border-border/30 bg-black/30 px-3 py-2 font-mono text-[11px] leading-relaxed">
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </aside>
           </div>
         )}
       </div>
