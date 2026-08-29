@@ -94,32 +94,70 @@ jobs:
           python3 khipu/scripts/publish_hf.py
           python3 - <<'PY'
           import os
+          from pathlib import Path
           from huggingface_hub import HfApi, create_repo
 
           token = os.environ["HF_TOKEN"]
           api = HfApi(token=token)
-          ignore = [".git*", "tests/*", ".venv/*", "__pycache__/*", ".github/*"]
+          ignore = [".git*", "tests/*", ".venv/*", "__pycache__/*", ".github/*", ".grok/*"]
+          failures = []
+
+          def sanitize(folder: str) -> None:
+              p = Path(folder) / "README.md"
+              if not p.exists():
+                  return
+              raw = p.read_text(encoding="utf-8")
+              if not raw.startswith("---"):
+                  return
+              parts = raw.split("---", 2)
+              if len(parts) < 3:
+                  return
+              fm, body = parts[1], parts[2]
+              lines = []
+              has_emoji = False
+              for line in fm.splitlines():
+                  if line.startswith("emoji:"):
+                      has_emoji = True
+                      val = line.split(":", 1)[1].strip().strip('"').strip("'")
+                      if not val:
+                          val = "⎈"
+                      lines.append(f'emoji: "{val}"')
+                  elif line.startswith("short_description:"):
+                      val = line.split(":", 1)[1].strip().strip('"').strip("'")
+                      if len(val) > 60:
+                          val = val[:57].rstrip(" .,;") + "..."
+                      lines.append(f'short_description: "{val}"')
+                  else:
+                      lines.append(line)
+              if not has_emoji:
+                  lines.insert(1, 'emoji: "⎈"')
+              p.write_text("---" + "\n".join(lines) + "\n---" + body, encoding="utf-8")
 
           def pub(local, repo_id, sdk, private=False):
-              create_repo(
-                  repo_id,
-                  repo_type="space",
-                  space_sdk=sdk,
-                  exist_ok=True,
-                  private=private,
-                  token=token,
-              )
               try:
-                  api.update_repo_visibility(repo_id=repo_id, repo_type="space", private=False)
+                  sanitize(local)
+                  create_repo(
+                      repo_id,
+                      repo_type="space",
+                      space_sdk=sdk,
+                      exist_ok=True,
+                      private=private,
+                      token=token,
+                  )
+                  try:
+                      api.update_repo_settings(repo_id=repo_id, repo_type="space", private=False)
+                  except Exception as exc:
+                      print("visibility note", repo_id, type(exc).__name__, exc)
+                  api.upload_folder(
+                      folder_path=local,
+                      repo_id=repo_id,
+                      repo_type="space",
+                      ignore_patterns=ignore,
+                  )
+                  print("published", repo_id)
               except Exception as exc:
-                  print("visibility note", repo_id, exc)
-              api.upload_folder(
-                  folder_path=local,
-                  repo_id=repo_id,
-                  repo_type="space",
-                  ignore_patterns=ignore,
-              )
-              print("published", repo_id)
+                  print("FAILED", repo_id, type(exc).__name__, exc)
+                  failures.append(repo_id)
 
           pub("counsel", "SZLHOLDINGS/counsel", "gradio")
           pub("ayllu", "SZLHOLDINGS/ayllu", "docker")
@@ -128,4 +166,6 @@ jobs:
           pub("sovereign-os", "SZLHOLDINGS/szl-sovereign-os", "docker")
           pub("real-estate", "SZLHOLDINGS/szl-real-estate", "docker")
           pub("cosmos", "SZLHOLDINGS/cosmos", "docker")
+          if failures:
+              raise SystemExit("Hub publish failed for: " + ", ".join(failures))
           PY
