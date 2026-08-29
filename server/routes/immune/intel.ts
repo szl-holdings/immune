@@ -205,37 +205,56 @@ export interface LeadersResponse {
 // implements. Real organizations, real product/standard URLs.
 const LEADERS: LeaderCategory[] = [
   {
+    category: "Command & Intelligence OS",
+    members: [
+      { name: "Palantir AIP / Gotham", what: "Ontology Action Types as the only mutate path. Object-centric COP.", url: "https://www.palantir.com/platforms/aip/" },
+      { name: "Anduril Lattice C2", what: "AI battle management. Click becomes machine-to-machine tasking.", url: "https://www.anduril.com/lattice/command-and-control" },
+      { name: "Scale Donovan", what: "Federal agent factory. First LLM on a classified government network.", url: "https://scale.com/donovan" },
+      { name: "CrowdStrike OverWatch", what: "24/7 hunting. Hunting leads as objects with fidelity scores.", url: "https://www.crowdstrike.com/platform/falcon-overwatch/" },
+    ],
+  },
+  {
+    category: "Governed / policy-gated orchestrators",
+    members: [
+      { name: "Google Model Armor", what: "Model-agnostic semantic firewall with org-wide floor settings.", url: "https://cloud.google.com/security/products/model-armor" },
+      { name: "NVIDIA NeMo Guardrails", what: "Colang programmable dialogue rails as inference microservices.", url: "https://github.com/NVIDIA-NeMo/Guardrails" },
+      { name: "Llama Firewall", what: "PromptGuard + AlignmentCheck (CoT goal-drift) + CodeShield.", url: "https://github.com/meta-llama/PurpleLlama" },
+      { name: "Portkey → Prisma AIRS", what: "LLM control plane: 1,600+ models, virtual keys, Agent Gateway RBAC.", url: "https://portkey.ai/" },
+    ],
+  },
+  {
     category: "Transparency & Provenance",
     members: [
       { name: "Sigstore / Rekor", what: "Public append-only transparency log for software signatures.", url: "https://www.sigstore.dev/" },
       { name: "SLSA", what: "Supply-chain Levels for Software Artifacts — a graded integrity framework.", url: "https://slsa.dev/" },
       { name: "in-toto", what: "Framework for cryptographically attesting every step of a supply chain.", url: "https://in-toto.io/" },
+      { name: "Sigstore model-transparency", what: "Sign/verify ML models of any size. The actual standard for weight signing.", url: "https://model-transparency.readthedocs.io/" },
     ],
   },
   {
-    category: "Hardware Attestation & Confidential Computing",
+    category: "Fail-closed / dual channel",
     members: [
-      { name: "NVIDIA Confidential Computing", what: "GPU trusted execution with hardware attestation for AI workloads.", url: "https://www.nvidia.com/en-us/data-center/solutions/confidential-computing/" },
-      { name: "Intel TDX", what: "Trust Domain Extensions — hardware-isolated, attestable VMs.", url: "https://www.intel.com/content/www/us/en/developer/tools/trust-domain-extensions/overview.html" },
-      { name: "AMD SEV-SNP", what: "Secure Encrypted Virtualization with attestable memory integrity.", url: "https://www.amd.com/en/developer/sev.html" },
-      { name: "AWS Nitro Enclaves", what: "Isolated compute environments with cryptographic attestation.", url: "https://aws.amazon.com/ec2/nitro/nitro-enclaves/" },
+      { name: "DO-178C / IEC 61508", what: "Avionics and industrial safety. Dissimilar channels. AI not recommended above SIL 1.", url: "https://www.rtca.org/" },
+      { name: "OPA / Cedar", what: "Compile-to-WASM policy (OPA) and formally analyzable permit/forbid (Cedar).", url: "https://www.openpolicyagent.org/" },
+      { name: "ATAK / TAK", what: "DoD-funded edge COP. Cursor-on-Target. Phone-as-TOC.", url: "https://tak.gov/" },
     ],
   },
   {
     category: "Adversarial-ML Frameworks & Standards",
     members: [
       { name: "MITRE ATLAS", what: "Adversarial Threat Landscape for AI Systems — tactics and techniques.", url: "https://atlas.mitre.org/" },
-      { name: "OWASP GenAI / LLM Top 10", what: "The community standard for the top LLM application security risks.", url: "https://genai.owasp.org/llm-top-10/" },
-      { name: "NIST AI Risk Management Framework", what: "Government framework for managing AI risk across the lifecycle.", url: "https://www.nist.gov/itl/ai-risk-management-framework" },
+      { name: "OWASP GenAI / LLM Top 10 2026", what: "Prompt injection still #1. Excessive Agency promoted. Hidden Context Exposure.", url: "https://genai.owasp.org/llm-top-10/" },
+      { name: "NIST AI 100-2e2025", what: "Adversarial ML taxonomy: evasion, poisoning, membership inference, extraction.", url: "https://www.nist.gov/itl/ai-risk-management-framework" },
+      { name: "CISA KEV", what: "Authoritative catalog of vulnerabilities exploited in the wild.", url: "https://www.cisa.gov/known-exploited-vulnerabilities-catalog" },
     ],
   },
   {
-    category: "LLM & AI Security",
+    category: "Inference engines (BIND / WRAP / IGNORE)",
     members: [
-      { name: "Lakera", what: "Real-time prompt-injection and LLM application security.", url: "https://www.lakera.ai/" },
-      { name: "HiddenLayer", what: "Detection and response for machine-learning models in production.", url: "https://hiddenlayer.com/" },
-      { name: "Protect AI", what: "Security tooling for the AI/ML supply chain.", url: "https://protectai.com/" },
-      { name: "Robust Intelligence", what: "Automated red-teaming and AI firewall for model risk.", url: "https://www.robustintelligence.com/" },
+      { name: "vLLM", what: "BIND. Production GPU server. PagedAttention. Apache-2.0.", url: "https://docs.vllm.ai/" },
+      { name: "llama.cpp", what: "BIND. Portable GGUF. Airgap / edge / CPU. MIT.", url: "https://github.com/ggml-org/llama.cpp" },
+      { name: "SGLang", what: "BIND. RadixAttention for agents/RAG. Apache-2.0.", url: "https://github.com/sgl-project/sglang" },
+      { name: "TGI", what: "IGNORE. Hugging Face archived the repo 2026-03-21. Do not new-deploy.", url: "https://github.com/huggingface/text-generation-inference" },
     ],
   },
 ];
@@ -348,6 +367,40 @@ export function getIncidents(): Promise<IncidentsResponse> {
 
 export function getLeaders(): LeadersResponse {
   return { generatedAt: new Date().toISOString(), categories: LEADERS };
+}
+
+export function getInferenceRadar() {
+  return {
+    generatedAt: new Date().toISOString(),
+    rule: "BIND = native adapter with receipts. WRAP = foreign compute. WATCH = stub. IGNORE = do not spend cycles.",
+    engines: [
+      { name: "vLLM", verb: "BIND", license: "Apache-2.0", line: "Production GPU server · PagedAttention" },
+      { name: "llama.cpp", verb: "BIND", license: "MIT", line: "Portable GGUF · airgap / edge / CPU" },
+      { name: "SGLang", verb: "BIND", license: "Apache-2.0", line: "RadixAttention structured serving" },
+      { name: "TensorRT-LLM", verb: "BIND", license: "Apache-2.0", line: "NVIDIA compiled max-perf" },
+      { name: "Ollama", verb: "BIND", license: "MIT", line: "Facade on llama.cpp — pin the GGUF" },
+      { name: "MLX", verb: "BIND", license: "MIT", line: "Apple Silicon governed nodes" },
+      { name: "TGI", verb: "IGNORE", license: "Apache-2.0", line: "Archived 2026-03-21. Do not new-deploy." },
+      { name: "Aphrodite", verb: "IGNORE", license: "AGPL-3.0", line: "Copyleft infects the orchestrator" },
+      { name: "OpenAI / Anthropic / xAI", verb: "WRAP", license: "Closed", line: "Stamp weights=opaque" },
+      { name: "HF Inference Providers", verb: "WRAP", license: "SaaS", line: "A router, not an engine" },
+    ],
+  };
+}
+
+export function getActorClusters() {
+  return {
+    generatedAt: new Date().toISOString(),
+    rule: "Hunt ATT&CK groups and campaigns. Never strike people. Isolate objects.",
+    clusters: [
+      { id: "G0016", aliases: "APT29 · Cozy Bear · Midnight Blizzard", category: "State-nexus", techniques: "T1195 T1078" },
+      { id: "G0007", aliases: "APT28 · Fancy Bear · Forest Blizzard", category: "State-nexus", techniques: "T1566 LOTL C0051" },
+      { id: "G1017", aliases: "Volt Typhoon · Bronze Silhouette", category: "LOTL", techniques: "Living-off-the-land T1078" },
+      { id: "G1015", aliases: "Scattered Spider · UNC3944 · Octo Tempest", category: "Identity", techniques: "MFA fatigue SIM swap" },
+      { id: "G0102", aliases: "Wizard Spider lineage", category: "RaaS", techniques: "T1486 T1490 T1003" },
+      { id: "C0024", aliases: "SolarWinds Compromise", category: "Supply chain", techniques: "T1195 compromise the build" },
+    ],
+  };
 }
 
 // --- transparency: LIVE Sigstore Rekor fetch (60s cache, fail-soft) -----------
