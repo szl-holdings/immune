@@ -240,11 +240,19 @@ jobs:
                   server = space / "server.py" if (space / "server.py").is_file() else root / "server.py"
                   index = space / "index.html" if (space / "index.html").is_file() else root / "index.html"
                   if not server.is_file() or not index.is_file():
-                      raise FileNotFoundError("hologram payload missing (space/server.py + space/index.html)")
+                      print("SKIP", repo_id, "hologram payload missing (space/server.py + space/index.html)")
+                      return
                   readme_src = space / "README.md" if (space / "README.md").is_file() else root / "README.md"
                   td = Path(tempfile.mkdtemp(prefix="hf-holo-"))
                   (td / "server.py").write_bytes(server.read_bytes())
                   (td / "index.html").write_bytes(index.read_bytes())
+                  extras = []
+                  src_dir = space if space.is_dir() else root
+                  for extra in sorted(src_dir.glob("*.py")):
+                      if extra.name == "server.py":
+                          continue
+                      (td / extra.name).write_bytes(extra.read_bytes())
+                      extras.append(extra.name)
                   if readme_src.is_file():
                       (td / "README.md").write_text(readme_src.read_text(encoding="utf-8"), encoding="utf-8")
                       sanitize(str(td))
@@ -258,10 +266,15 @@ jobs:
                               ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
                           )
                           pkg_copied = True
-                  (td / "Dockerfile").write_text(
-                      KHIPU_DOCKERFILE if pkg_copied else HOLOGRAM_DOCKERFILE,
-                      encoding="utf-8",
-                  )
+                  if pkg_copied:
+                      dockerfile = KHIPU_DOCKERFILE
+                  else:
+                      dockerfile = HOLOGRAM_DOCKERFILE
+                      if extras:
+                          dockerfile = dockerfile.rstrip() + "\n" + "\n".join(
+                              f"COPY {name} ./{name}" for name in extras
+                          ) + "\n"
+                  (td / "Dockerfile").write_text(dockerfile, encoding="utf-8")
                   create_repo(
                       repo_id,
                       repo_type="space",
