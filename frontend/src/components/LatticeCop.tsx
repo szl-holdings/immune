@@ -159,7 +159,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
   const [wraithNodes, setWraithNodes] = useState(WRAITH_SEED);
   const [wraithFocus, setWraithFocus] = useState("c2");
   const [echoId, setEchoId] = useState<string | null>(null);
-  const writeBlocked = authority.evidenceState !== "VERIFIED" || authority.deadman;
+  const writeBlocked = authority.deadman;
   const inbound = campaigns.filter((c) => c.rangeOnly && c.status === "inbound").length;
   const quorum = ORGANS.length >= 3;
   const graphNodes = useMemo(() => Object.keys(GRAPH_POS), []);
@@ -257,7 +257,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
               mesh {quorum ? "3-of-4 quorum" : "degraded"}
             </span>
             <span className="border border-border/50 bg-black/40 px-2 py-1">
-              {writeBlocked ? "WRITE BLOCKED" : "WRITE PATH OBSERVED"}
+              {writeBlocked ? "DEADMAN FREEZE" : "WRITE PATH OPEN"}
             </span>
           </div>
         </header>

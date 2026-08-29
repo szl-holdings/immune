@@ -89,8 +89,9 @@ function isTripwireState(value: unknown): value is AuthoritativeTripwireState {
 
 /**
  * Convert one server snapshot into the only authority view exposed to UI
- * components. A transport error invalidates cached green state, and malformed
- * or internally inconsistent responses fail closed.
+ * components. Hidden tabs, iframes, and a blipped fetch must not erase a
+ * still-valid VERIFIED snapshot — that is what made the public Space look dead.
+ * Missing, malformed, or expired evidence still cannot become a green claim.
  */
 export function deriveAuthorityView(
   snapshot: ImmuneState | undefined,
@@ -103,19 +104,9 @@ export function deriveAuthorityView(
     requiredObservationAfterMs?: number;
   } = {},
 ): AuthoritativeTripwireState {
-  if (context.visible === false) {
-    return unavailable("authoritative state is unavailable while the client is backgrounded");
-  }
-  if (context.online === false) {
-    return unavailable("authoritative state is unavailable while the client is offline");
-  }
-  if (queryError) return unavailable("authoritative state refresh unavailable");
-  if (!snapshot) return unavailable("authoritative state has not been observed");
-  if (
-    context.requiredObservationAfterMs !== undefined &&
-    (context.observedAtMs ?? 0) <= context.requiredObservationAfterMs
-  ) {
-    return unavailable("awaiting a fresh authority response after transport resumed");
+  if (!snapshot) {
+    if (queryError) return unavailable("authoritative state refresh unavailable");
+    return unavailable("authoritative state has not been observed");
   }
   const state = snapshot.tripwireState;
   if (!isTripwireState(state)) return failed("authoritative tripwire response is invalid");

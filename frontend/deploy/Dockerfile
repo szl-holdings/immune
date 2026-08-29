@@ -17,7 +17,7 @@
 FROM public.ecr.aws/docker/library/node:24-alpine
 
 # Cache-bust / fresh-container marker (bump to force HF to rebuild+redeploy):
-ARG IMMUNE_DEPLOY_REV=2026-07-17a
+ARG IMMUNE_DEPLOY_REV=2026-08-29-operational
 
 WORKDIR /app
 

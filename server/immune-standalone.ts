@@ -13,7 +13,8 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { bootDemoOperator } from "./routes/immune/demo-operator";
 import immuneRouter from "./routes/immune";
-import { verifyLedger } from "./routes/immune/ledger";
+import { ledgerCount, ledgerLastHash } from "./routes/immune/ledger";
+import { getState, publicAuthoritySnapshot } from "./routes/immune/state";
 import {
   bindRuntimeStaticDir,
   buildInfo,
@@ -91,16 +92,38 @@ app.use("/api", (_req: Request, res: Response) => {
 // so the same bundle works whether run from its dist dir (Docker /app/public),
 // from the deploy dir, or straight from the workspace during local testing.
 if (staticDir) {
+  const indexPath = path.join(staticDir, "index.html");
+  const sendIndex = (_req: Request, res: Response) => {
+    let html = fs.readFileSync(indexPath, "utf8");
+    try {
+      const bootstrap = {
+        ...publicAuthoritySnapshot(getState()),
+        ledgerCount: ledgerCount(),
+        lastHash: ledgerLastHash(),
+      };
+      const tag = `<script>window.__IMMUNE_BOOTSTRAP__=${JSON.stringify(bootstrap)};</script>`;
+      html = html.includes("</head>")
+        ? html.replace("</head>", `${tag}</head>`)
+        : `${tag}${html}`;
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "[immune-standalone] bootstrap inject failed:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.type("html").send(html);
+  };
+  app.get("/", sendIndex);
   app.use(
     express.static(staticDir, {
-      index: "index.html",
+      index: false,
       maxAge: "5m",
-    })
+    }),
   );
   // SPA fallback — serve index.html for any non-API, non-asset route.
-  app.get("/{*splat}", (_req: Request, res: Response) => {
-    res.sendFile(path.join(staticDir, "index.html"));
-  });
+  app.get("/{*splat}", sendIndex);
 } else {
   // eslint-disable-next-line no-console
   console.warn(

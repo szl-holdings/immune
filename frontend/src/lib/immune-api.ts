@@ -63,6 +63,12 @@ export interface ImmuneState {
   tripwireState: AuthoritativeTripwireState;
 }
 
+declare global {
+  interface Window {
+    __IMMUNE_BOOTSTRAP__?: ImmuneState;
+  }
+}
+
 export interface ImmuneReceipt {
   seq: number;
   ts: string;
@@ -141,10 +147,14 @@ export const getGetImmuneEvidenceLatestQueryKey = () =>
   ["immune", "evidence", "latest"] as const;
 
 export function useGetImmuneState(): UseQueryResult<ImmuneState, Error> {
+  const bootstrap =
+    typeof window !== "undefined" ? window.__IMMUNE_BOOTSTRAP__ : undefined;
   return useQuery({
     queryKey: getGetImmuneStateQueryKey(),
     queryFn: () => request<ImmuneState>("/state"),
     refetchInterval: 5_000,
+    initialData: bootstrap,
+    initialDataUpdatedAt: bootstrap ? Date.now() : undefined,
   });
 }
 

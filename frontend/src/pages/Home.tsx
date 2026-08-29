@@ -147,7 +147,7 @@ export default function Home() {
             <div className="flex items-center gap-2 mt-2">
               <Activity className={`w-3 h-3 ${evidenceState === "VERIFIED" ? "text-primary" : "text-warning"}`} />
               <span className={evidenceState === "VERIFIED" ? "text-primary/70" : "text-warning"}>
-                {evidenceState === "VERIFIED" ? "Verified authority" : "No green claim"}
+                {evidenceState === "VERIFIED" ? "Write-ready authority" : "Connecting"}
               </span>
             </div>
           </div>
