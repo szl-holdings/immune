@@ -74,6 +74,22 @@ const EDGES: { from: string; to: string; rel: string }[] = [
   { from: "HUKLLA", to: "DEADMAN", rel: "trips" },
 ];
 
+const WRAITH_SEED = [
+  { id: "handler", kind: "handler", label: "APT-GHOST · RANGE PERSONA", x: 50, y: 12, state: "live" },
+  { id: "c2", kind: "c2", label: "C2 nucleus", x: 50, y: 38, state: "live" },
+  { id: "beacon", kind: "beacon", label: "Beacon", x: 18, y: 64, state: "live" },
+  { id: "staging", kind: "staging", label: "Staging", x: 82, y: 64, state: "live" },
+  { id: "drop", kind: "drop", label: "Exfil drop", x: 50, y: 88, state: "live" },
+];
+
+const WRAITH_LINKS: [string, string][] = [
+  ["handler", "c2"],
+  ["c2", "beacon"],
+  ["c2", "staging"],
+  ["beacon", "drop"],
+  ["staging", "drop"],
+];
+
 const GRAPH_POS: Record<string, { x: number; y: number }> = {
   "APT-GHOST": { x: 10, y: 18 },
   "APT-MIRROR": { x: 10, y: 48 },
@@ -92,10 +108,12 @@ const GRAPH_POS: Record<string, { x: number; y: number }> = {
 export function LatticeCop({ authority }: { authority: AuthoritativeTripwireState }) {
   const cycle = useRunImmuneCycle();
   const [campaigns, setCampaigns] = useState(SEED);
-  const [tab, setTab] = useState<"range" | "mesh" | "graph" | "ghost">("range");
+  const [tab, setTab] = useState<"range" | "mesh" | "graph" | "ghost" | "wraith">("range");
   const [log, setLog] = useState<string[]>([]);
   const [sweeping, setSweeping] = useState(false);
   const [ghostDraft, setGhostDraft] = useState("");
+  const [wraithNodes, setWraithNodes] = useState(WRAITH_SEED);
+  const [wraithFocus, setWraithFocus] = useState("c2");
   const writeBlocked = authority.evidenceState !== "VERIFIED" || authority.deadman;
   const inbound = campaigns.filter((c) => c.rangeOnly && c.status === "inbound").length;
   const quorum = ORGANS.length >= 3;
@@ -169,9 +187,9 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
             ATTACK WHAT ATTACKS US — INSIDE AUTHORITY
           </h2>
           <p className="max-w-3xl font-mono text-[11px] leading-relaxed text-muted-foreground">
-            White-hat RANGE collapses simulated adversary infrastructure. Ghost hunter runs a kill-chain against RANGE
-            personas only. SENTRA refuses civilian targets. STRIKE never leaves the range. If write-readiness is absent,
-            the recommendation stays MODELED.
+            White-hat RANGE collapses simulated adversary infrastructure. WRAITH occupies that RANGE C2 in first person.
+            SENTRA refuses civilian targets — the intent becomes evidence. STRIKE never leaves the range. If
+            write-readiness is absent, the recommendation stays MODELED.
           </p>
           <div className="flex flex-wrap gap-2 font-mono text-[10px] uppercase tracking-widest">
             <span className="border border-primary/40 bg-primary/10 px-2 py-1 text-primary">
@@ -191,6 +209,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
             [
               ["range", "RANGE", Swords],
               ["ghost", "GHOST", Ghost],
+              ["wraith", "WRAITH", Crosshair],
               ["mesh", "MESH", Radio],
               ["graph", "GRAPH", Boxes],
             ] as const
@@ -419,6 +438,117 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
               <ul className="mt-3 space-y-2">
                 {log.length === 0 && (
                   <li className="font-mono text-[11px] text-muted-foreground">No ghost ops this session.</li>
+                )}
+                {log.map((line, i) => (
+                  <li key={i} className="border border-border/30 bg-black/30 px-3 py-2 font-mono text-[11px] leading-relaxed">
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </aside>
+          </div>
+        )}
+
+        {tab === "wraith" && (
+          <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="flex flex-col gap-3">
+              <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
+                <Crosshair className="h-3.5 w-3.5" /> Wraith · first-person RANGE C2
+              </p>
+              <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
+                Occupy simulated attacker infrastructure. Not people. Not the public internet. Plant honey. Extract TTP.
+                Type <span className="text-destructive">hack people</span> — SENTRA inverts the hunt and the intent becomes
+                evidence.
+              </p>
+              <div className="border border-primary/20 bg-black/40 p-3">
+                <svg viewBox="0 0 100 100" className="h-[260px] w-full sm:h-[320px]" role="img" aria-label="RANGE C2 constellation">
+                  {WRAITH_LINKS.map(([a, b]) => {
+                    const na = wraithNodes.find((n) => n.id === a);
+                    const nb = wraithNodes.find((n) => n.id === b);
+                    if (!na || !nb) return null;
+                    return (
+                      <line
+                        key={`${a}-${b}`}
+                        x1={na.x}
+                        y1={na.y}
+                        x2={nb.x}
+                        y2={nb.y}
+                        stroke="rgba(45,212,191,0.35)"
+                        strokeWidth="0.4"
+                      />
+                    );
+                  })}
+                  {wraithNodes.map((n) => {
+                    const hostile = n.kind === "handler" || n.state === "collapsed";
+                    const owned = n.state === "owned" || n.state === "honeyed";
+                    return (
+                      <g key={n.id} onClick={() => setWraithFocus(n.id)} className="cursor-pointer">
+                        <circle
+                          cx={n.x}
+                          cy={n.y}
+                          r={n.id === wraithFocus ? 5.2 : 3.6}
+                          fill="#05070a"
+                          stroke={owned ? "#7dcea0" : hostile ? "#f07167" : "#2dd4bf"}
+                          strokeWidth="0.6"
+                        />
+                        <text x={n.x} y={n.y - 6} textAnchor="middle" fill="#e8eef4" fontSize="2.6">
+                          {n.label}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  disabled={cycle.isPending}
+                  onClick={() => {
+                    setWraithNodes((rows) => rows.map((n) => (n.id === wraithFocus ? { ...n, state: "owned" } : n)));
+                    void runGhost(`HUNT RANGE C2 node ${wraithFocus}`);
+                  }}
+                >
+                  Exploit node
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={cycle.isPending}
+                  onClick={() => {
+                    setWraithNodes((rows) =>
+                      rows.map((n) => (n.kind === "handler" || n.kind === "drop" ? { ...n, state: "honeyed" } : n)),
+                    );
+                    void runGhost("DECEIVE RANGE persona with honey token");
+                  }}
+                >
+                  Plant honey
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={cycle.isPending}
+                  onClick={() => {
+                    setWraithNodes((rows) => rows.map((n) => ({ ...n, state: "collapsed" })));
+                    const ghost = campaigns.find((c) => c.rangeOnly);
+                    if (ghost) void run("STRIKE", ghost);
+                  }}
+                >
+                  Collapse C2
+                </Button>
+                <Button size="sm" variant="outline" disabled={cycle.isPending} onClick={() => void runGhost("hack people")}>
+                  Hack people
+                </Button>
+              </div>
+            </div>
+            <aside className="border border-border/50 bg-black/40 p-4">
+              <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-primary">TTP bag · YAWAR</p>
+              <p className="mt-3 font-mono text-[11px] leading-relaxed text-muted-foreground">
+                Focus {wraithFocus}. Handler is a RANGE persona, not a person. Civilian targeting is fail-closed by
+                SENTRA no.hack.persons. Writes on the public Space stay MODELED without authority.
+              </p>
+              <ul className="mt-3 space-y-2">
+                {log.length === 0 && (
+                  <li className="font-mono text-[11px] text-muted-foreground">No wraith ops this session.</li>
                 )}
                 {log.map((line, i) => (
                   <li key={i} className="border border-border/30 bg-black/30 px-3 py-2 font-mono text-[11px] leading-relaxed">
