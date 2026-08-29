@@ -1,5 +1,6 @@
 # Copyright 2026 SZL Holdings — SPDX-License-Identifier: Apache-2.0
 # Immune holds the write-scoped HF_TOKEN. szl-khipu GitHub stays canonical.
+# Signed-off-by: Lutar, Stephen P. <stephenlutar2@gmail.com>
 name: Mirror khipu Hub
 
 on:
