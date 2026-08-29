@@ -125,7 +125,15 @@ jobs:
           HF_ORG: SZLHOLDINGS
         run: |
           set -euo pipefail
-          python3 khipu/scripts/publish_hf.py
+          # create_repo always POSTs /api/repos/create even with exist_ok=True.
+          # Hub caps space *creation* at 20/day. A 429 there used to abort
+          # the whole estate before immune-lattice uploaded. Existing Spaces
+          # skip create; khipu-script failure is a warning, not a halt.
+          if python3 khipu/scripts/publish_hf.py; then
+            echo "khipu script published"
+          else
+            echo "::warning::khipu/scripts/publish_hf.py failed (likely create_repo 20/day). Existing Space stays; sibling holograms continue."
+          fi
           python3 - <<'PY'
           import os
           import shutil
@@ -267,17 +275,47 @@ jobs:
                   lines.append("app_port: 7860")
               p.write_text("---" + "\n".join(lines) + "\n---" + body, encoding="utf-8")
 
-          def pub(local, repo_id, sdk, private=False):
+          def space_exists(repo_id: str) -> bool:
               try:
-                  sanitize(local)
+                  api.repo_info(repo_id=repo_id, repo_type="space")
+                  return True
+              except Exception as exc:
+                  msg = str(exc).lower()
+                  if "404" in msg or "not found" in msg:
+                      return False
+                  # GET 429 / auth blip: do not burn the 20/day create quota.
+                  print("repo_info note", repo_id, type(exc).__name__, exc)
+                  return True
+
+          def ensure_space(repo_id: str, sdk: str = "docker") -> None:
+              """Skip Hub /api/repos/create when the Space already exists.
+
+              create_repo(exist_ok=True) still POSTs create and counts against
+              the 20 Spaces/day quota. Existing Channel B must still upload.
+              """
+              if space_exists(repo_id):
+                  print("space exists", repo_id, "skip create_repo")
+                  return
+              try:
                   create_repo(
                       repo_id,
                       repo_type="space",
                       space_sdk=sdk,
                       exist_ok=True,
-                      private=private,
+                      private=False,
                       token=token,
                   )
+                  print("space created", repo_id)
+              except Exception as exc:
+                  if space_exists(repo_id):
+                      print("create_repo skipped", repo_id, type(exc).__name__)
+                      return
+                  raise
+
+          def pub(local, repo_id, sdk, private=False):
+              try:
+                  sanitize(local)
+                  ensure_space(repo_id, sdk=sdk)
                   try:
                       api.update_repo_settings(repo_id=repo_id, repo_type="space", private=False)
                   except Exception as exc:
@@ -375,14 +413,7 @@ jobs:
                               f"COPY {name} ./{name}" for name in extras
                           ) + "\n"
                   (td / "Dockerfile").write_text(dockerfile, encoding="utf-8")
-                  create_repo(
-                      repo_id,
-                      repo_type="space",
-                      space_sdk="docker",
-                      exist_ok=True,
-                      private=False,
-                      token=token,
-                  )
+                  ensure_space(repo_id, sdk="docker")
                   try:
                       api.update_repo_settings(repo_id=repo_id, repo_type="space", private=False)
                   except Exception as exc:
@@ -420,7 +451,7 @@ jobs:
                           raise FileNotFoundError(src)
                       (td / dest_name).write_bytes(src.read_bytes())
                   sanitize(str(td))
-                  create_repo(repo_id, repo_type="space", space_sdk="docker", exist_ok=True, private=False, token=token)
+                  ensure_space(repo_id, sdk="docker")
                   try:
                       api.update_repo_settings(repo_id=repo_id, repo_type="space", private=False)
                   except Exception as exc:
@@ -442,6 +473,13 @@ jobs:
                   if td is not None:
                       shutil.rmtree(td, ignore_errors=True)
 
+          # Channel B first. Dome must land even if later siblings 429.
+          pub_hologram(
+              "immune-lattice",
+              "SZLHOLDINGS/immune-lattice",
+              kernel_pkg="immune-lattice/immune",
+              requirements="immune-lattice/requirements.txt",
+          )
           pub_payload(
               "counsel",
               "SZLHOLDINGS/counsel",
@@ -463,12 +501,6 @@ jobs:
           except Exception as exc:
               print("hardware SKIP SZLHOLDINGS/szl-command-lab", type(exc).__name__, exc)
           pub_hologram("khipu-lab", "SZLHOLDINGS/khipu-lab")
-          pub_hologram(
-              "immune-lattice",
-              "SZLHOLDINGS/immune-lattice",
-              kernel_pkg="immune-lattice/immune",
-              requirements="immune-lattice/requirements.txt",
-          )
           pub("sovereign-os", "SZLHOLDINGS/szl-sovereign-os", "docker")
           pub("real-estate", "SZLHOLDINGS/szl-real-estate", "docker")
           pub("cosmos", "SZLHOLDINGS/cosmos", "docker")
