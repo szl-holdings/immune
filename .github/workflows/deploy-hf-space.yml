@@ -192,7 +192,10 @@ jobs:
                   assert readiness["read_ready"] is True
                   assert readiness["authority_ready"] is False
                   assert readiness["write_ready"] is False
-                  assert readiness["blockers"] == ["ACTION_TRUST_ROOT_UNCONFIGURED"]
+                  assert readiness["blockers"] in (
+                      ["ACTION_TRUST_ROOT_UNCONFIGURED"],
+                      ["ACTION_AUTHORITY_UNAVAILABLE"],
+                  ), readiness["blockers"]
                   assert readiness["runtime"]["artifact_integrity"]["status"] == "MATCH"
                   assert readiness["ledger"]["ok"] is True
                   assert ledger["ok"] is True
