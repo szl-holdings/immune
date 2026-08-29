@@ -72,6 +72,11 @@ jobs:
           repository: szl-holdings/cosmos
           path: cosmos
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: szl-holdings/nexus
+          path: nexus
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.11"
@@ -104,6 +109,9 @@ jobs:
           python3 khipu/scripts/publish_hf.py
           python3 - <<'PY'
           import os
+          import shutil
+          import tempfile
+          import textwrap
           from pathlib import Path
           from huggingface_hub import HfApi, create_repo
 
@@ -111,6 +119,43 @@ jobs:
           api = HfApi(token=token)
           ignore = [".git*", "tests/*", ".venv/*", "__pycache__/*", ".github/*", ".grok/*"]
           failures = []
+
+          HOLOGRAM_DOCKERFILE = textwrap.dedent("""\
+          # Hugging Face Space — Python hologram. No npm ci. GCR pin.
+          FROM mirror.gcr.io/library/python:3.12-slim
+          WORKDIR /app
+          ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=7860
+          COPY server.py ./server.py
+          COPY index.html ./index.html
+          EXPOSE 7860
+          CMD ["python", "-u", "server.py"]
+          """)
+
+          KHIPU_DOCKERFILE = textwrap.dedent("""\
+          # Hugging Face Space — numpy kernels, stdlib HTTP. No Gradio. GCR pin.
+          FROM mirror.gcr.io/library/python:3.12-slim
+          WORKDIR /app
+          ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=7860
+          RUN pip install --no-cache-dir "numpy>=1.26"
+          COPY server.py ./server.py
+          COPY index.html ./index.html
+          COPY szl_khipu ./szl_khipu
+          EXPOSE 7860
+          CMD ["python", "-u", "server.py"]
+          """)
+
+          NPM_DELETE = [
+              "package.json",
+              "package-lock.json",
+              "src/**",
+              "scripts/**",
+              "server/**",
+              "migrations/**",
+              "vite.config.ts",
+              "tsconfig.json",
+              "space-dist/**",
+              "space/**",
+          ]
 
           def sanitize(folder: str) -> None:
               p = Path(folder) / "README.md"
@@ -142,10 +187,18 @@ jobs:
                       if len(val) > 60:
                           val = val[:57].rstrip(" .,;") + "..."
                       lines.append(f'short_description: "{val}"')
+                  elif line.startswith("sdk:"):
+                      lines.append("sdk: docker")
+                  elif line.startswith("sdk_version:") or line.startswith("app_file:"):
+                      continue
+                  elif line.startswith("python_version:"):
+                      continue
                   else:
                       lines.append(line)
               if not has_emoji:
                   lines.insert(1, "emoji: 🧠")
+              if not any(x.startswith("app_port:") for x in lines):
+                  lines.append("app_port: 7860")
               p.write_text("---" + "\n".join(lines) + "\n---" + body, encoding="utf-8")
 
           def pub(local, repo_id, sdk, private=False):
@@ -174,15 +227,84 @@ jobs:
                   print("FAILED", repo_id, type(exc).__name__, exc)
                   failures.append(repo_id)
 
+          def pub_hologram(local, repo_id, pkg=False, extra_delete=None):
+              td = None
+              try:
+                  root = Path(local)
+                  space = root / "space"
+                  server = space / "server.py" if (space / "server.py").is_file() else root / "server.py"
+                  index = space / "index.html" if (space / "index.html").is_file() else root / "index.html"
+                  if not server.is_file() or not index.is_file():
+                      raise FileNotFoundError("hologram payload missing (space/server.py + space/index.html)")
+                  readme_src = space / "README.md" if (space / "README.md").is_file() else root / "README.md"
+                  td = Path(tempfile.mkdtemp(prefix="hf-holo-"))
+                  (td / "server.py").write_bytes(server.read_bytes())
+                  (td / "index.html").write_bytes(index.read_bytes())
+                  if readme_src.is_file():
+                      (td / "README.md").write_text(readme_src.read_text(encoding="utf-8"), encoding="utf-8")
+                      sanitize(str(td))
+                  pkg_copied = False
+                  if pkg:
+                      src_pkg = root / "szl_khipu"
+                      if src_pkg.is_dir():
+                          shutil.copytree(
+                              src_pkg,
+                              td / "szl_khipu",
+                              ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
+                          )
+                          pkg_copied = True
+                  (td / "Dockerfile").write_text(
+                      KHIPU_DOCKERFILE if pkg_copied else HOLOGRAM_DOCKERFILE,
+                      encoding="utf-8",
+                  )
+                  create_repo(
+                      repo_id,
+                      repo_type="space",
+                      space_sdk="docker",
+                      exist_ok=True,
+                      private=False,
+                      token=token,
+                  )
+                  try:
+                      api.update_repo_settings(repo_id=repo_id, repo_type="space", private=False)
+                  except Exception as exc:
+                      print("visibility note", repo_id, type(exc).__name__, exc)
+                  deletes = list(NPM_DELETE)
+                  if extra_delete:
+                      deletes.extend(extra_delete)
+                  api.upload_folder(
+                      folder_path=str(td),
+                      repo_id=repo_id,
+                      repo_type="space",
+                      delete_patterns=deletes,
+                  )
+                  print("published hologram", repo_id, "pkg" if pkg_copied else "thin")
+              except Exception as exc:
+                  print("FAILED", repo_id, type(exc).__name__, exc)
+                  failures.append(repo_id)
+              finally:
+                  if td is not None:
+                      shutil.rmtree(td, ignore_errors=True)
+
           pub("counsel", "SZLHOLDINGS/counsel", "docker")
           pub("ayllu", "SZLHOLDINGS/ayllu", "docker")
           pub("experiments", "SZLHOLDINGS/szl-experiments", "docker")
-          pub("command-lab", "SZLHOLDINGS/szl-command-lab", "docker")
-          pub("khipu-lab", "SZLHOLDINGS/khipu-lab", "docker")
+          pub_hologram("command-lab", "SZLHOLDINGS/szl-command-lab")
+          pub_hologram("khipu-lab", "SZLHOLDINGS/khipu-lab")
           pub("immune-lattice", "SZLHOLDINGS/immune-lattice", "docker")
           pub("sovereign-os", "SZLHOLDINGS/szl-sovereign-os", "docker")
           pub("real-estate", "SZLHOLDINGS/szl-real-estate", "docker")
           pub("cosmos", "SZLHOLDINGS/cosmos", "docker")
+          pub_hologram("nexus", "SZLHOLDINGS/nexus")
+          if (Path("khipu") / "space" / "server.py").is_file():
+              pub_hologram(
+                  "khipu",
+                  "SZLHOLDINGS/szl-khipu",
+                  pkg=True,
+                  extra_delete=["app.py", "requirements.txt"],
+              )
+          else:
+              print("SKIP SZLHOLDINGS/szl-khipu hologram — space/server.py missing")
           if failures:
               raise SystemExit("Hub publish failed for: " + ", ".join(failures))
           PY
