@@ -20,7 +20,7 @@ concurrency:
 jobs:
   mirror:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -85,6 +85,16 @@ jobs:
         with:
           repository: szl-holdings/nexus
           path: nexus
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: szl-holdings/lyte-services
+          path: lyte-services
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: szl-holdings/evidence-studio
+          path: evidence-studio
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
@@ -165,6 +175,18 @@ jobs:
           COPY server.py ./server.py
           COPY index.html ./index.html
           COPY szl_khipu ./szl_khipu
+          EXPOSE 7860
+          CMD ["python", "-u", "server.py"]
+          """)
+
+          FACTORY_DOCKERFILE = textwrap.dedent("""\
+          # Hugging Face Space — Decision Cell Compiler. BIND_AS_A11OY_PACKAGE.
+          FROM mirror.gcr.io/library/python:3.12-slim
+          WORKDIR /app
+          ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=7860
+          COPY a11oy_factory ./a11oy_factory
+          COPY server.py ./server.py
+          COPY index.html ./index.html
           EXPOSE 7860
           CMD ["python", "-u", "server.py"]
           """)
@@ -259,7 +281,7 @@ jobs:
                   print("FAILED", repo_id, type(exc).__name__, exc)
                   failures.append(repo_id)
 
-          def pub_hologram(local, repo_id, pkg=False, extra_delete=None, kernel_pkg=None, requirements=None):
+          def pub_hologram(local, repo_id, pkg=False, extra_delete=None, bind_pkg=None, kernel_pkg=None, requirements=None):
               td = None
               try:
                   root = Path(local)
@@ -307,10 +329,27 @@ jobs:
                       req = Path("immune-src/python/requirements.txt")
                   if req.is_file():
                       (td / "requirements.txt").write_bytes(req.read_bytes())
+                  factory_copied = False
+                  src_factory = Path(bind_pkg) if bind_pkg else (root / "a11oy_factory")
+                  if not src_factory.is_dir():
+                      src_factory = root / "a11oy_factory"
+                  if src_factory.is_dir():
+                      shutil.copytree(
+                          src_factory,
+                          td / "a11oy_factory",
+                          ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
+                      )
+                      factory_copied = True
                   if pkg_copied:
                       dockerfile = KHIPU_DOCKERFILE
                   elif immune_kernel and (td / "requirements.txt").is_file():
                       dockerfile = IMMUNE_PYTHON_DOCKERFILE
+                  elif factory_copied:
+                      dockerfile = FACTORY_DOCKERFILE
+                      if extras:
+                          dockerfile = dockerfile.rstrip() + "\n" + "\n".join(
+                              f"COPY {name} ./{name}" for name in extras
+                          ) + "\n"
                   else:
                       dockerfile = HOLOGRAM_DOCKERFILE
                       if extras:
@@ -344,7 +383,7 @@ jobs:
                       print("factory_reboot", repo_id)
                   except Exception as exc:
                       print("reboot note", repo_id, type(exc).__name__, exc)
-                  print("published hologram", repo_id, "pkg" if pkg_copied else "thin")
+                  print("published hologram", repo_id, "pkg" if pkg_copied else ("kernel" if immune_kernel else ("factory" if factory_copied else "thin")))
               except Exception as exc:
                   print("FAILED", repo_id, type(exc).__name__, exc)
                   failures.append(repo_id)
@@ -410,7 +449,13 @@ jobs:
           pub("sovereign-os", "SZLHOLDINGS/szl-sovereign-os", "docker")
           pub("real-estate", "SZLHOLDINGS/szl-real-estate", "docker")
           pub("cosmos", "SZLHOLDINGS/cosmos", "docker")
-          pub("factory", "SZLHOLDINGS/a11oy-factory", "docker")
+          pub_hologram("factory", "SZLHOLDINGS/a11oy-factory")
+          pub_hologram(
+              "lyte-services",
+              "SZLHOLDINGS/lyte-services",
+              bind_pkg="factory/a11oy_factory",
+          )
+          pub_hologram("evidence-studio", "SZLHOLDINGS/evidence-studio")
           pub_hologram("nexus", "SZLHOLDINGS/nexus")
           if (Path("khipu") / "space" / "server.py").is_file():
               pub_hologram(
