@@ -133,6 +133,7 @@ jobs:
           COPY server.py ./server.py
           COPY index.html ./index.html
           EXPOSE 7860
+          HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/healthz', timeout=4)"
           CMD ["python", "-u", "server.py"]
           """)
 
@@ -146,6 +147,7 @@ jobs:
           COPY index.html ./index.html
           COPY szl_khipu ./szl_khipu
           EXPOSE 7860
+          HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/healthz', timeout=4)"
           CMD ["python", "-u", "server.py"]
           """)
 
@@ -309,7 +311,7 @@ jobs:
           pub("experiments", "SZLHOLDINGS/szl-experiments", "docker")
           pub_hologram("command-lab", "SZLHOLDINGS/szl-command-lab")
           pub_hologram("khipu-lab", "SZLHOLDINGS/khipu-lab")
-          pub("immune-lattice", "SZLHOLDINGS/immune-lattice", "docker")
+          pub_hologram("immune-lattice", "SZLHOLDINGS/immune-lattice")
           pub("sovereign-os", "SZLHOLDINGS/szl-sovereign-os", "docker")
           pub("real-estate", "SZLHOLDINGS/szl-real-estate", "docker")
           pub("cosmos", "SZLHOLDINGS/cosmos", "docker")
