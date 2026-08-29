@@ -32,6 +32,10 @@ jobs:
           python-version: "3.11"
       - name: Fail-closed HF operational-state contract
         run: python3 -m unittest tests.test_assert_hf_space_operational -v
+      - name: Python kernel (aligned with src/lib/immune)
+        run: |
+          python3 -m pip install -r python/requirements.txt
+          PYTHONPATH=python python3 -m unittest discover -s python/tests -v
       - name: Install exact dependency graph
         run: pnpm install --frozen-lockfile
       - name: Typecheck

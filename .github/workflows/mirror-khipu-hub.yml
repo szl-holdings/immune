@@ -59,6 +59,10 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          path: immune-src
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
           repository: szl-holdings/szl-sovereign-os
           path: sovereign-os
           persist-credentials: false
@@ -133,6 +137,22 @@ jobs:
           COPY server.py ./server.py
           COPY index.html ./index.html
           EXPOSE 7860
+          CMD ["python", "-u", "server.py"]
+          """)
+
+          IMMUNE_PYTHON_DOCKERFILE = textwrap.dedent("""\
+          # IMMUNE Python kernel — Channel B. Live Ed25519 operator. GCR pin.
+          FROM mirror.gcr.io/library/python:3.12-slim
+          WORKDIR /app
+          ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=7860 IMMUNE_DATA_DIR=/app/data/immune
+          COPY requirements.txt ./requirements.txt
+          RUN pip install --no-cache-dir -r requirements.txt
+          COPY immune ./immune
+          COPY server.py ./server.py
+          COPY index.html ./index.html
+          EXPOSE 7860
+          HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \\
+            CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/readyz', timeout=4)"
           CMD ["python", "-u", "server.py"]
           """)
 
@@ -239,7 +259,7 @@ jobs:
                   print("FAILED", repo_id, type(exc).__name__, exc)
                   failures.append(repo_id)
 
-          def pub_hologram(local, repo_id, pkg=False, extra_delete=None):
+          def pub_hologram(local, repo_id, pkg=False, extra_delete=None, kernel_pkg=None, requirements=None):
               td = None
               try:
                   root = Path(local)
@@ -273,8 +293,24 @@ jobs:
                               ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
                           )
                           pkg_copied = True
+                  immune_kernel = False
+                  kp = Path(kernel_pkg) if kernel_pkg else None
+                  if kp and kp.is_dir() and (kp / "runtime.py").is_file():
+                      shutil.copytree(
+                          kp,
+                          td / "immune",
+                          ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
+                      )
+                      immune_kernel = True
+                  req = Path(requirements) if requirements else (root / "requirements.txt")
+                  if not req.is_file():
+                      req = Path("immune-src/python/requirements.txt")
+                  if req.is_file():
+                      (td / "requirements.txt").write_bytes(req.read_bytes())
                   if pkg_copied:
                       dockerfile = KHIPU_DOCKERFILE
+                  elif immune_kernel and (td / "requirements.txt").is_file():
+                      dockerfile = IMMUNE_PYTHON_DOCKERFILE
                   else:
                       dockerfile = HOLOGRAM_DOCKERFILE
                       if extras:
@@ -365,7 +401,12 @@ jobs:
           pub("experiments", "SZLHOLDINGS/szl-experiments", "docker")
           pub_hologram("command-lab", "SZLHOLDINGS/szl-command-lab")
           pub_hologram("khipu-lab", "SZLHOLDINGS/khipu-lab")
-          pub_hologram("immune-lattice", "SZLHOLDINGS/immune-lattice")
+          pub_hologram(
+              "immune-lattice",
+              "SZLHOLDINGS/immune-lattice",
+              kernel_pkg="immune-src/python/immune",
+              requirements="immune-src/python/requirements.txt",
+          )
           pub("sovereign-os", "SZLHOLDINGS/szl-sovereign-os", "docker")
           pub("real-estate", "SZLHOLDINGS/szl-real-estate", "docker")
           pub("cosmos", "SZLHOLDINGS/cosmos", "docker")
