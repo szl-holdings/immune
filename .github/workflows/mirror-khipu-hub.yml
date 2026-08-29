@@ -159,7 +159,7 @@ jobs:
                   print("FAILED", repo_id, type(exc).__name__, exc)
                   failures.append(repo_id)
 
-          pub("counsel", "SZLHOLDINGS/counsel", "gradio")
+          pub("counsel", "SZLHOLDINGS/counsel", "docker")
           pub("ayllu", "SZLHOLDINGS/ayllu", "docker")
           pub("experiments", "SZLHOLDINGS/szl-experiments", "docker")
           pub("command-lab", "SZLHOLDINGS/szl-command-lab", "docker")
