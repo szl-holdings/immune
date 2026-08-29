@@ -133,7 +133,6 @@ jobs:
           COPY server.py ./server.py
           COPY index.html ./index.html
           EXPOSE 7860
-          HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/healthz', timeout=4)"
           CMD ["python", "-u", "server.py"]
           """)
 
@@ -147,13 +146,13 @@ jobs:
           COPY index.html ./index.html
           COPY szl_khipu ./szl_khipu
           EXPOSE 7860
-          HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/healthz', timeout=4)"
           CMD ["python", "-u", "server.py"]
           """)
 
           NPM_DELETE = [
               "package.json",
               "package-lock.json",
+              "pnpm-lock.yaml",
               "src/**",
               "scripts/**",
               "server/**",
@@ -162,6 +161,11 @@ jobs:
               "tsconfig.json",
               "space-dist/**",
               "space/**",
+              "startup.sh",
+              "eslint.config.mjs",
+              "public/**",
+              ".grok/**",
+              "node_modules/**",
           ]
 
           def sanitize(folder: str) -> None:
@@ -228,6 +232,7 @@ jobs:
                       repo_id=repo_id,
                       repo_type="space",
                       ignore_patterns=ignore,
+                      delete_patterns=NPM_DELETE,
                   )
                   print("published", repo_id)
               except Exception as exc:
@@ -298,6 +303,11 @@ jobs:
                       repo_type="space",
                       delete_patterns=deletes,
                   )
+                  try:
+                      api.restart_space(repo_id, factory_reboot=True)
+                      print("factory_reboot", repo_id)
+                  except Exception as exc:
+                      print("reboot note", repo_id, type(exc).__name__, exc)
                   print("published hologram", repo_id, "pkg" if pkg_copied else "thin")
               except Exception as exc:
                   print("FAILED", repo_id, type(exc).__name__, exc)
@@ -306,7 +316,51 @@ jobs:
                   if td is not None:
                       shutil.rmtree(td, ignore_errors=True)
 
-          pub("counsel", "SZLHOLDINGS/counsel", "docker")
+          def pub_payload(local, repo_id, files, extra_delete=None):
+              td = None
+              try:
+                  root = Path(local)
+                  td = Path(tempfile.mkdtemp(prefix="hf-payload-"))
+                  for src_name, dest_name in files:
+                      src = root / src_name
+                      if not src.is_file():
+                          raise FileNotFoundError(src)
+                      (td / dest_name).write_bytes(src.read_bytes())
+                  sanitize(str(td))
+                  create_repo(repo_id, repo_type="space", space_sdk="docker", exist_ok=True, private=False, token=token)
+                  try:
+                      api.update_repo_settings(repo_id=repo_id, repo_type="space", private=False)
+                  except Exception as exc:
+                      print("visibility note", repo_id, type(exc).__name__, exc)
+                  deletes = list(NPM_DELETE)
+                  if extra_delete:
+                      deletes.extend(extra_delete)
+                  api.upload_folder(folder_path=str(td), repo_id=repo_id, repo_type="space", delete_patterns=deletes)
+                  try:
+                      api.restart_space(repo_id, factory_reboot=True)
+                      print("factory_reboot", repo_id)
+                  except Exception as exc:
+                      print("reboot note", repo_id, type(exc).__name__, exc)
+                  print("published payload", repo_id)
+              except Exception as exc:
+                  print("FAILED", repo_id, type(exc).__name__, exc)
+                  failures.append(repo_id)
+              finally:
+                  if td is not None:
+                      shutil.rmtree(td, ignore_errors=True)
+
+          pub_payload(
+              "counsel",
+              "SZLHOLDINGS/counsel",
+              [
+                  ("Dockerfile", "Dockerfile"),
+                  ("app.py", "app.py"),
+                  ("allodial.py", "allodial.py"),
+                  ("index.html", "index.html"),
+                  ("README.md", "README.md"),
+              ],
+              extra_delete=["requirements.txt", "packages.txt", "gradio_cached_examples/**", "flagged/**"],
+          )
           pub("ayllu", "SZLHOLDINGS/ayllu", "docker")
           pub("experiments", "SZLHOLDINGS/szl-experiments", "docker")
           pub_hologram("command-lab", "SZLHOLDINGS/szl-command-lab")
