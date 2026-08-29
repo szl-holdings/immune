@@ -42,6 +42,11 @@ jobs:
           repository: szl-holdings/szl-experiments
           path: experiments
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: szl-holdings/szl-command-lab
+          path: command-lab
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.11"
@@ -91,4 +96,8 @@ jobs:
           create_repo("SZLHOLDINGS/szl-experiments", repo_type="space", space_sdk="docker", exist_ok=True, token=token)
           api.upload_folder(folder_path="experiments", repo_id="SZLHOLDINGS/szl-experiments", repo_type="space", ignore_patterns=ignore)
           print("published SZLHOLDINGS/szl-experiments")
+
+          create_repo("SZLHOLDINGS/szl-command-lab", repo_type="space", space_sdk="docker", exist_ok=True, token=token)
+          api.upload_folder(folder_path="command-lab", repo_id="SZLHOLDINGS/szl-command-lab", repo_type="space", ignore_patterns=ignore)
+          print("published SZLHOLDINGS/szl-command-lab")
           PY
