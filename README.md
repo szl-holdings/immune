@@ -43,10 +43,13 @@ tasking, CIA-style OSINT attribution — independently implemented under Doctrin
 | **GRAPH** | Typed object graph: campaigns, organs, receipts, CVEs, named relations. | Nothing is a blended green blob. |
 
 Ops go through `POST /api/immune/cycle` (SENTRA → optional YAWAR receipt → HUKLLA).
-The public Space is `READ_ONLY` without `IMMUNE_ACTION_PUBLIC_KEY`, so writes fail
-closed and the UI labels the outcome `UNAVAILABLE` / `MODELED`. Home remains the
-sole `useGetImmuneState()` authority query; ThreeScene and the controls scroll
-region are unchanged.
+The public Hugging Face Space boots a **labeled demo operator**
+(`IMMUNE_DEMO_OPERATOR=1` in the demo image): process-local Ed25519 signs genesis
+`SET_MODE PASS` and refreshes evidence so `/readyz` is `write_ready: true`.
+That key is **not an ATO**. Production deployments omit the flag, require
+`IMMUNE_ACTION_PUBLIC_KEY`, and stay fail-closed `READ_ONLY` until a matching
+signed envelope is applied. Home remains the sole `useGetImmuneState()`
+authority query; ThreeScene and the controls scroll region are unchanged.
 
 
 ## API
@@ -76,8 +79,12 @@ Accepted actions and resulting state are committed together to
 `data/immune/authority.sqlite` in WAL/FULL mode. Receipts are append-only,
 request IDs remain single-use across restarts, and a missing trust root, read
 failure, stale receipt, or chain mismatch can never render green. The public UI
-holds no operator private key: it accepts an already-signed envelope and is
-otherwise read-only. `IMMUNE_EVIDENCE_MAX_AGE_MS` may override the default
+holds no operator private key unless `IMMUNE_DEMO_OPERATOR=1` or
+`IMMUNE_ACTION_PRIVATE_KEY` is set on the server. With those flags the process
+signs genesis `SET_MODE PASS` and auto-refreshes so evidence stays `VERIFIED`.
+The demo operator is labeled `authority.demoOperator` and is not a production
+ATO. Without them the UI accepts an already-signed envelope and is otherwise
+read-only. `IMMUNE_EVIDENCE_MAX_AGE_MS` may override the default
 15-minute freshness window; stale state remains observable but cannot authorize
 a governed cycle.
 
@@ -85,6 +92,8 @@ a governed cycle.
 runtime bytes and a clean receipt ledger may be `read_ready: true`, but the
 contract stays `status: READ_ONLY`, `ready: false`, `authority_ready: false`,
 and `write_ready: false` with blocker `ACTION_TRUST_ROOT_UNCONFIGURED`.
+The public demo image sets `IMMUNE_DEMO_OPERATOR=1` so the live Space is
+`status: READY` / `write_ready: true` after genesis.
 
 The frontier evaluator consumes the shared
 `@szl-holdings/contracts/decision-genome` schema from Platform. It does not

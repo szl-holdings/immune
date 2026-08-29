@@ -184,18 +184,17 @@ jobs:
                       source = json.load(response)
                   assert health["transport_state"] == "REACHABLE"
                   assert readiness["schema"] == "szl.immune-readiness/v1"
-                  assert readiness["status"] == "READ_ONLY"
-                  assert readiness["ready"] is False
                   assert readiness["source"]["revision"] == os.environ["GITHUB_SHA"].lower()
                   assert readiness["source"]["build_revision"] == os.environ["GITHUB_SHA"].lower()
                   assert readiness["runtime_ready"] is True
                   assert readiness["read_ready"] is True
-                  assert readiness["authority_ready"] is False
-                  assert readiness["write_ready"] is False
-                  assert readiness["blockers"] in (
-                      ["ACTION_TRUST_ROOT_UNCONFIGURED"],
-                      ["ACTION_AUTHORITY_UNAVAILABLE"],
-                  ), readiness["blockers"]
+                  assert readiness["authority_ready"] is True
+                  assert readiness["write_ready"] is True
+                  assert readiness["ready"] is True
+                  assert readiness["status"] == "READY"
+                  assert readiness["authority"]["evidence_state"] == "VERIFIED"
+                  assert "ACTION_AUTHORITY_UNAVAILABLE" not in readiness["blockers"]
+                  assert "ACTION_TRUST_ROOT_UNCONFIGURED" not in readiness["blockers"]
                   assert readiness["runtime"]["artifact_integrity"]["status"] == "MATCH"
                   assert readiness["ledger"]["ok"] is True
                   assert ledger["ok"] is True
