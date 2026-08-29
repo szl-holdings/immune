@@ -10,7 +10,7 @@
   "scripts": {
     "build": "node scripts/assert-protected-deploy-source.mjs && node scripts/check-decision-genome-snapshot.mjs && node scripts/build-standalone.mjs && node scripts/seal-deploy-artifacts.mjs",
     "build:frontend": "pnpm --dir frontend run build",
-    "test": "tsx --test tests/immune-authority.test.ts tests/immune-ui-authority.test.ts tests/immune-readiness.test.ts tests/immune-demo-operator.test.ts",
+    "test": "tsx --test tests/immune-authority.test.ts tests/immune-ui-authority.test.ts tests/immune-readiness.test.ts tests/immune-demo-operator.test.ts tests/immune-nemo.test.ts",
     "typecheck": "pnpm --dir frontend run typecheck && tsc -p tsconfig.server.json --noEmit"
   },
   "dependencies": {

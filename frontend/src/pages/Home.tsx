@@ -10,6 +10,7 @@ import { AuditConsole } from "@/components/AuditConsole";
 import { ThreeScene } from "@/components/ThreeScene";
 import { LatticeCop } from "@/components/LatticeCop";
 import AgentConsole from "@/components/AgentConsole";
+import InferConsole from "@/components/InferConsole";
 import PulsePanel from "@/components/PulsePanel";
 import IntelPanel from "@/components/IntelPanel";
 import LeadersPanel from "@/components/LeadersPanel";
@@ -289,6 +290,8 @@ export default function Home() {
 
           {/* Marquee: a REAL governed agent on SZL's own inference */}
           <AgentConsole />
+
+          <InferConsole />
 
           {/* The real math — verbatim from the canonical szl-holdings kernels */}
           <FoundationsPanel />
