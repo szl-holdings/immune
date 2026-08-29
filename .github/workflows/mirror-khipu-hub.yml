@@ -74,6 +74,11 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          repository: szl-holdings/a11oy-factory
+          path: factory
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
           repository: szl-holdings/nexus
           path: nexus
           persist-credentials: false
@@ -295,6 +300,7 @@ jobs:
           pub("sovereign-os", "SZLHOLDINGS/szl-sovereign-os", "docker")
           pub("real-estate", "SZLHOLDINGS/szl-real-estate", "docker")
           pub("cosmos", "SZLHOLDINGS/cosmos", "docker")
+          pub("factory", "SZLHOLDINGS/a11oy-factory", "docker")
           pub_hologram("nexus", "SZLHOLDINGS/nexus")
           if (Path("khipu") / "space" / "server.py").is_file():
               pub_hologram(
