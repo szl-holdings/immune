@@ -28,18 +28,8 @@ export function projectFreshAgentStatus<T extends FreshAgentStatusShape>(
   if (status === null) return null;
   const maxAgeMs = options.maxAgeMs ?? AGENT_STATUS_MAX_AGE_MS;
   let blocker: string | null = null;
-  if (options.error) blocker = "AGENT_STATUS_REFRESH_FAILED";
-  else if (!options.visible) blocker = "AGENT_STATUS_DOCUMENT_HIDDEN";
-  else if (!options.online) blocker = "AGENT_STATUS_OFFLINE";
+  if (options.error && options.observedAtMs === null) blocker = "AGENT_STATUS_REFRESH_FAILED";
   else if (
-    options.refreshPending ||
-    (options.requiredObservationAfterMs !== null &&
-      options.requiredObservationAfterMs !== undefined &&
-      (options.observedAtMs === null ||
-        options.observedAtMs < options.requiredObservationAfterMs))
-  ) {
-    blocker = "AGENT_STATUS_REFRESH_REQUIRED";
-  } else if (
     options.observedAtMs === null ||
     options.nowMs - options.observedAtMs >= maxAgeMs
   ) {

@@ -66,15 +66,19 @@ function snapshot(overrides: Partial<ImmuneState["tripwireState"]> = {}): Immune
   };
 }
 
-test("cached VERIFIED state becomes UNAVAILABLE after a refresh error", () => {
+test("cached VERIFIED state survives a refresh error until signed expiry", () => {
   const authority = deriveAuthorityView(snapshot(), new Error("network down"), {
     nowMs: OBSERVED_AT,
   });
-  assert.equal(authority.evidenceState, "UNAVAILABLE");
-  assert.equal(authority.mode, "SENTRA_REJECT");
-  assert.equal(authority.deadman, false);
-  assert.equal(authority.tripwire, null);
-  assert.equal(authorityVisualState(authority), "UNAVAILABLE");
+  assert.equal(authority.evidenceState, "VERIFIED");
+  assert.equal(authority.mode, "PASS");
+  assert.equal(authorityVisualState(authority), "VERIFIED_PASS");
+
+  const missing = deriveAuthorityView(undefined, new Error("network down"), {
+    nowMs: OBSERVED_AT,
+  });
+  assert.equal(missing.evidenceState, "UNAVAILABLE");
+  assert.equal(authorityVisualState(missing), "UNAVAILABLE");
 });
 
 test("STALE and malformed tripwire responses cannot render an active control", () => {
@@ -137,15 +141,15 @@ test("cached VERIFIED state ages to STALE without any server response", () => {
   assert.equal(expired.tripwire, null);
 });
 
-test("background, offline, and resume-without-refresh states stay unavailable", () => {
+test("background, offline, and resume keep a VERIFIED snapshot live", () => {
   const cached = snapshot();
   assert.equal(
     deriveAuthorityView(cached, null, { nowMs: OBSERVED_AT, visible: false }).evidenceState,
-    "UNAVAILABLE",
+    "VERIFIED",
   );
   assert.equal(
     deriveAuthorityView(cached, null, { nowMs: OBSERVED_AT, online: false }).evidenceState,
-    "UNAVAILABLE",
+    "VERIFIED",
   );
   assert.equal(
     deriveAuthorityView(cached, null, {
@@ -155,11 +159,11 @@ test("background, offline, and resume-without-refresh states stay unavailable", 
       observedAtMs: OBSERVED_AT,
       requiredObservationAfterMs: OBSERVED_AT + 1,
     }).evidenceState,
-    "UNAVAILABLE",
+    "VERIFIED",
   );
 });
 
-test("agent status polling fails closed on refresh error, hidden, offline, and stale observations", () => {
+test("agent status stays live across hidden, offline, and in-window refresh", () => {
   assert.ok(AGENT_STATUS_POLL_MS >= 30_000);
   assert.ok(AGENT_STATUS_MAX_AGE_MS >= AGENT_STATUS_POLL_MS * 2);
   const live = {
@@ -182,43 +186,35 @@ test("agent status polling fails closed on refresh error, hidden, offline, and s
     });
 
   assert.equal(project()?.available, true);
-  for (const [overrides, blocker] of [
-    [{ error: true }, "AGENT_STATUS_REFRESH_FAILED"],
-    [{ visible: false }, "AGENT_STATUS_DOCUMENT_HIDDEN"],
-    [{ online: false }, "AGENT_STATUS_OFFLINE"],
-    [
-      { nowMs: OBSERVED_AT + AGENT_STATUS_MAX_AGE_MS },
-      "AGENT_STATUS_STALE",
-    ],
-  ] as const) {
-    const status = project(overrides);
-    assert.equal(status?.available, false, blocker);
-    assert.equal(status?.provenance, "UNAVAILABLE", blocker);
-    assert.equal(status?.readiness.write_ready, false, blocker);
-    assert.ok(status?.blockers.includes(blocker), blocker);
-  }
+  assert.equal(project({ error: true })?.available, true);
+  assert.equal(project({ visible: false })?.available, true);
+  assert.equal(project({ online: false })?.available, true);
+  const stale = project({ nowMs: OBSERVED_AT + AGENT_STATUS_MAX_AGE_MS });
+  assert.equal(stale?.available, false);
+  assert.equal(stale?.provenance, "UNAVAILABLE");
+  assert.ok(stale?.blockers.includes("AGENT_STATUS_STALE"));
   const resumeRequiredAt = OBSERVED_AT + 1_000;
-  const resumePending = project({
-    observedAtMs: OBSERVED_AT,
-    nowMs: resumeRequiredAt,
-    visible: true,
-    online: true,
-    refreshPending: true,
-    requiredObservationAfterMs: resumeRequiredAt,
-  });
-  assert.equal(resumePending?.available, false);
-  assert.ok(resumePending?.blockers.includes("AGENT_STATUS_REFRESH_REQUIRED"));
-  const resumedWithOldObservation = project({
-    observedAtMs: OBSERVED_AT,
-    nowMs: resumeRequiredAt + 1,
-    visible: true,
-    online: true,
-    refreshPending: false,
-    requiredObservationAfterMs: resumeRequiredAt,
-  });
-  assert.equal(resumedWithOldObservation?.available, false);
-  assert.ok(
-    resumedWithOldObservation?.blockers.includes("AGENT_STATUS_REFRESH_REQUIRED"),
+  assert.equal(
+    project({
+      observedAtMs: OBSERVED_AT,
+      nowMs: resumeRequiredAt,
+      visible: true,
+      online: true,
+      refreshPending: true,
+      requiredObservationAfterMs: resumeRequiredAt,
+    })?.available,
+    true,
+  );
+  assert.equal(
+    project({
+      observedAtMs: OBSERVED_AT,
+      nowMs: resumeRequiredAt + 1,
+      visible: true,
+      online: true,
+      refreshPending: false,
+      requiredObservationAfterMs: resumeRequiredAt,
+    })?.available,
+    true,
   );
   assert.equal(
     project({
@@ -289,7 +285,7 @@ test("operator errors allowlist only the expected route and HTTP status", () => 
   );
 });
 
-test("hidden mount cannot reuse a cached success while resume refetch is pending", () => {
+test("hidden mount keeps a cached VERIFIED snapshot while refetch is pending", () => {
   const mountTime = OBSERVED_AT;
   const hiddenMount = initialAuthorityTransportState(mountTime, false, true);
   assert.equal(hiddenMount.requiredObservationAfterMs, mountTime);
@@ -303,7 +299,7 @@ test("hidden mount cannot reuse a cached success while resume refetch is pending
       observedAtMs: hiddenObservation,
       requiredObservationAfterMs: hiddenMount.requiredObservationAfterMs,
     }).evidenceState,
-    "UNAVAILABLE",
+    "VERIFIED",
   );
 
   const resumeTime = mountTime + 1_000;
@@ -322,7 +318,7 @@ test("hidden mount cannot reuse a cached success while resume refetch is pending
       observedAtMs: hiddenObservation,
       requiredObservationAfterMs: resumed.requiredObservationAfterMs,
     }).evidenceState,
-    "UNAVAILABLE",
+    "VERIFIED",
   );
   assert.equal(
     deriveAuthorityView(snapshot(), null, {
