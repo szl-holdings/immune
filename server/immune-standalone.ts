@@ -11,6 +11,7 @@ import express, { type Request, type Response, type NextFunction } from "express
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import { bootDemoOperator } from "./routes/immune/demo-operator";
 import immuneRouter from "./routes/immune";
 import { verifyLedger } from "./routes/immune/ledger";
 import {
@@ -25,6 +26,16 @@ const __serverDir = path.dirname(fileURLToPath(import.meta.url));
 const staticDir = bindRuntimeStaticDir(resolveRuntimeStaticDir(__serverDir));
 
 const app = express();
+
+try {
+  bootDemoOperator();
+} catch (error) {
+  // eslint-disable-next-line no-console
+  console.error(
+    "[immune-standalone] operator boot failed (fail-closed):",
+    error instanceof Error ? error.message : String(error),
+  );
+}
 
 app.disable("x-powered-by");
 // Behind the Hugging Face / nginx proxy, honor X-Forwarded-For so req.ip is the

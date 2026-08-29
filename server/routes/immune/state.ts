@@ -61,6 +61,7 @@ export interface AuthoritySnapshot extends StoredState {
     enabled: boolean;
     version: typeof ACTION_ENVELOPE_VERSION;
     keyId: string | null;
+    demoOperator?: boolean;
   };
 }
 
@@ -435,6 +436,7 @@ export class AuthorityStore {
       enabled: this.trust !== null,
       version: ACTION_ENVELOPE_VERSION,
       keyId: this.trust?.keyId ?? null,
+      demoOperator: process.env.IMMUNE_DEMO_OPERATOR === "1",
     };
     try {
       if (this.closed) throw new Error("authority store is closed");
@@ -691,7 +693,12 @@ export function getState(): AuthoritySnapshot {
       validUntil: null,
       authorityReceiptCount: 0,
       authorityReceiptHash: null,
-      authority: { enabled: false, version: ACTION_ENVELOPE_VERSION, keyId: null },
+      authority: {
+        enabled: false,
+        version: ACTION_ENVELOPE_VERSION,
+        keyId: null,
+        demoOperator: process.env.IMMUNE_DEMO_OPERATOR === "1",
+      },
     };
   }
 }

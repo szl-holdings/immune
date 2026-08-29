@@ -32,7 +32,8 @@ COPY dist/data ./data
 RUN chmod -R a+rwX /app/data && chown -R 1000:1000 /app
 
 ENV NODE_ENV=production \
-    PORT=7860
+    PORT=7860 \
+    IMMUNE_DEMO_OPERATOR=1
 
 EXPOSE 7860
 
