@@ -18,7 +18,7 @@ import {
   verifyLedger,
   evidenceLatest,
 } from "./ledger";
-import { getFrameworks, getTransparency, getIncidents, getLeaders, getPulse } from "./intel";
+import { getFrameworks, getTransparency, getIncidents, getLeaders, getPulse, getInferenceRadar, getActorClusters } from "./intel";
 import { CycleReadinessError, runGovernedCycle } from "./cycle";
 import { publicKeyInfo } from "./signing";
 import agentRouter, { agentStatus } from "./agent";
@@ -129,6 +129,14 @@ router.get("/intel/incidents", async (_req: Request, res: Response) => {
 
 router.get("/intel/leaders", (_req: Request, res: Response) => {
   res.json(getLeaders());
+});
+
+router.get("/intel/radar", (_req: Request, res: Response) => {
+  res.json(getInferenceRadar());
+});
+
+router.get("/intel/actors", (_req: Request, res: Response) => {
+  res.json(getActorClusters());
 });
 
 router.get("/intel/pulse", async (_req: Request, res: Response) => {
