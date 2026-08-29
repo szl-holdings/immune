@@ -8,6 +8,7 @@ import {
 import { ControlsPanel } from "@/components/ControlsPanel";
 import { AuditConsole } from "@/components/AuditConsole";
 import { ThreeScene } from "@/components/ThreeScene";
+import { LatticeCop } from "@/components/LatticeCop";
 import AgentConsole from "@/components/AgentConsole";
 import PulsePanel from "@/components/PulsePanel";
 import IntelPanel from "@/components/IntelPanel";
@@ -214,6 +215,8 @@ export default function Home() {
           <ChevronDown className="w-4 h-4 text-primary/60 animate-bounce" />
         </motion.div>
       </section>
+
+      <LatticeCop authority={authority} />
 
       {/* ===================== VALUE + PROOF BOUNDARY ===================== */}
       <section className="relative z-20 border-y border-primary/10 bg-black/70" aria-labelledby="proof-boundary-title">
