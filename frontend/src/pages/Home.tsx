@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useGetImmuneState } from "@/lib/immune-api";
 import {
   deriveAuthorityView,
+  firstPaintSystemStatus,
   initialAuthorityTransportState,
   transitionAuthorityTransportState,
 } from "@/lib/authority-view";
@@ -65,6 +66,7 @@ export default function Home() {
     requiredObservationAfterMs: transport.requiredObservationAfterMs,
   });
   const { mode, deadman, evidenceState } = authority;
+  const systemStatus = firstPaintSystemStatus(stateQuery.data, stateQuery.error, authority);
 
   const getStatusColor = () => {
     if (evidenceState === "FAILED") return "text-destructive shadow-destructive border-destructive/50";
@@ -142,7 +144,7 @@ export default function Home() {
                 role="status"
                 aria-live="polite"
               >
-                {evidenceState === "VERIFIED" ? (deadman ? "FROZEN" : mode) : evidenceState}
+                {systemStatus}
               </span>
             </div>
             <div className="flex items-center gap-2 mt-2">

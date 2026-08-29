@@ -167,3 +167,20 @@ export function authorityVisualState(
   if (state.deadman) return "VERIFIED_DEADMAN";
   return state.mode === "PASS" ? "VERIFIED_PASS" : "VERIFIED_REJECT";
 }
+
+/**
+ * HUD first-paint contract. Missing snapshot without an error is CONNECTING,
+ * never UNAVAILABLE and never a fabricated PASS/LIVE. UNAVAILABLE is reserved
+ * for a failed or impossible observation.
+ */
+export function firstPaintSystemStatus(
+  snapshot: ImmuneState | undefined,
+  queryError: unknown,
+  authority: AuthoritativeTripwireState,
+): string {
+  if (!snapshot && !queryError) return "CONNECTING";
+  if (authority.evidenceState === "VERIFIED") {
+    return authority.deadman ? "FROZEN" : authority.mode;
+  }
+  return authority.evidenceState;
+}
