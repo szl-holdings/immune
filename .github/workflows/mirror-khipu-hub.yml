@@ -49,6 +49,11 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          repository: szl-holdings/khipu-lab
+          path: khipu-lab
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
           repository: szl-holdings/szl-sovereign-os
           path: sovereign-os
           persist-credentials: false
@@ -119,9 +124,12 @@ jobs:
                   if line.startswith("emoji:"):
                       has_emoji = True
                       val = line.split(":", 1)[1].strip().strip('"').strip("'")
-                      if not val:
+                      # HF Space cards reject most emoji (🛡️ 🏠 and VS16 variants
+                      # raise Invalid metadata). Pin to a card that already works.
+                      allowed = {"⚖️", "💠", "🪢", "🎛️", "🧠", "⎈", "🚀", "🪐"}
+                      if val not in allowed:
                           val = "⎈"
-                      lines.append(f'emoji: "{val}"')
+                      lines.append(f"emoji: {val}")
                   elif line.startswith("short_description:"):
                       val = line.split(":", 1)[1].strip().strip('"').strip("'")
                       if len(val) > 60:
@@ -130,7 +138,7 @@ jobs:
                   else:
                       lines.append(line)
               if not has_emoji:
-                  lines.insert(1, 'emoji: "⎈"')
+                  lines.insert(1, "emoji: ⎈")
               p.write_text("---" + "\n".join(lines) + "\n---" + body, encoding="utf-8")
 
           def pub(local, repo_id, sdk, private=False):
@@ -163,6 +171,7 @@ jobs:
           pub("ayllu", "SZLHOLDINGS/ayllu", "docker")
           pub("experiments", "SZLHOLDINGS/szl-experiments", "docker")
           pub("command-lab", "SZLHOLDINGS/szl-command-lab", "docker")
+          pub("khipu-lab", "SZLHOLDINGS/khipu-lab", "docker")
           pub("sovereign-os", "SZLHOLDINGS/szl-sovereign-os", "docker")
           pub("real-estate", "SZLHOLDINGS/szl-real-estate", "docker")
           pub("cosmos", "SZLHOLDINGS/cosmos", "docker")
