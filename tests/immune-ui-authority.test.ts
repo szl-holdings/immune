@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   authorityVisualState,
   deriveAuthorityView,
+  firstPaintSystemStatus,
   initialAuthorityTransportState,
   transitionAuthorityTransportState,
 } from "../frontend/src/lib/authority-view";
@@ -449,5 +450,20 @@ test("governed-cycle UX requires real input and keeps proof labels evidence-scop
   assert.match(home, /MODELED \/ SAMPLE/);
   assert.match(home, /UNAVAILABLE \/ LIMITS/);
   assert.match(home, /Public readback is not an ATO or a performance claim/);
+  assert.match(home, /firstPaintSystemStatus\(stateQuery\.data, stateQuery\.error, authority\)/);
   assert.doesNotMatch(home, /Nothing on this page is fabricated/);
+});
+
+test("first paint is CONNECTING until a snapshot or error is observed", () => {
+  const connecting = deriveAuthorityView(undefined, null, { nowMs: OBSERVED_AT });
+  assert.equal(connecting.evidenceState, "UNAVAILABLE");
+  assert.equal(firstPaintSystemStatus(undefined, null, connecting), "CONNECTING");
+
+  const failed = deriveAuthorityView(undefined, new Error("network down"), {
+    nowMs: OBSERVED_AT,
+  });
+  assert.equal(firstPaintSystemStatus(undefined, new Error("network down"), failed), "UNAVAILABLE");
+
+  const live = deriveAuthorityView(snapshot(), null, { nowMs: OBSERVED_AT });
+  assert.equal(firstPaintSystemStatus(snapshot(), null, live), "PASS");
 });
