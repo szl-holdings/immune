@@ -11,6 +11,8 @@ const PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
 const REFRESH_MS = 30_000;
 const REFRESH_LEAD_MS = 90_000;
 const ACTION_TTL_MS = 4 * 60_000 + 30_000;
+const TRIPWIRE_IDS = ["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10"] as const;
+type TripwireId = (typeof TRIPWIRE_IDS)[number];
 
 export type OperatorIdentity = {
   privateKey: crypto.KeyObject;
@@ -38,6 +40,10 @@ function parsePrivateKey(b64: string): crypto.KeyObject {
 
 function requestId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}`;
+}
+
+function asTripwire(value: string | null | undefined): TripwireId {
+  return TRIPWIRE_IDS.includes(value as TripwireId) ? (value as TripwireId) : "T07";
 }
 
 export function loadDemoOperatorIdentity(): OperatorIdentity | null {
@@ -103,11 +109,13 @@ function needsRefresh(): boolean {
 function applyGenesis(identity: OperatorIdentity): void {
   const snap = getState();
   const mode = snap.evidenceState === "VERIFIED" ? snap.mode : "PASS";
+  const action: SignedActionEnvelope["action"] =
+    mode === "DEADMAN"
+      ? { type: "SET_MODE", mode: "DEADMAN", tripwire: asTripwire(snap.tripwire) }
+      : { type: "SET_MODE", mode };
   const envelope = signOperatorAction(
     identity,
-    mode === "DEADMAN"
-      ? { type: "SET_MODE", mode: "DEADMAN", tripwire: snap.tripwire ?? "T07" }
-      : { type: "SET_MODE", mode },
+    action,
     identity.demo ? "immune:demo-operator" : "immune:bootstrap-operator",
   );
   applySignedAction(envelope);
