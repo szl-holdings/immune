@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import {
   ACTION_ENVELOPE_VERSION,
   actionEnvelopeBytes,
@@ -20,6 +22,22 @@ export type OperatorIdentity = {
   keyId: string;
   demo: boolean;
 };
+
+type PersistedDemo = {
+  publicKeyB64: string;
+  privateKeyPkcs8: string;
+  keyId: string;
+};
+
+function dataDirectory(): string {
+  return process.env.IMMUNE_DATA_DIR
+    ? path.resolve(process.env.IMMUNE_DATA_DIR)
+    : path.resolve(process.cwd(), "data", "immune");
+}
+
+function persistPath(): string {
+  return path.join(dataDirectory(), "demo-operator.json");
+}
 
 function publicRawFromPrivate(pk: crypto.KeyObject): Buffer {
   const spki = crypto.createPublicKey(pk).export({ format: "der", type: "spki" }) as Buffer;
@@ -46,36 +64,63 @@ function asTripwire(value: string | null | undefined): TripwireId {
   return TRIPWIRE_IDS.includes(value as TripwireId) ? (value as TripwireId) : "T07";
 }
 
+function identityFromPrivate(privateKey: crypto.KeyObject, demo: boolean): OperatorIdentity {
+  const pub = publicRawFromPrivate(privateKey);
+  const publicKeyB64 = pub.toString("base64");
+  return {
+    privateKey,
+    publicKeyB64,
+    keyId: crypto.createHash("sha256").update(pub).digest("hex").slice(0, 16),
+    demo,
+  };
+}
+
+function loadPersistedDemo(): OperatorIdentity | null {
+  try {
+    const file = persistPath();
+    if (!fs.existsSync(file)) return null;
+    const raw = JSON.parse(fs.readFileSync(file, "utf8")) as PersistedDemo;
+    if (!raw.publicKeyB64 || !raw.privateKeyPkcs8) return null;
+    const identity = identityFromPrivate(parsePrivateKey(raw.privateKeyPkcs8), true);
+    if (identity.publicKeyB64 !== raw.publicKeyB64) return null;
+    return identity;
+  } catch {
+    return null;
+  }
+}
+
+function savePersistedDemo(identity: OperatorIdentity): void {
+  fs.mkdirSync(dataDirectory(), { recursive: true });
+  const pkcs8 = identity.privateKey.export({ format: "der", type: "pkcs8" }) as Buffer;
+  const payload: PersistedDemo = {
+    publicKeyB64: identity.publicKeyB64,
+    privateKeyPkcs8: pkcs8.toString("base64"),
+    keyId: identity.keyId,
+  };
+  fs.writeFileSync(persistPath(), `${JSON.stringify(payload)}\n`, { mode: 0o600 });
+}
+
 export function loadDemoOperatorIdentity(): OperatorIdentity | null {
   const demo = process.env.IMMUNE_DEMO_OPERATOR === "1";
   const privB64 = process.env.IMMUNE_ACTION_PRIVATE_KEY;
   if (!demo && !privB64) return null;
 
   if (privB64) {
-    const privateKey = parsePrivateKey(privB64);
-    const pub = publicRawFromPrivate(privateKey);
-    const publicKeyB64 = pub.toString("base64");
+    const identity = identityFromPrivate(parsePrivateKey(privB64), demo);
     const configured = process.env.IMMUNE_ACTION_PUBLIC_KEY;
-    if (configured && configured !== publicKeyB64) {
+    if (configured && configured !== identity.publicKeyB64) {
       throw new Error("IMMUNE_ACTION_PRIVATE_KEY does not match IMMUNE_ACTION_PUBLIC_KEY");
     }
-    return {
-      privateKey,
-      publicKeyB64,
-      keyId: crypto.createHash("sha256").update(pub).digest("hex").slice(0, 16),
-      demo,
-    };
+    return identity;
   }
 
-  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
-  const spki = publicKey.export({ format: "der", type: "spki" }) as Buffer;
-  const raw = spki.subarray(-32);
-  return {
-    privateKey,
-    publicKeyB64: raw.toString("base64"),
-    keyId: crypto.createHash("sha256").update(raw).digest("hex").slice(0, 16),
-    demo: true,
-  };
+  const persisted = loadPersistedDemo();
+  if (persisted) return persisted;
+
+  const { privateKey } = crypto.generateKeyPairSync("ed25519");
+  const identity = identityFromPrivate(privateKey, true);
+  savePersistedDemo(identity);
+  return identity;
 }
 
 export function signOperatorAction(
@@ -151,6 +196,7 @@ export function bootDemoOperator(): { enabled: boolean; keyId: string | null; de
         );
       }
     }, REFRESH_MS);
+    refreshTimer.unref?.();
   }
 
   // eslint-disable-next-line no-console
