@@ -119,8 +119,8 @@ jobs:
                   if line.startswith("emoji:"):
                       has_emoji = True
                       val = line.split(":", 1)[1].strip().strip('"').strip("'")
-                      if not val:
-                          val = "⎈"
+                      if not val or not any(ord(ch) >= 0x1F300 for ch in val):
+                          val = "🛡️"
                       lines.append(f'emoji: "{val}"')
                   elif line.startswith("short_description:"):
                       val = line.split(":", 1)[1].strip().strip('"').strip("'")
@@ -130,7 +130,7 @@ jobs:
                   else:
                       lines.append(line)
               if not has_emoji:
-                  lines.insert(1, 'emoji: "⎈"')
+                  lines.insert(1, 'emoji: "🛡️"')
               p.write_text("---" + "\n".join(lines) + "\n---" + body, encoding="utf-8")
 
           def pub(local, repo_id, sdk, private=False):
