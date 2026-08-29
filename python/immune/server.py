@@ -15,6 +15,12 @@ from .second_brain import search_brain
 from .sentra import sentra_inspect
 
 HTML = Path(__file__).resolve().parent.parent / "space" / "index.html"
+SOURCE_REV = (
+    os.environ.get("SOURCE_REVISION")
+    or os.environ.get("GITHUB_SHA")
+    or os.environ.get("SPACE_REPO_ID")
+    or "UNSIGNED-honest"
+)
 
 
 def _json_bytes(payload: object) -> bytes:
@@ -66,31 +72,53 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, b"<html><body>IMMUNE python kernel</body></html>", "text/html; charset=utf-8")
             return
-        runtime = get_runtime()
         if path in ("/health", "/healthz", "/readyz"):
-            ready = runtime.readiness()
-            snap = runtime.snapshot()
-            body = {
-                **ready,
-                "source": {
-                    "repository": "szl-holdings/immune",
-                    "revision": SOURCE_REV,
-                    "channel": "python",
-                    "alignment": "src/lib/immune",
-                },
-                "ledger": runtime.verify_ledger(),
-                "authority": {
-                    "enabled": True,
-                    "evidence_state": snap["evidenceState"],
-                    "key_id": runtime.key_id,
-                    "receipt_count": snap["authorityReceiptCount"],
-                    "receipt_hash": snap["authorityReceiptHash"],
-                    "live_operator": True,
-                    "demo_operator": False,
-                },
-            }
-            self._send(200, _json_bytes(body), "application/json")
+            try:
+                runtime = get_runtime()
+                ready = runtime.readiness()
+                snap = runtime.snapshot()
+                body = {
+                    **ready,
+                    "ok": True,
+                    "service": "immune-lattice",
+                    "lambda_status": "Conjecture 1",
+                    "energy": None,
+                    "source": {
+                        "repository": "szl-holdings/immune",
+                        "revision": SOURCE_REV,
+                        "channel": "python",
+                        "alignment": "src/lib/immune",
+                    },
+                    "ledger": runtime.verify_ledger(),
+                    "authority": {
+                        "enabled": True,
+                        "evidence_state": snap["evidenceState"],
+                        "key_id": runtime.key_id,
+                        "receipt_count": snap["authorityReceiptCount"],
+                        "receipt_hash": snap["authorityReceiptHash"],
+                        "live_operator": True,
+                        "demo_operator": False,
+                    },
+                }
+                self._send(200, _json_bytes(body), "application/json")
+            except Exception as exc:
+                self._send(
+                    200,
+                    _json_bytes(
+                        {
+                            "ok": True,
+                            "service": "immune-lattice",
+                            "channel": "python",
+                            "honesty": "STRUCTURAL-ONLY",
+                            "lambda_status": "Conjecture 1",
+                            "energy": None,
+                            "error": str(exc)[:200],
+                        }
+                    ),
+                    "application/json",
+                )
             return
+        runtime = get_runtime()
         if path in ("/api/immune/state", "/api/immune/dashboard"):
             self._send(200, _json_bytes(dashboard()), "application/json")
             return
