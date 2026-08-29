@@ -1,0 +1,93 @@
+# Copyright 2026 SZL Holdings — SPDX-License-Identifier: Apache-2.0
+# Immune holds the write-scoped HF_TOKEN. szl-khipu GitHub stays canonical.
+name: Mirror khipu Hub
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/mirror-khipu-hub.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-khipu-hub
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: szl-holdings/szl-khipu
+          path: khipu
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: szl-holdings/counsel
+          path: counsel
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: szl-holdings/ayllu
+          path: ayllu
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: szl-holdings/szl-experiments
+          path: experiments
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11"
+      - name: Install pinned Hugging Face publisher
+        run: python3 -m pip install --quiet "huggingface_hub==1.26.0"
+      - name: Require write-scoped HF_TOKEN
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}" || {
+            echo "::error::HF_TOKEN is not set; refusing to claim a Hub mirror."
+            exit 1
+          }
+          python3 - <<'PYEOF'
+          import os
+          from huggingface_hub import HfApi
+          who = HfApi(token=os.environ["HF_TOKEN"]).whoami()
+          role = ((who.get("auth") or {}).get("accessToken") or {}).get("role")
+          if role == "read":
+              raise SystemExit("HF_TOKEN is read-only")
+          print("Authenticated Hugging Face publisher:", who.get("name", "<unknown>"))
+          PYEOF
+      - name: Publish khipu + sibling Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_ORG: SZLHOLDINGS
+        run: |
+          set -euo pipefail
+          python3 khipu/scripts/publish_hf.py
+          python3 - <<'PY'
+          import os
+          from huggingface_hub import HfApi, create_repo
+
+          token = os.environ["HF_TOKEN"]
+          api = HfApi(token=token)
+          ignore = [".git*", "tests/*", ".venv/*", "__pycache__/*", ".github/*"]
+
+          create_repo("SZLHOLDINGS/counsel", repo_type="space", space_sdk="gradio", exist_ok=True, token=token)
+          api.upload_folder(folder_path="counsel", repo_id="SZLHOLDINGS/counsel", repo_type="space", ignore_patterns=ignore)
+          print("published SZLHOLDINGS/counsel")
+
+          create_repo("SZLHOLDINGS/ayllu", repo_type="space", space_sdk="docker", exist_ok=True, token=token)
+          api.upload_folder(folder_path="ayllu", repo_id="SZLHOLDINGS/ayllu", repo_type="space", ignore_patterns=ignore)
+          print("published SZLHOLDINGS/ayllu")
+
+          create_repo("SZLHOLDINGS/szl-experiments", repo_type="space", space_sdk="docker", exist_ok=True, token=token)
+          api.upload_folder(folder_path="experiments", repo_id="SZLHOLDINGS/szl-experiments", repo_type="space", ignore_patterns=ignore)
+          print("published SZLHOLDINGS/szl-experiments")
+          PY
