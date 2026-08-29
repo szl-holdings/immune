@@ -466,8 +466,8 @@ jobs:
           pub_hologram(
               "immune-lattice",
               "SZLHOLDINGS/immune-lattice",
-              kernel_pkg="immune-src/python/immune",
-              requirements="immune-src/python/requirements.txt",
+              kernel_pkg="immune-lattice/immune",
+              requirements="immune-lattice/requirements.txt",
           )
           pub("sovereign-os", "SZLHOLDINGS/szl-sovereign-os", "docker")
           pub("real-estate", "SZLHOLDINGS/szl-real-estate", "docker")
