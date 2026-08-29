@@ -625,8 +625,15 @@ router.post("/run", async (req: Request, res: Response) => {
       }
 
       if (parsedStep.final !== undefined && !parsedStep.action) {
-        finalText = parsedStep.final;
-        stoppedReason = "agent completed the goal";
+        const { gateAnswer } = await import("./nemo");
+        const gated = gateAnswer(goal, parsedStep.final);
+        finalText = gated.text;
+        stoppedReason = gated.verdict.ok
+          ? gated.verdict.rewritten
+            ? "agent completed · NEMO rewrote to conform"
+            : "agent completed the goal"
+          : `NEMO fail-closed: ${gated.verdict.violated.join(", ")}`;
+        if (!gated.verdict.ok) blocked = true;
         break;
       }
 

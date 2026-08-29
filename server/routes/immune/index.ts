@@ -22,6 +22,7 @@ import { getFrameworks, getTransparency, getIncidents, getLeaders, getPulse, get
 import { CycleReadinessError, runGovernedCycle } from "./cycle";
 import { publicKeyInfo } from "./signing";
 import agentRouter, { agentStatus } from "./agent";
+import inferRouter from "./infer";
 
 const router: IRouter = Router();
 
@@ -157,5 +158,8 @@ router.get("/agent-status", (_req: Request, res: Response) => {
 
 // The live governed agent — /agent/status and /agent/run.
 router.use("/agent", agentRouter);
+
+// NEMO-gated inference — always operational (SOFTWARE compose when LLM is off).
+router.use(inferRouter);
 
 export default router;

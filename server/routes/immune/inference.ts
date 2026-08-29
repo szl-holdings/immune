@@ -15,6 +15,7 @@ export interface ChatMessage {
 }
 
 export function inferenceConfigured(): boolean {
+  if (process.env.XAI_API_KEY) return true;
   return Boolean(
     process.env.INFERENCE_BASE_URL &&
       process.env.INFERENCE_API_KEY &&
@@ -28,10 +29,11 @@ function providerLabel(): string {
   if (url.includes("openai")) return "OpenAI";
   if (url.includes("together")) return "Together";
   if (url.includes("anthropic")) return "Anthropic";
+  if (url.includes("x.ai") || (!url && process.env.XAI_API_KEY)) return "xAI";
   try {
     return new URL(process.env.INFERENCE_BASE_URL || "").host || "custom";
   } catch {
-    return "custom";
+    return process.env.XAI_API_KEY ? "xAI" : "custom";
   }
 }
 
@@ -41,10 +43,11 @@ export function inferenceInfo(): {
   model: string | null;
 } {
   const configured = inferenceConfigured();
+  const groqModel = process.env.INFERENCE_MODEL ?? null;
   return {
     configured,
     provider: configured ? providerLabel() : null,
-    model: configured ? process.env.INFERENCE_MODEL ?? null : null,
+    model: configured ? groqModel ?? (process.env.XAI_API_KEY ? "grok-4.5" : null) : null,
   };
 }
 
@@ -60,7 +63,14 @@ export async function chatComplete(
   if (!inferenceConfigured()) {
     throw new Error("inference not configured");
   }
-  const base = (process.env.INFERENCE_BASE_URL as string).replace(/\/$/, "");
+  const groqReady = Boolean(
+    process.env.INFERENCE_BASE_URL && process.env.INFERENCE_API_KEY && process.env.INFERENCE_MODEL,
+  );
+  const base = groqReady
+    ? (process.env.INFERENCE_BASE_URL as string).replace(/\/$/, "")
+    : "https://api.x.ai/v1";
+  const key = groqReady ? process.env.INFERENCE_API_KEY : process.env.XAI_API_KEY;
+  const model = groqReady ? process.env.INFERENCE_MODEL : "grok-4.5";
   const url = `${base}/chat/completions`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? 25_000);
@@ -69,10 +79,10 @@ export async function chatComplete(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.INFERENCE_API_KEY}`,
+        Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({
-        model: process.env.INFERENCE_MODEL,
+        model,
         messages,
         max_tokens: opts.maxTokens ?? 400,
         temperature: opts.temperature ?? 0.2,
