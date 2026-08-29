@@ -9,8 +9,35 @@ agent action is sealed into an append-only, SHA-256 hash-linked receipt chain, a
 every externally-sourced datum carries an honest `LIVE / REFERENCE / UNAVAILABLE`
 provenance label. Nothing here is fabricated.
 
-- **Live demo:** https://szlholdings-immune.hf.space (Hugging Face Docker Space `SZLHOLDINGS/immune`)
+- **Live demo (Channel A, TypeScript HUD):** https://szlholdings-immune.hf.space (`SZLHOLDINGS/immune`)
+- **Python kernel (Channel B):** https://szlholdings-immune-lattice.hf.space (`SZLHOLDINGS/immune-lattice`) — same doctrine, Ed25519 live operator, source in [`python/`](./python/)
 - **Org:** https://github.com/szl-holdings · License: Apache-2.0
+
+## Consolidation (do not delete either Space)
+
+There are two Hugging Face Spaces. They are **one product, two channels** — not two immunes.
+
+| Surface | What it is | Keep? |
+|---|---|---|
+| `SZLHOLDINGS/immune` | Channel A. TypeScript HUD + kernel. Already LIVE / WRITE-READY. Estate tiles, a11oy, killinchu handoff. | **Keep.** Canonical public HUD. |
+| `SZLHOLDINGS/immune-lattice` | Channel B. This repo's `python/` kernel (stdlib HTTP, port 7860). | **Keep the URL.** Same receipts, same SENTRA/YAWAR/HUKLLA. |
+
+This Grok Build COP (`src/lib/immune` TypeScript ↔ `python/immune` Python) is the kernel both channels must follow. Lattice is not a second product.
+
+## Python kernel
+
+```
+python/
+  immune/          canonical · sentra · huklla · persist · runtime · mesh · second_brain · frontier · organs · server
+  tests/           unittest — boot WRITE-READY, cycle seal, DEADMAN, 575-handle brain, silhouette, MESH 3-of-4
+  space/           HF hologram HUD
+```
+
+```bash
+pip install -r python/requirements.txt
+IMMUNE_DATA_DIR=./data/immune PYTHONPATH=python python3 -m immune.server
+PYTHONPATH=python python3 -m unittest discover -s python/tests -v
+```
 
 ---
 
