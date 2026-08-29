@@ -46,6 +46,8 @@ Ops go through `POST /api/immune/cycle` (SENTRA → optional YAWAR receipt → H
 The public Hugging Face Space boots a **labeled demo operator**
 (`IMMUNE_DEMO_OPERATOR=1` in the demo image): process-local Ed25519 signs genesis
 `SET_MODE PASS` and refreshes evidence so `/readyz` is `write_ready: true`.
+The demo keypair is persisted under `IMMUNE_DATA_DIR/demo-operator.json` so a
+process restart reuses the same trust root and receipt chain.
 That key is **not an ATO**. Production deployments omit the flag, require
 `IMMUNE_ACTION_PUBLIC_KEY`, and stay fail-closed `READ_ONLY` until a matching
 signed envelope is applied. Home remains the sole `useGetImmuneState()`
