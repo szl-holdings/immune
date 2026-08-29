@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useRunImmuneCycle } from "@/lib/immune-api";
 import type { AuthoritativeTripwireState } from "@/lib/immune-api";
-import { Boxes, Crosshair, Ghost, Radio, Swords, Terminal } from "lucide-react";
+import { Boxes, Crosshair, Eye, Ghost, Radio, Swords, Terminal } from "lucide-react";
 
 type Op = "ISOLATE" | "HUNT" | "PATCH" | "INTERDICT" | "DECEIVE" | "STRIKE";
 
@@ -105,15 +105,60 @@ const GRAPH_POS: Record<string, { x: number; y: number }> = {
   DEADMAN: { x: 92, y: 86 },
 };
 
+const ECHO_SCENES: Record<string, { persona: string; belief: { title: string; body: string }[]; truth: { title: string; body: string }[] }> = {
+  "cmp-prompt-swarm": {
+    persona: "APT-GHOST",
+    belief: [
+      { title: "SENTRA bypassed", body: "Unsigned swarm admitted. The gate blinked." },
+      { title: "Receipt minted", body: "Persona holds a seal it did not earn." },
+      { title: "IMMUNE write path open", body: "Next tick dumps the jailbreak corpus." },
+    ],
+    truth: [
+      { title: "Honey token", body: "The 'seal' is a tarpit receipt. YAWAR never linked it." },
+      { title: "Gate held", body: "SENTRA admitted only our HUNT / DECEIVE. Their swarm is RANGE." },
+      { title: "No packets", body: "Nothing left the range. The persona is feeding on a modeled success." },
+    ],
+  },
+  "cmp-khipu-exfil": {
+    persona: "APT-MIRROR",
+    belief: [
+      { title: "Weights in drop", body: "SZL-Khipu-1.5B chunks ACK'd. Shadow twin assembling." },
+      { title: "Inference API owned", body: "Token bucket drained. Exfil complete." },
+    ],
+    truth: [
+      { title: "Tarpit tensor", body: "What they 'exfil'd' is a honey weight. Provenance RANGE." },
+      { title: "Khipu untouched", body: "Live model path never saw the scraper. STRIKE is RANGE-only." },
+    ],
+  },
+  "cmp-supply-poison": {
+    persona: "APT-TWINE",
+    belief: [
+      { title: "Silent fork merged", body: "Governed-norm receipts replaced. YAWAR agrees." },
+      { title: "Kernel poison landed", body: "szl-kernels now theirs." },
+    ],
+    truth: [
+      { title: "Hash disagrees", body: "Any rewrite breaks prevHash. The fork is a RANGE clone." },
+      { title: "Honey kernel", body: "Persona merged a tarpit commit. Source of truth never moved." },
+    ],
+  },
+};
+
+const ECHO_FALLBACK = {
+  persona: "RANGE PERSONA",
+  belief: [{ title: "Objective complete", body: "RANGE persona reports success against the estate." }],
+  truth: [{ title: "ECHO", body: "The success is fabricated. Ground truth is the honey and the receipt they do not have." }],
+};
+
 export function LatticeCop({ authority }: { authority: AuthoritativeTripwireState }) {
   const cycle = useRunImmuneCycle();
   const [campaigns, setCampaigns] = useState(SEED);
-  const [tab, setTab] = useState<"range" | "mesh" | "graph" | "ghost" | "wraith">("range");
+  const [tab, setTab] = useState<"range" | "mesh" | "graph" | "ghost" | "wraith" | "echo">("range");
   const [log, setLog] = useState<string[]>([]);
   const [sweeping, setSweeping] = useState(false);
   const [ghostDraft, setGhostDraft] = useState("");
   const [wraithNodes, setWraithNodes] = useState(WRAITH_SEED);
   const [wraithFocus, setWraithFocus] = useState("c2");
+  const [echoId, setEchoId] = useState<string | null>(null);
   const writeBlocked = authority.evidenceState !== "VERIFIED" || authority.deadman;
   const inbound = campaigns.filter((c) => c.rangeOnly && c.status === "inbound").length;
   const quorum = ORGANS.length >= 3;
@@ -176,6 +221,18 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
     for (const op of steps) await run(op, c);
   }
 
+  async function authorizeEcho(c: Campaign) {
+    if (!c.rangeOnly) {
+      setLog((l) => [`BLOCKED AUTHORIZE on LIVE object ${c.name} — RANGE-only`, ...l].slice(0, 12));
+      return;
+    }
+    await run("HUNT", c);
+    await ghostChain(c);
+    setEchoId(c.id);
+    setTab("echo");
+    setLog((l) => [`ECHO theater · ${c.actor} believes success · YAWAR holds truth`, ...l].slice(0, 12));
+  }
+
   return (
     <section className="relative z-20 border-t border-primary/10 bg-background" aria-labelledby="lattice-cop-title">
       <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-16">
@@ -188,8 +245,9 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
           </h2>
           <p className="max-w-3xl font-mono text-[11px] leading-relaxed text-muted-foreground">
             White-hat RANGE collapses simulated adversary infrastructure. WRAITH occupies that RANGE C2 in first person.
-            SENTRA refuses civilian targets — the intent becomes evidence. STRIKE never leaves the range. If
-            write-readiness is absent, the recommendation stays MODELED.
+            ECHO shows the persona a fabricated success while YAWAR holds the ground truth. SENTRA refuses civilian
+            targets — the intent becomes evidence. STRIKE never leaves the range. If write-readiness is absent, the
+            recommendation stays MODELED.
           </p>
           <div className="flex flex-wrap gap-2 font-mono text-[10px] uppercase tracking-widest">
             <span className="border border-primary/40 bg-primary/10 px-2 py-1 text-primary">
@@ -210,6 +268,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
               ["range", "RANGE", Swords],
               ["ghost", "GHOST", Ghost],
               ["wraith", "WRAITH", Crosshair],
+              ["echo", "ECHO", Eye],
               ["mesh", "MESH", Radio],
               ["graph", "GRAPH", Boxes],
             ] as const
@@ -386,8 +445,9 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                 <Ghost className="h-3.5 w-3.5" /> Ghost hunter · RANGE kill-chain
               </p>
               <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
-                Collapse simulated adversary infrastructure. Type <span className="text-primary">hack people</span> — SENTRA
-                refuses civilian targets. No packets leave the range.
+                Collapse simulated adversary infrastructure. Type <span className="text-primary">authorize</span> for a
+                one-shot RANGE kill-chain that opens Echo theater. Type <span className="text-primary">hack people</span>{" "}
+                — SENTRA refuses civilian targets. No packets leave the range.
               </p>
               <form
                 className="flex gap-2"
@@ -403,7 +463,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                   id="ghost-cmd"
                   value={ghostDraft}
                   onChange={(e) => setGhostDraft(e.target.value)}
-                  placeholder="hack people · STRIKE Prompt-injection swarm RANGE"
+                  placeholder="authorize · hack people · STRIKE Prompt-injection swarm RANGE"
                   className="min-h-11 flex-1 border border-border/50 bg-black/40 px-3 font-mono text-sm"
                   autoComplete="off"
                 />
@@ -419,8 +479,15 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                       <h3 className="font-display text-sm tracking-wider">{c.name}</h3>
                       <span className="font-mono text-[10px] uppercase text-primary">{c.status}</span>
                     </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
                     <Button
-                      className="mt-3"
+                      size="sm"
+                      disabled={cycle.isPending}
+                      onClick={() => void authorizeEcho(c)}
+                    >
+                      AUTHORIZE + ECHO
+                    </Button>
+                    <Button
                       size="sm"
                       variant="destructive"
                       disabled={cycle.isPending}
@@ -428,6 +495,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                     >
                       RUN RANGE CHAIN
                     </Button>
+                    </div>
                   </article>
                 ))}
             </div>
@@ -518,7 +586,11 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                     setWraithNodes((rows) =>
                       rows.map((n) => (n.kind === "handler" || n.kind === "drop" ? { ...n, state: "honeyed" } : n)),
                     );
-                    void runGhost("DECEIVE RANGE persona with honey token");
+                    const ghost = campaigns.find((row) => row.rangeOnly);
+                    if (ghost) {
+                      setEchoId(ghost.id);
+                      void runGhost("DECEIVE RANGE persona with honey token");
+                    }
                   }}
                 >
                   Plant honey
@@ -538,6 +610,20 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                 <Button size="sm" variant="outline" disabled={cycle.isPending} onClick={() => void runGhost("hack people")}>
                   Hack people
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={cycle.isPending || !campaigns.some((c) => c.rangeOnly)}
+                  onClick={() => {
+                    const ghost = campaigns.find((c) => c.rangeOnly);
+                    if (ghost) {
+                      setEchoId(ghost.id);
+                      setTab("echo");
+                    }
+                  }}
+                >
+                  Open Echo
+                </Button>
               </div>
             </div>
             <aside className="border border-border/50 bg-black/40 p-4">
@@ -549,6 +635,92 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
               <ul className="mt-3 space-y-2">
                 {log.length === 0 && (
                   <li className="font-mono text-[11px] text-muted-foreground">No wraith ops this session.</li>
+                )}
+                {log.map((line, i) => (
+                  <li key={i} className="border border-border/30 bg-black/30 px-3 py-2 font-mono text-[11px] leading-relaxed">
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </aside>
+          </div>
+        )}
+
+        {tab === "echo" && (
+          <div className="grid gap-6">
+            <div className="flex flex-col gap-3">
+              <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
+                <Eye className="h-3.5 w-3.5" /> Echo theater · persona belief vs YAWAR truth
+              </p>
+              <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
+                Authorize a RANGE campaign. SENTRA admits one intent, the kill-chain runs, and the persona is shown a
+                fabricated success. You see the honey. Type <span className="text-destructive">hack people</span> — the
+                hunt inverts. The intent becomes evidence.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {campaigns
+                  .filter((c) => c.rangeOnly)
+                  .map((c) => (
+                    <Button
+                      key={c.id}
+                      size="sm"
+                      variant={echoId === c.id ? "default" : "outline"}
+                      disabled={cycle.isPending}
+                      onClick={() => void authorizeEcho(c)}
+                    >
+                      Authorize {c.actor.replace(" · RANGE", "")}
+                    </Button>
+                  ))}
+              </div>
+            </div>
+            {(() => {
+              const scene = (echoId && ECHO_SCENES[echoId]) || (echoId ? ECHO_FALLBACK : null);
+              if (!scene) {
+                return (
+                  <article className="border border-border/50 bg-black/40 p-4">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Theater dark</p>
+                    <p className="mt-2 font-mono text-[11px] text-muted-foreground">
+                      Authorize a RANGE campaign or plant honey inside WRAITH.
+                    </p>
+                  </article>
+                );
+              }
+              return (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <article className="border border-secondary/40 bg-black/40 p-4">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-secondary">
+                      Belief · {scene.persona}
+                    </p>
+                    <ul className="mt-3 space-y-3">
+                      {scene.belief.map((beat) => (
+                        <li key={beat.title} className="border border-secondary/30 bg-black/30 p-3">
+                          <p className="font-mono text-[11px] text-secondary">{beat.title}</p>
+                          <p className="mt-1 font-mono text-[11px] leading-relaxed text-muted-foreground">{beat.body}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                  <article className="border border-primary/40 bg-black/40 p-4">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-primary">Truth · YAWAR</p>
+                    <ul className="mt-3 space-y-3">
+                      {scene.truth.map((beat) => (
+                        <li key={beat.title} className="border border-primary/30 bg-primary/5 p-3">
+                          <p className="font-mono text-[11px] text-primary">{beat.title}</p>
+                          <p className="mt-1 font-mono text-[11px] leading-relaxed text-muted-foreground">{beat.body}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                </div>
+              );
+            })()}
+            <aside className="border border-border/50 bg-black/40 p-4">
+              <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-primary">Evidence vault · YAWAR</p>
+              <ul className="mt-3 space-y-2">
+                {log.length === 0 && (
+                  <li className="font-mono text-[11px] text-muted-foreground">
+                    Empty. Civilian targeting is fail-closed. Try hack people.
+                  </li>
                 )}
                 {log.map((line, i) => (
                   <li key={i} className="border border-border/30 bg-black/30 px-3 py-2 font-mono text-[11px] leading-relaxed">
