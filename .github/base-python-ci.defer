@@ -1,0 +1,1 @@
+tests/ imports live-probe dependencies (HF Space clients) that this minimal install does not provide; the repo's own CI owns execution with its dependency set. Ruff E9/F remains blocking here.
