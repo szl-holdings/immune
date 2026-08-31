@@ -57,7 +57,7 @@ const SEED: Campaign[] = [
 
 const ORGANS = [
   { id: "immune", name: "IMMUNE", role: "admission + receipts", x: 50, y: 18, href: "https://szlholdings-immune.hf.space" },
-  { id: "a11oy", name: "a11oy", role: "governed inference", x: 18, y: 58, href: "https://a-11-oy.com" },
+  { id: "a11oy", name: "a11oy", role: "governed agent change management", x: 18, y: 58, href: "https://a-11-oy.com" },
   { id: "killinchu", name: "killinchu", role: "counter-UAS mesh", x: 82, y: 58, href: "https://huggingface.co/spaces/SZLHOLDINGS/killinchu" },
   { id: "khipu", name: "Khipu-1.5B", role: "sovereign agent", x: 50, y: 88, href: "https://huggingface.co/SZLHOLDINGS/SZL-Khipu-1.5B" },
 ] as const;
