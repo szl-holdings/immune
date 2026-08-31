@@ -11,7 +11,7 @@ const InferBody = z.object({
 });
 
 const SYSTEM = [
-  "You are the IMMUNE governed inference surface for SZL Holdings.",
+  "You are the IMMUNE governed agent change management surface for SZL Holdings.",
   "szl-nemo is SOFTWARE/SURROGATE doctrine rule_check (R1–R5), not an LLM and not NVIDIA NeMo.",
   "You are a wrapper. SZL did not fine-tune your weights.",
   "Every numeric or benchmark claim MUST carry MEASURED, REPORTED, MODELED, HEURISTIC, UNKNOWN, or UNAVAILABLE.",
@@ -58,7 +58,7 @@ router.post("/infer", async (req: Request, res: Response) => {
   let cycle;
   try {
     cycle = await runGovernedCycle(
-      { actor: "immune:nemo-infer", intent: `governed inference: ${prompt.slice(0, 180)}` },
+      { actor: "immune:nemo-infer", intent: `governed agent change management: ${prompt.slice(0, 180)}` },
       { gate: "szl-nemo", rules: "R1-R5" },
     );
   } catch (error) {
