@@ -1,0 +1,80 @@
+name: Diagnose model inference lab runtime
+
+on:
+  push:
+    branches:
+      - ops/diagnose-model-inference-lab-runtime
+    paths:
+      - ".github/workflows/diagnose-model-inference-lab-runtime.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install exact diagnostic clients
+        run: >-
+          python -m pip install --disable-pip-version-check
+          "huggingface-hub==1.23.0" "requests==2.32.5"
+
+      - name: Capture control-plane and public-runtime evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}"
+          echo "::add-mask::${HF_TOKEN}"
+          python - <<'PY'
+          import json
+          import os
+          import requests
+          from huggingface_hub import HfApi
+
+          repo_id = "SZLHOLDINGS/szl-model-inference-lab"
+          origin = "https://szlholdings-szl-model-inference-lab.hf.space"
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          info = api.space_info(repo_id, files_metadata=False)
+          runtime = getattr(info, "runtime", None)
+          print(json.dumps({
+              "repo_id": repo_id,
+              "hf_commit": getattr(info, "sha", None),
+              "runtime_stage": getattr(runtime, "stage", None),
+              "hardware": getattr(runtime, "hardware", None),
+              "requested_hardware": getattr(runtime, "requested_hardware", None),
+              "sleep_time": getattr(runtime, "sleep_time", None),
+              "raw_domains": (getattr(runtime, "raw", None) or {}).get("domains", []),
+          }, indent=2, default=str))
+
+          session = requests.Session()
+          session.headers.update({
+              "Accept": "application/json",
+              "Cache-Control": "no-cache, no-store, max-age=0",
+              "User-Agent": "szl-immune-runtime-diagnostic/1",
+          })
+          for path in ("/live", "/health", "/healthz", "/readyz", "/api/build-info", "/api/v1/identity"):
+              try:
+                  response = session.get(origin + path, timeout=90)
+                  print(json.dumps({
+                      "path": path,
+                      "status": response.status_code,
+                      "content_type": response.headers.get("content-type"),
+                      "body": response.text[:4000],
+                  }, ensure_ascii=False))
+              except Exception as exc:
+                  print(json.dumps({"path": path, "error": f"{type(exc).__name__}: {exc}"}))
+          PY
