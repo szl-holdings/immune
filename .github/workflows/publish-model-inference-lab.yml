@@ -1,0 +1,159 @@
+# Copyright 2026 SZL Holdings — SPDX-License-Identifier: Apache-2.0
+# Immune owns the write-scoped Hugging Face credential. Forge remains canonical source.
+name: Publish model inference lab via Immune
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-model-inference-lab.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: immune-publish-model-inference-lab
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publish exact Forge source and attest runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout canonical Forge source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: szl-holdings/szl-forge
+          ref: main
+          path: forge
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install exact publication clients
+        run: >-
+          python -m pip install --disable-pip-version-check
+          "huggingface-hub==1.23.0"
+          "requests==2.32.5"
+
+      - name: Require Immune write-scoped Hub credential
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}" || {
+            echo "::error::Immune HF_TOKEN is absent; refusing to claim publication."
+            exit 1
+          }
+          echo "::add-mask::${HF_TOKEN}"
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+
+          who = HfApi(token=os.environ["HF_TOKEN"]).whoami()
+          role = ((who.get("auth") or {}).get("accessToken") or {}).get("role")
+          if role == "read":
+              raise SystemExit("Immune HF_TOKEN is read-only")
+          print("Authenticated Hugging Face publisher:", who.get("name", "<unknown>"))
+          PY
+
+      - name: Publish Space and independently verify public contract
+        working-directory: forge
+        run: |
+          set -euo pipefail
+          source_revision="$(git rev-parse HEAD)"
+          python tools/publish_hf_space.py \
+            --source-dir spaces/szl-model-inference-lab \
+            --repo-id SZLHOLDINGS/szl-model-inference-lab \
+            --source-revision "${source_revision}" \
+            --publish \
+            --clear-space-volumes \
+            --wait-seconds 1800 \
+            --smoke-path /live \
+            --smoke-path /health \
+            --smoke-path /api/build-info \
+            --smoke-path /api/v1/identity \
+            --smoke-path /.well-known/szl-inference-contract.json \
+            --smoke-path /v1/models \
+            --report reports/model-inference-lab-publication.json
+
+      - name: Upload Space publication evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: immune-model-inference-lab-publication-${{ github.run_id }}
+          path: forge/reports/model-inference-lab-publication.json
+          if-no-files-found: error
+          retention-days: 90
+
+  bindings:
+    name: Publish exact model-source bindings and read back
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout exact deployed Forge source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: szl-holdings/szl-forge
+          ref: main
+          path: forge
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install exact binding client
+        run: >-
+          python -m pip install --disable-pip-version-check
+          "huggingface-hub==1.23.0"
+          "cryptography==49.0.0"
+
+      - name: Verify and publish model-source contracts
+        working-directory: forge
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}" || {
+            echo "::error::Immune HF_TOKEN is absent; refusing to claim binding publication."
+            exit 1
+          }
+          echo "::add-mask::${HF_TOKEN}"
+          source_revision="$(git rev-parse HEAD)"
+          PYTHONPATH=tools python tools/test_publish_model_source_bindings.py
+          python tools/publish_model_source_bindings.py \
+            --source-revision "${source_revision}" \
+            --expected-runtime-source-revision "${source_revision}" \
+            --publish \
+            --report reports/model-source-bindings.json
+
+      - name: Upload binding evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: immune-model-source-bindings-${{ github.run_id }}
+          path: forge/reports/model-source-bindings.json
+          if-no-files-found: error
+          retention-days: 90
