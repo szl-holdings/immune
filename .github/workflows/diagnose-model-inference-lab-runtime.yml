@@ -46,12 +46,18 @@ jobs:
           from huggingface_hub import HfApi
 
           repo_id = "SZLHOLDINGS/szl-model-inference-lab"
-          origin = "https://szlholdings-szl-model-inference-lab.hf.space"
-          api = HfApi(token=os.environ["HF_TOKEN"])
+          token = os.environ["HF_TOKEN"]
+          api = HfApi(token=token)
           info = api.space_info(repo_id, files_metadata=False)
           runtime = getattr(info, "runtime", None)
+          subdomain = getattr(info, "subdomain", None) or "szlholdings-szl-model-inference-lab"
+          origin = f"https://{subdomain}.hf.space"
           print(json.dumps({
               "repo_id": repo_id,
+              "private": getattr(info, "private", None),
+              "disabled": getattr(info, "disabled", None),
+              "sdk": getattr(info, "sdk", None),
+              "subdomain": subdomain,
               "hf_commit": getattr(info, "sha", None),
               "runtime_stage": getattr(runtime, "stage", None),
               "hardware": getattr(runtime, "hardware", None),
@@ -60,21 +66,30 @@ jobs:
               "raw_domains": (getattr(runtime, "raw", None) or {}).get("domains", []),
           }, indent=2, default=str))
 
-          session = requests.Session()
-          session.headers.update({
-              "Accept": "application/json",
-              "Cache-Control": "no-cache, no-store, max-age=0",
-              "User-Agent": "szl-immune-runtime-diagnostic/1",
-          })
-          for path in ("/live", "/health", "/healthz", "/readyz", "/api/build-info", "/api/v1/identity"):
-              try:
-                  response = session.get(origin + path, timeout=90)
-                  print(json.dumps({
-                      "path": path,
-                      "status": response.status_code,
-                      "content_type": response.headers.get("content-type"),
-                      "body": response.text[:4000],
-                  }, ensure_ascii=False))
-              except Exception as exc:
-                  print(json.dumps({"path": path, "error": f"{type(exc).__name__}: {exc}"}))
+          paths = ("/live", "/health", "/healthz", "/readyz", "/api/build-info", "/api/v1/identity")
+          for authenticated in (False, True):
+              session = requests.Session()
+              session.headers.update({
+                  "Accept": "application/json",
+                  "Cache-Control": "no-cache, no-store, max-age=0",
+                  "User-Agent": "szl-immune-runtime-diagnostic/2",
+              })
+              if authenticated:
+                  session.headers["Authorization"] = f"Bearer {token}"
+              for path in paths:
+                  try:
+                      response = session.get(origin + path, timeout=90)
+                      print(json.dumps({
+                          "authenticated": authenticated,
+                          "path": path,
+                          "status": response.status_code,
+                          "content_type": response.headers.get("content-type"),
+                          "body": response.text[:4000],
+                      }, ensure_ascii=False))
+                  except Exception as exc:
+                      print(json.dumps({
+                          "authenticated": authenticated,
+                          "path": path,
+                          "error": f"{type(exc).__name__}: {exc}",
+                      }))
           PY
