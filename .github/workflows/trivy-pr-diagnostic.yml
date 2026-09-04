@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-name: Trivy PR dependency diagnostic
+name: Trivy PR security diagnostic
 
 on:
   push:
@@ -7,8 +7,6 @@ on:
       - fix/remove-unused-re-20260904
     paths:
       - .github/workflows/trivy-pr-diagnostic.yml
-      - package.json
-      - pnpm-lock.yaml
   workflow_dispatch:
 
 permissions:
@@ -27,15 +25,49 @@ jobs:
       - name: Checkout exact branch revision
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v5.0.0
 
-      - name: Print all HIGH/CRITICAL dependency findings
+      - name: Capture HIGH/CRITICAL vulnerability and secret metadata
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.33.1
         with:
           scan-type: fs
           scan-ref: .
-          scanners: vuln
+          scanners: vuln,secret
           vuln-type: os,library
-          format: table
+          format: json
+          output: trivy-diagnostic.json
           severity: HIGH,CRITICAL
-          ignore-unfixed: false
-          list-all-pkgs: true
+          ignore-unfixed: true
           exit-code: '0'
+
+      - name: Print redacted finding metadata only
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("trivy-diagnostic.json").read_text(encoding="utf-8"))
+          findings = []
+          for result in report.get("Results") or []:
+              target = result.get("Target")
+              for item in result.get("Vulnerabilities") or []:
+                  findings.append({
+                      "kind": "vulnerability",
+                      "target": target,
+                      "id": item.get("VulnerabilityID"),
+                      "package": item.get("PkgName"),
+                      "installed": item.get("InstalledVersion"),
+                      "fixed": item.get("FixedVersion"),
+                      "severity": item.get("Severity"),
+                  })
+              for item in result.get("Secrets") or []:
+                  findings.append({
+                      "kind": "secret",
+                      "target": target,
+                      "rule_id": item.get("RuleID"),
+                      "category": item.get("Category"),
+                      "title": item.get("Title"),
+                      "severity": item.get("Severity"),
+                      "start_line": item.get("StartLine"),
+                      "end_line": item.get("EndLine"),
+                  })
+          print(json.dumps({"count": len(findings), "findings": findings}, sort_keys=True))
+          PY
