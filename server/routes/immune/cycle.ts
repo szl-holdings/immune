@@ -131,6 +131,10 @@ export async function runGovernedCycle(
         receiptHash: s.authorityReceiptHash,
         validUntil: authority.validUntil,
       },
+      estate: process.env.IMMUNE_ESTATE_DIGEST ?? "e7b04c982887ec1f",
+      poorest: "unmeasured",
+      energyClass: "UNAVAILABLE",
+      energy_j: null,
     };
     if (extra) payload.agent = extra;
     try {
