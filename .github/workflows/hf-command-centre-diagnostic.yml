@@ -1,0 +1,89 @@
+name: hf-command-centre-manifest-diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/hf-command-centre-diagnostic.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --disable-pip-version-check --no-cache-dir "huggingface_hub==1.23.0"
+      - name: Inspect active Command Centre manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}" || { echo "::error::HF_TOKEN absent"; exit 2; }
+          echo "::add-mask::$HF_TOKEN"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from huggingface_hub import HfApi, hf_hub_download
+
+          repo_id = "betterwithage/szl-command-centre"
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          info = api.repo_info(repo_id=repo_id, repo_type="space")
+          manifest_path = Path(hf_hub_download(
+              repo_id=repo_id,
+              repo_type="space",
+              filename="manifest.json",
+              revision=info.sha,
+              token=os.environ["HF_TOKEN"],
+              force_download=True,
+          ))
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          records = manifest.get("consolidated_spaces")
+          if not isinstance(records, list):
+              raise SystemExit("manifest consolidated_spaces is not a list")
+          sources = sorted(
+              str(item.get("source") or "")
+              for item in records
+              if isinstance(item, dict)
+          )
+          files = api.list_repo_files(
+              repo_id=repo_id,
+              repo_type="space",
+              revision=info.sha,
+          )
+          archive_roots = sorted({
+              "/".join(path.split("/")[:2])
+              for path in files
+              if path.startswith("archive/") and len(path.split("/")) >= 3
+          })
+          output = {
+              "schema": "szl.hf-command-centre-diagnostic/v1",
+              "revision": str(info.sha or ""),
+              "private": bool(info.private),
+              "record_count": len(records),
+              "record_sources": sources,
+              "david_record_count": sources.count("SZLHOLDINGS/david-leads"),
+              "quant_curve_record_count": sources.count("SZLHOLDINGS/quant-curve"),
+              "command_lab_record_count": sources.count("SZLHOLDINGS/szl-command-lab"),
+              "archive_root_count": len(archive_roots),
+              "archive_roots": archive_roots,
+              "david_archive_files": sum(
+                  path.startswith("archive/david-leads/") for path in files
+              ),
+              "quant_curve_archive_files": sum(
+                  path.startswith("archive/quant-curve/") for path in files
+              ),
+              "command_lab_archive_files": sum(
+                  path.startswith("archive/szl-command-lab/") for path in files
+              ),
+          }
+          print("COMMAND CENTRE DIAGNOSTIC " + json.dumps(output, sort_keys=True))
+          PY
