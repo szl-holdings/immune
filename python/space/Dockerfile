@@ -6,6 +6,7 @@ COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY immune ./immune
 COPY index.html ./index.html
+COPY nexus.html ./nexus.html
 COPY server.py ./server.py
 EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
