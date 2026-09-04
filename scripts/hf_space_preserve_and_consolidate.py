@@ -71,8 +71,6 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 def is_lfs_pointer(path: Path) -> bool:
-    if path.name.endswith(".lfs-pointer.txt"):
-        return False
     if not path.is_file() or path.stat().st_size > 4096:
         return False
     try:
@@ -93,18 +91,27 @@ def sanitize_tree(source: Path, destination: Path) -> dict:
         if ".git" in rel.parts or ".cache" in rel.parts or "__pycache__" in rel.parts:
             continue
         target_rel = rel
+        pointer_record = None
         if rel.name == ".gitattributes":
             target_rel = rel.with_name("__gitattributes__.txt")
         elif is_lfs_pointer(src):
-            target_rel = Path(str(rel) + ".lfs-pointer.txt")
-            unresolved_lfs.append({
+            target_rel = Path(str(rel) + ".lfs-pointer.json")
+            pointer_record = {
+                "record_type": "unresolved_git_lfs_pointer",
                 "original_path": rel.as_posix(),
                 "preserved_as": target_rel.as_posix(),
                 "pointer": src.read_text("utf-8", errors="replace").strip(),
-            })
+            }
+            unresolved_lfs.append(pointer_record)
         dst = destination / target_rel
         dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, dst)
+        if pointer_record is None:
+            shutil.copyfile(src, dst)
+        else:
+            dst.write_text(
+                json.dumps(pointer_record, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
         files.append({
             "path": target_rel.as_posix(),
             "sha256": sha256(dst),
