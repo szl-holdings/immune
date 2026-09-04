@@ -1,0 +1,40 @@
+name: Diagnose exact Trivy dependency findings
+
+on:
+  push:
+    branches:
+      - ops/diagnose-trivy-20260904
+    paths:
+      - .github/workflows/diagnose-trivy-20260904.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout exact diagnostic branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ops/diagnose-trivy-20260904
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Print only HIGH and CRITICAL fixed dependency findings
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          scanners: vuln
+          exit-code: '0'
+          version: v0.70.0
