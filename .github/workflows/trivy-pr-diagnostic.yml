@@ -22,8 +22,11 @@ jobs:
         with:
           egress-policy: audit
 
-      - name: Checkout exact branch revision
+      - name: Checkout exact PR merge revision
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v5.0.0
+        with:
+          ref: refs/pull/100/merge
+          fetch-depth: 1
 
       - name: Capture HIGH/CRITICAL vulnerability and secret metadata
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.33.1
