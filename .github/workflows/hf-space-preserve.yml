@@ -38,6 +38,25 @@ jobs:
       - name: Install pinned Hub client
         run: python -m pip install --disable-pip-version-check --no-cache-dir "huggingface_hub==1.23.0"
 
+      - name: Enforce Hugging Face card metadata limits
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/hf_space_preserve_and_consolidate.py")
+          source = path.read_text(encoding="utf-8")
+          old = "short_description: One public launcher and preserved source vault for SZL experiments"
+          new = "short_description: Verified SZL experiment archive"
+          if source.count(old) != 1:
+              raise SystemExit(
+                  "expected exactly one generated short_description to normalize"
+              )
+          path.write_text(source.replace(old, new), encoding="utf-8")
+          print(f"normalized short_description length={len(new.split(': ', 1)[1])}")
+          PY
+
       - name: Compile preservation engine
         run: python -m py_compile scripts/hf_space_preserve_and_consolidate.py
 
