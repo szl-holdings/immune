@@ -1,6 +1,6 @@
 # IMMUNE operator desk (SOFTWARE)
 
-NEXUS is consolidated as the analog organ. It is not a sibling flagship.
+NEXUS is the analog organ. It is not a sibling flagship. Public line stays a11oy, killinchu, immune.
 
 ## What is OPERATIONAL here
 
@@ -10,16 +10,22 @@ NEXUS is consolidated as the analog organ. It is not a sibling flagship.
 - Locked-8 Λ gate at kernel commit `c7c0ba17` (F1 F4 F7 F11 F12 F18 F19 F22)
 - NEXUS analog voltages feeding YUYAY axes
 
-## What is not
+## What is MODELED
 
-- Frontier evaluate is MODELED (Neyman–Pearson SOFTWARE silhouette). Not an ATO.
-- Energy is UNAVAILABLE. Never a fabricated joule.
-- Actuation is SIMULATED. No effectors.
-- Hub model cards stay `operational: false` until measured weights and benches exist.
+- Frontier evaluate (Neyman–Pearson SOFTWARE silhouette)
+- Drive sweep across analog voltage (ADMIT / REVIEW / WITHHOLD counts)
+- Actuation. No effectors.
+
+## What is UNAVAILABLE
+
+- Energy. Never a fabricated joule.
+- Hub model cards as operational. They stay `operational: false`.
 
 ## Cycle
 
 `SENTRA → YUYAY axes → Λ → YAWAR (accept only) → HUKLLA → frontier silhouette`
 
-Canonical TypeScript cycle remains `server/routes/immune/cycle.ts` @ `ab6dc68`.
-Product path: https://a-11-oy.com/immune
+Chassis bind: https://a-11-oy.com/nexus
+Product door: https://a-11-oy.com/immune
+Organ source: https://github.com/szl-holdings/nexus
+Canonical TypeScript cycle: `server/routes/immune/cycle.ts`
