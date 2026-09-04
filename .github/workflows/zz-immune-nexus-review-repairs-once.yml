@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Retry 2: compare base identity against committed Git tree blobs.
 name: Apply IMMUNE NEXUS review repairs once
 
 "on":
