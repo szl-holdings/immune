@@ -15,14 +15,37 @@ Proof: [a11oy.net](https://a11oy.net)
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](./LICENSE)
 
-**Stage: LIVE · MEASURED.** IMMUNE is the governed AI safety layer: every accepted
-agent action is sealed into an append-only, SHA-256 hash-linked receipt chain, and
-every externally-sourced datum carries an honest `LIVE / REFERENCE / UNAVAILABLE`
-provenance label. Nothing here is fabricated.
+**Stage: REACHABLE · WRITE-READY · MEASURED software simulation.** IMMUNE is the
+governed AI safety layer: every accepted agent action is sealed into an
+append-only SHA-256 hash-linked receipt chain. Status is CONNECTING, REACHABLE,
+or UNAVAILABLE — never a fabricated LIVE analog or PASS theorem. Λ = Conjecture 1 OPEN.
 
-- **Live demo (Channel A, TypeScript HUD):** https://szlholdings-immune.hf.space (`SZLHOLDINGS/immune`)
-- **Python kernel (Channel B):** https://szlholdings-immune-lattice.hf.space (`SZLHOLDINGS/immune-lattice`) — same doctrine, Ed25519 live operator, source in [`python/`](./python/)
+- **Product tab:** https://a-11-oy.com/immune
+- **Channel A kernel HUD:** https://szlholdings-immune.hf.space (`SZLHOLDINGS/immune`)
+- **Channel B Python COP:** https://szlholdings-immune-lattice.hf.space (`SZLHOLDINGS/immune-lattice`)
+- **NEXUS plane:** https://szlholdings-immune.hf.space/nexus.html
 - **Org:** https://github.com/szl-holdings · License: Apache-2.0
+
+### Lorenz OP (measured, sealed)
+
+Default NEXUS showcase on both Spaces. Software simulation only.
+
+| Field | Value |
+|---|---|
+| program / mode | `lorenz` / `OP` |
+| coefficients | σ 10 · ρ 27.9 · β 2.67 |
+| steps / dt / drive / chaos / seed | 320 / 0.01 / 0.7 / 0.45 / 0.2 |
+| initial | x 0.182 · y −0.046 · z 23.2 · t 0 |
+| final | x −7.707920173353 · y −10.567955419679 · z 21.305498529338 · t 3.2 |
+| inputHash | `c5fcc5029392a5e4f7cd65a655d5379cd65d8f915b2ee96a1db5d44e35ea2358` |
+| outputHash | `4071a2f2faca744907747cb2cc82a9d841e125fa287240505f9f9a8454a399ac` |
+| invariants | HOLD |
+| energy | UNAVAILABLE |
+| uniqueness | Conjecture 1 OPEN |
+| truth | MEASURED_SOFTWARE_SIMULATION |
+| Channel A/B parity | hashes match |
+
+`POST /api/immune/nexus/run` returns HTTP 201 with `governed.pass=true` when SENTRA admits the compact YAWAR payload (hashes, not floats).
 
 ## Consolidation (do not delete either Space)
 
