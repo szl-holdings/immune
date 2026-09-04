@@ -12,6 +12,7 @@ import hashlib
 import io
 import json
 import py_compile
+import subprocess
 import tarfile
 from pathlib import Path
 
@@ -20,13 +21,16 @@ PARTS = ROOT / "scripts" / ".immune-nexus-review-repair"
 ARCHIVE_SHA256 = "a11888e732fadd8b001c94d607d1246ed295526028584628ff9de741c030fb63"
 NEXUS_SOURCE_REVISION = "617fb49f061c9eb369c4d879a7c29af64c08e72e"
 
+# These are repository blob IDs at the exact feature-branch input.  Compare
+# against Git's tree rather than worktree bytes so checkout EOL filters cannot
+# create a false drift signal.
 EXPECTED_BASE_BLOBS = {
-    "server/routes/immune/nexus-engine.ts": "f93ceca1d53e38431ba804dc0b707c7751c1418b",
-    "server/routes/immune/nexus.ts": "940126ed01df4123cd2e4e1e8c955bce6ad5cb2e",
-    "tests/immune-nexus.test.ts": "f450400119ac215347a3345afb1254e0626756f4",
-    "python/immune/nexus.py": "71cdc44597383047136421861c1642aff8a89413",
-    "python/immune/server.py": "c842e343d3b851519fb083f769cf1b5e093ad54f",
-    "python/tests/test_nexus.py": "b2582321537ac3172e51030b988272277009b334",
+    "server/routes/immune/nexus-engine.ts": "921c31c4e11e695d635732e42d957b754f2da766",
+    "server/routes/immune/nexus.ts": "47738daafbd31a074ef761cb81dbebb5483dc168",
+    "tests/immune-nexus.test.ts": "26a9f2ea63eee14a0b40e0c77b7c2e7f1756490e",
+    "python/immune/nexus.py": "d6310f77abfeca495e96935de94bcda94822c4de",
+    "python/immune/server.py": "07b1a066f586fae39bd1b76424976c3119f3b9a9",
+    "python/tests/test_nexus.py": "ef4927acc6acbd3f57f069a2f46aa27e0730f6a3",
 }
 EXPECTED_TARGET_BLOBS = {
     "server/routes/immune/nexus-engine.ts": "cc0c6f01d19151f6216087ad071d97832502d2ae",
@@ -46,6 +50,30 @@ def git_blob_sha(payload: bytes) -> str:
     return hashlib.sha1(header + payload).hexdigest()
 
 
+def repository_blob_sha(relative: str) -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", f"HEAD:{relative}"],
+            cwd=ROOT,
+            text=True,
+            stderr=subprocess.STDOUT,
+        ).strip()
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(
+            f"unable to resolve repository blob for {relative}: {error.output.strip()}"
+        ) from error
+
+
+def require_clean_worktree_path(relative: str) -> None:
+    result = subprocess.run(
+        ["git", "diff", "--quiet", "--", relative],
+        cwd=ROOT,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise SystemExit(f"base path has uncommitted worktree drift: {relative}")
+
+
 def normalized_name(member: tarfile.TarInfo) -> str:
     return member.name.removeprefix("./")
 
@@ -55,7 +83,8 @@ def main() -> None:
         target = ROOT / relative
         if not target.is_file():
             raise SystemExit(f"required base file absent: {relative}")
-        observed = git_blob_sha(target.read_bytes())
+        require_clean_worktree_path(relative)
+        observed = repository_blob_sha(relative)
         if observed != expected:
             raise SystemExit(
                 f"base drift for {relative}: expected {expected}, observed {observed}"
