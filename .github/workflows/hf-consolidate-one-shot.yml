@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/hf-consolidate-one-shot.yml
-      - scripts/hf_reconstruct_command_manifest.py
+      - scripts/hf_reconstruct_command_manifest_v2.py
       - scripts/hf_cleanup_resurrected_spaces.py
       - scripts/hf_restore_david_and_rebalance.py
   workflow_dispatch: {}
@@ -41,7 +41,7 @@ jobs:
 
       - name: Compile reconstruction, cleanup, and rebalance transactions
         run: |
-          python -m py_compile scripts/hf_reconstruct_command_manifest.py
+          python -m py_compile scripts/hf_reconstruct_command_manifest_v2.py
           python -m py_compile scripts/hf_cleanup_resurrected_spaces.py
           python -m py_compile scripts/hf_restore_david_and_rebalance.py
 
@@ -52,8 +52,8 @@ jobs:
           test -n "${HF_TOKEN:-}" || { echo "::error::HF_TOKEN absent"; exit 2; }
           echo "::add-mask::$HF_TOKEN"
 
-      - name: Reconstruct active archive manifest from immutable receipt
-        run: python scripts/hf_reconstruct_command_manifest.py
+      - name: Reconstruct active archive manifest from two-part receipt chain
+        run: python scripts/hf_reconstruct_command_manifest_v2.py
 
       - name: Preserve and delete only resurrected retired org Spaces
         run: python scripts/hf_cleanup_resurrected_spaces.py
