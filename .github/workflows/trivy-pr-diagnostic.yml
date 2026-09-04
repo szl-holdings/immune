@@ -27,7 +27,7 @@ jobs:
       - name: Checkout exact branch revision
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v5.0.0
 
-      - name: Print HIGH/CRITICAL dependency findings
+      - name: Print all HIGH/CRITICAL dependency findings
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.33.1
         with:
           scan-type: fs
@@ -36,6 +36,6 @@ jobs:
           vuln-type: os,library
           format: table
           severity: HIGH,CRITICAL
-          ignore-unfixed: true
+          ignore-unfixed: false
           list-all-pkgs: true
           exit-code: '0'
