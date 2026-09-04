@@ -83,14 +83,9 @@ type NexusReceiptPayload = {
     externalEffectors: false;
     truth: "MEASURED_SOFTWARE_SIMULATION";
   };
-  result: {
-    finalState: unknown;
-    normalized: unknown;
-    optics: unknown;
-    circuit: unknown;
-    formulas: unknown;
-    invariants: unknown;
-  };
+  invariantsHold: boolean;
+  energy: "UNAVAILABLE";
+  uniqueness: "Conjecture 1 OPEN";
 };
 
 const minuteBudget = new Map<string, { startedAt: number; count: number }>();
@@ -191,20 +186,9 @@ function compactReceiptPayload(
       externalEffectors: false,
       truth: "MEASURED_SOFTWARE_SIMULATION",
     },
-    result: {
-      finalState: result.finalState,
-      normalized: result.normalized,
-      optics: {
-        objectAmplitude: result.optics.objectAmplitude,
-        referenceAmplitude: result.optics.referenceAmplitude,
-        phaseDifference: result.optics.phaseDifference,
-        intensity: result.optics.intensity,
-        reconstruct: result.optics.reconstruct,
-      },
-      circuit: result.circuit,
-      formulas: result.formulas,
-      invariants: result.invariants,
-    },
+    invariantsHold: result.invariants.allHold,
+    energy: "UNAVAILABLE",
+    uniqueness: "Conjecture 1 OPEN",
   };
 }
 

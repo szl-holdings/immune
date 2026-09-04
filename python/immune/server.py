@@ -105,23 +105,9 @@ def _compact_nexus_receipt(request_id: str, result: dict) -> dict:
             "externalEffectors": False,
             "truth": "MEASURED_SOFTWARE_SIMULATION",
         },
-        "result": {
-            "finalState": result["finalState"],
-            "normalized": result["normalized"],
-            "optics": {
-                key: result["optics"][key]
-                for key in (
-                    "objectAmplitude",
-                    "referenceAmplitude",
-                    "phaseDifference",
-                    "intensity",
-                    "reconstruct",
-                )
-            },
-            "circuit": result["circuit"],
-            "formulas": result["formulas"],
-            "invariants": result["invariants"],
-        },
+        "invariantsHold": bool(result.get("invariants", {}).get("allHold")),
+        "energy": "UNAVAILABLE",
+        "uniqueness": "Conjecture 1 OPEN",
     }
 
 
