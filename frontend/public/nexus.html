@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>IMMUNE NEXUS Plane</title>
+  <style>
+    :root {
+      --bg:#040607;--panel:#09100d;--ink:#e7fff0;--muted:#8ca99a;
+      --line:#20372b;--phosphor:#72ff98;--amber:#ffc45b;--danger:#ff6d7d;
+    }
+    *{box-sizing:border-box}
+    html{background:var(--bg);color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    body{margin:0;min-height:100dvh;background:
+      radial-gradient(circle at 70% 12%,rgba(114,255,152,.08),transparent 28rem),var(--bg)}
+    a{color:var(--amber)}
+    button,input,select{font:inherit}
+    button{min-height:44px;border:1px solid var(--line);background:#0a110e;color:var(--ink);padding:.65rem .8rem;cursor:pointer}
+    button:hover,button:focus-visible{border-color:var(--phosphor);outline:none}
+    button[aria-pressed="true"]{background:var(--phosphor);color:#041006;border-color:var(--phosphor)}
+    .skip{position:absolute;left:-9999px}.skip:focus{left:1rem;top:1rem;z-index:20;background:#fff;color:#000;padding:.75rem}
+    .shell{max-width:1280px;margin:auto;padding:clamp(1rem,3vw,2rem)}
+    header{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:1rem}
+    h1{font-size:clamp(1.35rem,3vw,2.4rem);letter-spacing:.08em;margin:.2rem 0}.eyebrow{color:var(--amber);font-size:.75rem;letter-spacing:.15em;text-transform:uppercase}
+    .truth{max-width:48rem;color:var(--muted);line-height:1.65;font-size:.82rem}
+    .status{border:1px solid var(--line);padding:.7rem;min-width:13rem;font-size:.72rem;line-height:1.6;background:rgba(4,6,7,.8)}
+    .grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(18rem,.75fr);gap:1rem}
+    .panel{border:1px solid var(--line);background:rgba(9,16,13,.88);padding:1rem;box-shadow:inset 0 1px rgba(255,255,255,.03)}
+    .crt{border:8px solid #101713;background:#010302;min-height:330px;position:relative;overflow:hidden}
+    canvas{display:block;width:100%;height:clamp(300px,54vh,620px)}
+    .readout{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;margin-top:.75rem}
+    .cell{border:1px solid var(--line);padding:.65rem;min-height:4rem}.k{display:block;color:var(--muted);font-size:.65rem;letter-spacing:.12em}.v{display:block;margin-top:.35rem;overflow-wrap:anywhere;font-size:.78rem}
+    .label{display:block;margin:.9rem 0 .35rem;color:var(--muted);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase}
+    .programs,.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:.45rem}.modes{grid-template-columns:repeat(4,1fr)}
+    .control{display:grid;grid-template-columns:7rem 1fr 4rem;align-items:center;gap:.5rem;margin:.6rem 0;font-size:.74rem}
+    input[type=range]{width:100%;accent-color:var(--phosphor)}
+    .actions{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:1rem}.actions button:first-child{border-color:var(--phosphor);color:var(--phosphor)}
+    pre{white-space:pre-wrap;word-break:break-word;max-height:22rem;overflow:auto;background:#020403;border:1px solid var(--line);padding:.75rem;color:#bfe8ce;font-size:.7rem;line-height:1.5}
+    .ok{color:var(--phosphor)}.bad{color:var(--danger)}.warn{color:var(--amber)}
+    .rail{display:flex;flex-direction:column;gap:1rem}
+    footer{color:var(--muted);font-size:.72rem;line-height:1.6;margin-top:1rem}
+    @media(max-width:900px){.grid{grid-template-columns:1fr}.readout{grid-template-columns:repeat(2,1fr)}header{flex-direction:column}.status{width:100%}}
+    @media(max-width:520px){.programs{grid-template-columns:repeat(2,1fr)}.modes{grid-template-columns:repeat(2,1fr)}.actions{grid-template-columns:1fr}.control{grid-template-columns:5rem 1fr 3.2rem}.shell{padding:.7rem}.panel{padding:.75rem}}
+    @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+    @media(forced-colors:active){button,.panel,.crt,.cell,pre,.status{border:1px solid CanvasText}}
+  </style>
+</head>
+<body>
+<a class="skip" href="#controls">Skip to controls</a>
+<main class="shell">
+  <header>
+    <div>
+      <div class="eyebrow">IMMUNE / Counterfactual Dynamics</div>
+      <h1>NEXUS EXECUTION PLANE</h1>
+      <p class="truth">Six bounded deterministic programs execute inside IMMUNE. SENTRA admits the request; the software simulator runs with zero external calls; YAWAR seals input and output hashes; HUKLLA records the evidence state. This is measured software simulation—not a physical chip, not an effector, and not a uniqueness theorem.</p>
+    </div>
+    <div class="status" id="status" role="status" aria-live="polite">Connecting to /api/immune/nexus/status…</div>
+  </header>
+
+  <div class="grid">
+    <section class="panel" aria-label="Nexus simulation display">
+      <div class="crt"><canvas id="scope" width="1200" height="620" aria-label="Nexus phase-space and optical field"></canvas></div>
+      <div class="readout">
+        <div class="cell"><span class="k">PROGRAM / MODE</span><span class="v" id="programRead">LRNZ / OP</span></div>
+        <div class="cell"><span class="k">OUTPUT HASH</span><span class="v" id="hashRead">—</span></div>
+        <div class="cell"><span class="k">Λ</span><span class="v" id="lambdaRead">UNAVAILABLE</span></div>
+        <div class="cell"><span class="k">YAWAR RECEIPT</span><span class="v" id="receiptRead">—</span></div>
+      </div>
+    </section>
+
+    <aside class="rail">
+      <section class="panel" id="controls" aria-labelledby="controlsTitle">
+        <div class="eyebrow" id="controlsTitle">Bounded controls</div>
+        <span class="label">Program</span>
+        <div class="programs" id="programs"></div>
+        <span class="label">Mode</span>
+        <div class="modes" id="modes"></div>
+        <label class="control"><span>Steps</span><input id="steps" type="range" min="0" max="800" step="8" value="320"><output id="stepsOut">320</output></label>
+        <label class="control"><span>dt</span><input id="dt" type="range" min="0.0004" max="0.08" step="0.0004" value="0.01"><output id="dtOut">0.0100</output></label>
+        <label class="control"><span>Chaos</span><input id="chaos" type="range" min="0" max="1" step="0.01" value="0.45"><output id="chaosOut">0.45</output></label>
+        <label class="control"><span>Drive</span><input id="drive" type="range" min="0" max="1" step="0.01" value="0.92"><output id="driveOut">0.92</output></label>
+        <div class="actions">
+          <button id="run" type="button">Execute + receipt</button>
+          <button id="verify" type="button">Replay verify</button>
+        </div>
+      </section>
+      <section class="panel" aria-labelledby="evidenceTitle">
+        <div class="eyebrow" id="evidenceTitle">Exact evidence</div>
+        <pre id="evidence">No run yet.</pre>
+      </section>
+    </aside>
+  </div>
+  <footer>
+    Source lineage: <a href="https://github.com/szl-holdings/nexus">szl-holdings/nexus</a> → IMMUNE internal execution plane. The standalone NEXUS repository remains the source/provenance lab until parity, deployment, restart persistence, and retirement receipts are complete. <a href="/">Return to IMMUNE</a>.
+  </footer>
+</main>
+<script>
+(() => {
+  const PROGRAMS=[['lorenz','LRNZ'],['harmonic','HARM'],['vanderpol','VDP'],['duffing','DFFG'],['lotka','LTKA'],['nemo','NEMO']];
+  const MODES=['IC','OP','HALT','REP'];
+  const state={program:'lorenz',mode:'OP',last:null,hash:null,requestId:null,lastInput:null};
+  const $=id=>document.getElementById(id);
+  const buttons=(root,items,current,onPick)=>{
+    items.forEach(([id,label])=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.id=id;b.setAttribute('aria-pressed',String(id===current));b.onclick=()=>{[...root.children].forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.id===id)));onPick(id)};root.appendChild(b)})
+  };
+  buttons($('programs'),PROGRAMS,state.program,id=>{state.program=id;state.last=null;state.hash=null;$('steps').max=id==='nemo'?'400':'2400';$('steps').value=id==='nemo'?'160':'320';sync();clearCanvas()});
+  buttons($('modes'),MODES.map(x=>[x,x]),state.mode,id=>{state.mode=id;sync()});
+  ['steps','dt','chaos','drive'].forEach(id=>$(id).addEventListener('input',sync));
+  function sync(){
+    $('stepsOut').value=$('steps').value;$('dtOut').value=Number($('dt').value).toFixed(4);$('chaosOut').value=Number($('chaos').value).toFixed(2);$('driveOut').value=Number($('drive').value).toFixed(2);
+    $('programRead').textContent=`${PROGRAMS.find(x=>x[0]===state.program)?.[1]||state.program} / ${state.mode}`;
+  }
+  function requestId(){return `web-${Date.now().toString(36)}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36)}`}
+  function payload(includeIdentity=true){
+    const p={program:state.program,mode:state.mode,steps:Number($('steps').value),dt:Number($('dt').value),chaos:Number($('chaos').value),drive:Number($('drive').value),seed:0.2,repeatEvery:64,axes:[0.97,0.96,0.93,0.91,0.9,0.92,0.88,0.91]};
+    if(state.last&&state.mode!=='IC')p.state=state.last;
+    if(includeIdentity){p.actor='immune:web-operator';p.requestId=requestId()}
+    return p
+  }
+  async function post(path,body){
+    const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},body:JSON.stringify(body)});let j;try{j=await r.json()}catch{j={error:'NON_JSON_RESPONSE'}}if(!r.ok)throw Object.assign(new Error(j.detail||j.error||`HTTP ${r.status}`),{body:j,status:r.status});return j
+  }
+  async function loadStatus(){try{const r=await fetch('/api/immune/nexus/status',{headers:{accept:'application/json','cache-control':'no-cache'}});const j=await r.json();$('status').innerHTML=`<span class="${j.state==='EXECUTABLE'?'ok':'warn'}">${j.state||'UNKNOWN'}</span><br>source ${String(j.source?.revision||'UNAVAILABLE').slice(0,12)}<br>write-ready ${j.immuneReadiness?.write_ready===true?'YES':'NO'}<br>effectors DISABLED`; }catch(e){$('status').innerHTML=`<span class="bad">UNAVAILABLE</span><br>${escapeHtml(e.message)}`}}
+  function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+  function clearCanvas(){const c=$('scope'),x=c.getContext('2d');x.fillStyle='#010302';x.fillRect(0,0,c.width,c.height);x.fillStyle='#8ca99a';x.font='22px ui-monospace';x.fillText('Awaiting governed NEXUS execution',32,50)}
+  function draw(result){
+    const c=$('scope'),x=c.getContext('2d'),w=c.width,h=c.height;x.fillStyle='rgba(1,3,2,.92)';x.fillRect(0,0,w,h);
+    const field=result.optics?.field||[],rows=field.length||1,cols=field[0]?.length||1,cw=w/cols,rh=h/rows;
+    for(let r=0;r<rows;r++)for(let q=0;q<cols;q++){const I=Math.min(1,Number(field[r][q]||0)/2.4);if(I<.04)continue;x.fillStyle=`rgba(114,255,152,${.025+I*.16})`;x.fillRect(q*cw,r*rh,cw+.5,rh+.5)}
+    const trail=result.trail||[];if(trail.length){const xs=trail.map(p=>p[0]),ys=trail.map(p=>p[1]),minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys),sx=(w-100)/(maxX-minX||1),sy=(h-100)/(maxY-minY||1);x.strokeStyle='#72ff98';x.lineWidth=2;x.beginPath();trail.forEach((p,i)=>{const px=50+(p[0]-minX)*sx,py=h-50-(p[1]-minY)*sy;i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();const p=trail.at(-1),px=50+(p[0]-minX)*sx,py=h-50-(p[1]-minY)*sy;x.fillStyle='#ffc45b';x.beginPath();x.arc(px,py,6,0,Math.PI*2);x.fill()}
+  }
+  $('run').onclick=async()=>{const b=$('run');b.disabled=true;$('evidence').textContent='SENTRA admission → deterministic simulation → YAWAR receipt → HUKLLA evidence…';try{const req=payload(true);state.requestId=req.requestId;state.lastInput=Object.fromEntries(Object.entries(req).filter(([k])=>!['actor','requestId'].includes(k)));const j=await post('/api/immune/nexus/run',req);state.last=j.result.finalState;state.hash=j.result.outputHash;draw(j.result);$('hashRead').textContent=state.hash.slice(0,16)+'…';const lam=j.result.formulas?.lambda;$('lambdaRead').textContent=lam?.value==null?'UNAVAILABLE':`${Number(lam.value).toFixed(4)} · ${lam.status}`;$('receiptRead').textContent=j.governed?.receipt?.hash?.slice(0,16)+'…'||'UNAVAILABLE';$('evidence').textContent=JSON.stringify({requestId:j.requestId,replayed:j.replayed,execution:j.result.execution,source:j.result.source,outputHash:j.result.outputHash,invariants:j.result.invariants,receipt:j.governed?.receipt,huklla:j.governed?.huklla},null,2)}catch(e){$('evidence').textContent=JSON.stringify(e.body||{error:e.message},null,2);$('receiptRead').textContent='REFUSED'}finally{b.disabled=false;loadStatus()}};
+  $('verify').onclick=async()=>{if(!state.hash){$('evidence').textContent='Execute a run before replay verification.';return}const b=$('verify');b.disabled=true;try{const req={...(state.lastInput||payload(false)),expectedOutputHash:state.hash};const j=await post('/api/immune/nexus/verify',req);$('evidence').textContent=JSON.stringify(j,null,2);$('hashRead').textContent=(j.verified?'VERIFIED ':'FAILED ')+j.observedOutputHash.slice(0,12)}catch(e){$('evidence').textContent=JSON.stringify(e.body||{error:e.message},null,2)}finally{b.disabled=false}};
+  sync();clearCanvas();loadStatus();
+})();
+</script>
+</body>
+</html>
