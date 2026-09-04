@@ -1,0 +1,57 @@
+name: Trivy finding detail once
+
+on:
+  push:
+    branches:
+      - fix/remove-unused-re-20260904
+    paths:
+      - .github/workflows/trivy-detail-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: trivy-detail-once
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.2
+        with:
+          egress-policy: audit
+
+      - name: Check out exact repair branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6.0.2
+        with:
+          ref: fix/remove-unused-re-20260904
+          token: ${{ github.token }}
+          persist-credentials: true
+          fetch-depth: 1
+
+      - name: Run pinned Trivy with visible high and critical details
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: 0
+          version: v0.70.0
+
+      - name: Remove one-shot diagnostic workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/trivy-detail-once.yml
+          git config user.name "szl-frontier-bot"
+          git config user.email "stephenlutar2+frontier@gmail.com"
+          git add .github/workflows/trivy-detail-once.yml
+          git commit -m "ci(security): remove one-shot Trivy diagnostic" -m "Signed-off-by: Stephen P. Lutar Jr. <stephenlutar2@gmail.com>"
+          git push origin HEAD:fix/remove-unused-re-20260904
