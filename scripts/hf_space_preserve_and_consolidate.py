@@ -10,7 +10,6 @@ import hashlib
 import html
 import json
 import os
-import re
 import shutil
 import subprocess
 import tempfile
