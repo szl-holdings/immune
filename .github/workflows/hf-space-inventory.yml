@@ -1,4 +1,4 @@
-name: hf-space-private-inventory
+name: hf-post-delete-estate-verification
 
 on:
   workflow_dispatch:
@@ -11,38 +11,136 @@ permissions:
   contents: read
 
 jobs:
-  inventory:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_HUB_DISABLE_TELEMETRY: "1"
     steps:
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
-      - run: python -m pip install --disable-pip-version-check --no-cache-dir "huggingface_hub==1.23.0"
-      - name: Inventory authenticated Hugging Face Spaces
+
+      - name: Install pinned Hub client
+        run: python -m pip install --disable-pip-version-check --no-cache-dir "huggingface_hub==1.23.0"
+
+      - name: Verify authenticated post-delete estate
         shell: bash
         run: |
           set -euo pipefail
           test -n "${HF_TOKEN:-}" || { echo "::error::HF_TOKEN absent"; exit 2; }
           echo "::add-mask::$HF_TOKEN"
           python - <<'PY'
-          import json, os
+          import json
+          import os
           from huggingface_hub import HfApi
+
           api = HfApi(token=os.environ["HF_TOKEN"])
           identity = api.whoami(token=os.environ["HF_TOKEN"])
-          spaces = []
-          for item in api.list_spaces(author="SZLHOLDINGS", full=True):
-              spaces.append({
-                  "id": item.id,
+          identity_name = str(identity.get("name") or identity.get("fullname") or "")
+          if identity_name.lower() != "betterwithage":
+              raise SystemExit(
+                  f"wrong Hugging Face identity: expected betterwithage, got {identity_name!r}"
+              )
+
+          expected_org = {
+              "README",
+              "a11oy",
+              "aegis-assurance",
+              "counsel",
+              "finance",
+              "killinchu",
+              "lyte",
+              "sentra",
+              "terra",
+              "vertical-services",
+              "vessels",
+          }
+          migrated_keep = {
+              "anatomy",
+              "cosmos",
+              "szl-command-centre",
+          }
+          migrated_retired = {
+              "holographic",
+              "szl-atelier",
+              "yarqa",
+          }
+
+          org_spaces = {
+              item.id.split("/", 1)[1]: item
+              for item in api.list_spaces(author="SZLHOLDINGS", full=True)
+          }
+          profile_spaces = {
+              item.id.split("/", 1)[1]: item
+              for item in api.list_spaces(author="betterwithage", full=True)
+          }
+
+          org_names = set(org_spaces)
+          profile_names = set(profile_spaces)
+          missing_org = expected_org - org_names
+          unexpected_org = org_names - expected_org
+          missing_migrated = migrated_keep - profile_names
+          resurrected_profile = migrated_retired & profile_names
+
+          migrated_runtime = {}
+          for name in sorted(migrated_keep & profile_names):
+              item = profile_spaces[name]
+              runtime = api.get_space_runtime(repo_id=f"betterwithage/{name}")
+              stage_value = getattr(runtime, "stage", None)
+              stage = str(getattr(stage_value, "value", stage_value) or "UNKNOWN").upper()
+              migrated_runtime[name] = {
                   "sha": str(item.sha or ""),
                   "private": bool(item.private),
-                  "sdk": getattr(item, "sdk", None),
-                  "last_modified": str(getattr(item, "last_modified", "") or ""),
-              })
-          print("HF_IDENTITY " + json.dumps({"name": identity.get("name"), "type": identity.get("type")}, sort_keys=True))
-          print("HF_SPACE_INVENTORY " + json.dumps(sorted(spaces, key=lambda x: x["id"].lower()), sort_keys=True))
-          print("HF_SPACE_COUNT " + str(len(spaces)))
+                  "stage": stage,
+              }
+
+          receipt = {
+              "schema": "szl.hf-post-delete-estate-verification/v1",
+              "identity": identity_name,
+              "org_count": len(org_names),
+              "org_names": sorted(org_names),
+              "expected_org_names": sorted(expected_org),
+              "missing_org": sorted(missing_org),
+              "unexpected_org": sorted(unexpected_org),
+              "migrated_public_surfaces": sorted(migrated_keep),
+              "missing_migrated_surfaces": sorted(missing_migrated),
+              "retired_profile_surfaces_present": sorted(resurrected_profile),
+              "migrated_runtime": migrated_runtime,
+          }
+          print("HF_POST_DELETE_ESTATE " + json.dumps(receipt, sort_keys=True))
+
+          failures = []
+          if missing_org:
+              failures.append(f"missing org Spaces: {sorted(missing_org)}")
+          if unexpected_org:
+              failures.append(f"unexpected org Spaces: {sorted(unexpected_org)}")
+          if missing_migrated:
+              failures.append(
+                  f"missing migrated profile Spaces: {sorted(missing_migrated)}"
+              )
+          if resurrected_profile:
+              failures.append(
+                  f"retired profile Spaces reappeared: {sorted(resurrected_profile)}"
+              )
+          for name, runtime in migrated_runtime.items():
+              if runtime["private"]:
+                  failures.append(f"betterwithage/{name} is private")
+              if runtime["stage"] != "RUNNING":
+                  failures.append(
+                      f"betterwithage/{name} is not RUNNING: {runtime['stage']}"
+                  )
+              if len(runtime["sha"]) != 40:
+                  failures.append(
+                      f"betterwithage/{name} lacks an exact revision"
+                  )
+
+          if failures:
+              raise SystemExit("POST-DELETE ESTATE FAILED: " + "; ".join(failures))
+          print(
+              "POST-DELETE ESTATE PASS org=11 migrated=3 retired_profile=0",
+              flush=True,
+          )
           PY
