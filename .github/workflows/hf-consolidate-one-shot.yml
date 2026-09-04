@@ -1,10 +1,11 @@
-name: hf-restore-david-and-rebalance-49
+name: hf-finalize-david-and-49-retired
 
 on:
   push:
     branches: [main]
     paths:
       - .github/workflows/hf-consolidate-one-shot.yml
+      - scripts/hf_cleanup_resurrected_spaces.py
       - scripts/hf_restore_david_and_rebalance.py
   workflow_dispatch: {}
 
@@ -12,13 +13,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: hf-restore-david-and-rebalance-49
+  group: hf-finalize-david-and-49-retired
   cancel-in-progress: false
 
 jobs:
-  rebalance:
+  finalize:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_HUB_DISABLE_TELEMETRY: "1"
@@ -37,8 +38,10 @@ jobs:
       - name: Install pinned Hub client
         run: python -m pip install --disable-pip-version-check --no-cache-dir "huggingface_hub==1.23.0"
 
-      - name: Compile rebalance transaction
-        run: python -m py_compile scripts/hf_restore_david_and_rebalance.py
+      - name: Compile cleanup and rebalance transactions
+        run: |
+          python -m py_compile scripts/hf_cleanup_resurrected_spaces.py
+          python -m py_compile scripts/hf_restore_david_and_rebalance.py
 
       - name: Fail closed if Hugging Face credential is absent
         shell: bash
@@ -46,6 +49,9 @@ jobs:
           set -euo pipefail
           test -n "${HF_TOKEN:-}" || { echo "::error::HF_TOKEN absent"; exit 2; }
           echo "::add-mask::$HF_TOKEN"
+
+      - name: Preserve and delete only resurrected retired org Spaces
+        run: python scripts/hf_cleanup_resurrected_spaces.py
 
       - name: Restore David flagship and reconcile public archive to 49
         run: python scripts/hf_restore_david_and_rebalance.py
