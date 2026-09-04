@@ -13,7 +13,16 @@
   "frontier": "MODELED",
   "unprivate_38": false,
   "pausePrivateNeverDelete": true,
-  "aligned": false,
-  "missingOnHubTape": ["estate", "poorest", "energyClass"],
-  "note": "Next Space deploy may copy v2 fields into payload without rewriting genesis."
+  "aligned": true,
+  "channelA": {
+    "measuredAt": "2026-09-04T20:24:03Z",
+    "seqFrom": 7,
+    "exampleSeq": 10,
+    "estate": "e7b04c982887ec1f",
+    "poorest": "unmeasured",
+    "energyClass": "UNAVAILABLE",
+    "energy_j": null
+  },
+  "missingOnHubTape": [],
+  "note": "Channel A tape MEASURED from seq 7. Channel B payload is additive in python/immune/runtime.py. Frozen outer keys untouched. Energy remains UNAVAILABLE."
 }
