@@ -119,7 +119,7 @@ def local_organ_mesh() -> dict[str, Any]:
             "honesty": "LIVE",
             "provenance": "LIVE",
             "detail": f"HUKLLA evidence {len(runtime.evidence_latest(8))} observations · revision {snap['revision']}",
-            "href": "https://huggingface.co/spaces/SZLHOLDINGS/anatomy",
+            "href": "https://a-11-oy.com/immune",
         },
     ]
     return {
@@ -134,10 +134,10 @@ def local_organ_mesh() -> dict[str, Any]:
             "href": "https://huggingface.co/spaces/SZLHOLDINGS/immune",
         },
         "anatomy": {
-            "stage": "LIVE",
-            "provenance": "LIVE",
-            "href": "https://huggingface.co/spaces/SZLHOLDINGS/anatomy",
-            "detail": "Five-organ body wired from this live process",
+            "stage": "UNAVAILABLE",
+            "provenance": "REFERENCE",
+            "href": "https://huggingface.co/spaces/SZLHOLDINGS/immune",
+            "detail": "Hub Space SZLHOLDINGS/anatomy is not a public product. Nervous lineage is this process + Channel A.",
         },
         "khipu": {
             "id": "SZLHOLDINGS/SZL-Khipu-1.5B",
