@@ -1,72 +1,51 @@
-name: hf-consolidate-one-shot
+name: hf-exact-receipt-delete
 
 on:
   push:
     branches: [main]
     paths:
       - .github/workflows/hf-consolidate-one-shot.yml
+      - scripts/hf_space_delete_from_receipt.py
+  workflow_dispatch: {}
 
 permissions:
   contents: read
 
+concurrency:
+  group: hf-exact-receipt-delete
+  cancel-in-progress: false
+
 jobs:
-  consolidate:
+  delete-exact-preserved-set:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_HUB_DISABLE_TELEMETRY: "1"
+      HF_HOME: /tmp/hf-home
     steps:
-      - name: Checkout exact source
+      - name: Checkout exact protected-main transaction
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
+
       - name: Install pinned Hub client
-        run: python -m pip install "huggingface_hub==0.35.3"
-      - name: Fail closed if secret absent
+        run: python -m pip install --disable-pip-version-check --no-cache-dir "huggingface_hub==1.23.0"
+
+      - name: Compile exact deletion transaction
+        run: python -m py_compile scripts/hf_space_delete_from_receipt.py
+
+      - name: Fail closed if Hugging Face credential is absent
         shell: bash
         run: |
           set -euo pipefail
           test -n "${HF_TOKEN:-}" || { echo "::error::HF_TOKEN absent"; exit 2; }
           echo "::add-mask::$HF_TOKEN"
-      - name: Consolidate Spaces
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat > /tmp/consolidate.py <<'PY'
-          import os
-          from huggingface_hub import HfApi, snapshot_download
-          api=HfApi(token=os.environ['HF_TOKEN'])
-          keep={'a11oy','killinchu','counsel','terra','sentra','finance','vessels','lyte','david-leads','README'}
-          preserve={'nexus','cosmos','holographic','khipu-lab','szl-experiments','second-brain','szl-model-inference-lab','governed-agent-bench'}
-          spaces=list(api.list_spaces(author='SZLHOLDINGS', full=True))
-          names={s.id.split('/',1)[1] for s in spaces}
-          for name in sorted(preserve & names):
-              dst=f'betterwithage/{name}'
-              try: api.repo_info(dst, repo_type='space')
-              except Exception:
-                  api.create_repo(dst, repo_type='space', private=True, space_sdk='docker', exist_ok=True)
-              src=f'SZLHOLDINGS/{name}'
-              local=snapshot_download(src, repo_type='space', token=os.environ['HF_TOKEN'])
-              api.upload_folder(repo_id=dst, repo_type='space', folder_path=local, commit_message=f'preserve {src} before org consolidation', ignore_patterns=['.git/**'])
-              print(f'PRESERVED {src} -> {dst}')
-          for name in sorted(preserve & names): api.repo_info(f'betterwithage/{name}', repo_type='space')
-          victims=sorted(names-keep)
-          for name in victims:
-              try:
-                  api.delete_repo(f'SZLHOLDINGS/{name}', repo_type='space')
-                  print(f'DELETED SZLHOLDINGS/{name}')
-              except Exception as exc:
-                  print(f'DELETE-SKIP SZLHOLDINGS/{name}: {type(exc).__name__}')
-          remaining={s.id.split('/',1)[1] for s in api.list_spaces(author='SZLHOLDINGS', full=True)}
-          unexpected=remaining-keep
-          missing=(keep-{'README'})-remaining
-          if unexpected or missing:
-              raise SystemExit(f'POSTCONDITION FAILED unexpected={sorted(unexpected)} missing={sorted(missing)}')
-          print('CONSOLIDATION COMPLETE remaining='+','.join(sorted(remaining)))
-          PY
-          python /tmp/consolidate.py
+
+      - name: Delete only the immutable receipt-bound non-flagship set
+        run: python scripts/hf_space_delete_from_receipt.py
