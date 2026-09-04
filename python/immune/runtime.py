@@ -355,6 +355,10 @@ class ImmuneRuntime:
                 "authorityRequestId": auth.get("requestId") or "",
                 "authorityReceiptHash": auth.get("authorityReceiptHash") or "",
                 "agentJson": __import__("json").dumps(extra) if extra else "",
+                "estate": "e7b04c982887ec1f",
+                "poorest": "unmeasured",
+                "energyClass": "UNAVAILABLE",
+                "energy_j": None,
             }
             payload_bytes = len(canonical_bytes({"payload": payload}))
             receipt = self.append_receipt(payload)
