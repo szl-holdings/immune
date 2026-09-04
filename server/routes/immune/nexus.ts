@@ -94,7 +94,27 @@ type NexusReceiptPayload = {
 };
 
 const minuteBudget = new Map<string, { startedAt: number; count: number }>();
+const nexusRequestLocks = new Map<string, Promise<void>>();
 const RUNS_PER_MINUTE = 12;
+
+async function withNexusRequestLock<T>(requestId: string, action: () => Promise<T>): Promise<T> {
+  const previous = nexusRequestLocks.get(requestId) ?? Promise.resolve();
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const tail = previous.then(() => gate);
+  nexusRequestLocks.set(requestId, tail);
+  await previous;
+  try {
+    return await action();
+  } finally {
+    release();
+    if (nexusRequestLocks.get(requestId) === tail) {
+      nexusRequestLocks.delete(requestId);
+    }
+  }
+}
 
 function consumeBudget(req: Request, res: Response): boolean {
   const key = req.ip || req.socket.remoteAddress || "unknown";
@@ -317,77 +337,79 @@ router.post("/run", async (req: Request, res: Response) => {
   }
 
   const inputHash = nexusInputHash(input);
-  const existing = findNexusReceipt(parsed.data.requestId);
-  const storedActor = existing ? String(existing.receipt.payload.actor ?? "") : "";
-  if (existing && (storedActor !== parsed.data.actor || existing.nexus.inputHash !== inputHash)) {
-    res.status(409).json({
-      error: "NEXUS_REQUEST_ID_COLLISION",
-      requestId: parsed.data.requestId,
-      storedInputHash: existing.nexus.inputHash,
-      presentedInputHash: inputHash,
-      computationPerformed: false,
-    });
-    return;
-  }
-
   try {
-    const result = runNexus(input);
-    if (!result.invariants.allHold) {
-      res.status(500).json({
-        error: "NEXUS_INVARIANT_FAILURE",
-        result,
-      });
-      return;
-    }
-
-    if (existing) {
-      if (existing.nexus.outputHash !== result.outputHash) {
-        res.status(500).json({
-          error: "NEXUS_DETERMINISM_DIVERGENCE",
+    await withNexusRequestLock(parsed.data.requestId, async () => {
+      const existing = findNexusReceipt(parsed.data.requestId);
+      const storedActor = existing ? String(existing.receipt.payload.actor ?? "") : "";
+      if (existing && (storedActor !== parsed.data.actor || existing.nexus.inputHash !== inputHash)) {
+        res.status(409).json({
+          error: "NEXUS_REQUEST_ID_COLLISION",
           requestId: parsed.data.requestId,
-          storedOutputHash: existing.nexus.outputHash,
-          observedOutputHash: result.outputHash,
+          storedInputHash: existing.nexus.inputHash,
+          presentedInputHash: inputHash,
+          computationPerformed: false,
         });
         return;
       }
-      res.setHeader("Cache-Control", "no-store");
-      res.json({
-        schema: NEXUS_RUN_SCHEMA,
-        replayed: true,
-        requestId: parsed.data.requestId,
-        result,
-        governed: {
-          pass: true,
-          receipt: existing.receipt,
-          sentra: preflight,
-        },
-      });
-      return;
-    }
 
-    const receiptPayload = compactReceiptPayload(parsed.data.requestId, result);
-    const governed = await runGovernedCycle(
-      { actor: parsed.data.actor, intent },
-      { nexus: receiptPayload },
-    );
-    if (!governed.pass || !governed.receipt) {
-      res.status(409).json({
-        error: "NEXUS_GOVERNANCE_REJECTED",
-        computationPerformed: true,
-        externalEffectPerformed: false,
+      const result = runNexus(input);
+      if (!result.invariants.allHold) {
+        res.status(500).json({
+          error: "NEXUS_INVARIANT_FAILURE",
+          result,
+        });
+        return;
+      }
+
+      if (existing) {
+        if (existing.nexus.outputHash !== result.outputHash) {
+          res.status(500).json({
+            error: "NEXUS_DETERMINISM_DIVERGENCE",
+            requestId: parsed.data.requestId,
+            storedOutputHash: existing.nexus.outputHash,
+            observedOutputHash: result.outputHash,
+          });
+          return;
+        }
+        res.setHeader("Cache-Control", "no-store");
+        res.json({
+          schema: NEXUS_RUN_SCHEMA,
+          replayed: true,
+          requestId: parsed.data.requestId,
+          result,
+          governed: {
+            pass: true,
+            receipt: existing.receipt,
+            sentra: preflight,
+          },
+        });
+        return;
+      }
+
+      const receiptPayload = compactReceiptPayload(parsed.data.requestId, result);
+      const governed = await runGovernedCycle(
+        { actor: parsed.data.actor, intent },
+        { nexus: receiptPayload },
+      );
+      if (!governed.pass || !governed.receipt) {
+        res.status(409).json({
+          error: "NEXUS_GOVERNANCE_REJECTED",
+          computationPerformed: true,
+          externalEffectPerformed: false,
+          result,
+          governed,
+        });
+        return;
+      }
+
+      res.setHeader("Cache-Control", "no-store");
+      res.status(201).json({
+        schema: NEXUS_RUN_SCHEMA,
+        replayed: false,
+        requestId: parsed.data.requestId,
         result,
         governed,
       });
-      return;
-    }
-
-    res.setHeader("Cache-Control", "no-store");
-    res.status(201).json({
-      schema: NEXUS_RUN_SCHEMA,
-      replayed: false,
-      requestId: parsed.data.requestId,
-      result,
-      governed,
     });
   } catch (error) {
     if (error instanceof CycleReadinessError) {

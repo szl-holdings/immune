@@ -46,6 +46,10 @@ class NexusValidationError(ValueError):
 
 
 def _finite(name: str, value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise NexusValidationError(
+            "NON_FINITE_NUMBER", f"{name} must be a JSON number"
+        )
     try:
         number = float(value)
     except (TypeError, ValueError) as error:
@@ -501,7 +505,9 @@ def _nemo_step(source: dict[str, Any], dt: float, chaos: float, drive: float) ->
         rate = min(1.0, rate)
         time_value += h * 0.001
         if not math.isfinite(bank[0]) or not math.isfinite(rate) or not math.isfinite(time_value):
-            return seed_nexus_state("nemo")
+            raise NexusValidationError(
+                "NON_FINITE_OUTPUT", "simulation produced a non-finite value"
+            )
 
     return {"x": bank[0], "y": bank[2], "z": rate, "t": time_value, "bank": bank}
 
@@ -554,7 +560,9 @@ def step_nexus_state(
     if program == "lotka":
         x, y = max(0.02, x), max(0.02, y)
     if not all(math.isfinite(value) for value in (x, y, z, time_value)):
-        return seed_nexus_state(program)
+        raise NexusValidationError(
+            "NON_FINITE_OUTPUT", "simulation produced a non-finite value"
+        )
     return {"x": x, "y": y, "z": z, "t": time_value}
 
 

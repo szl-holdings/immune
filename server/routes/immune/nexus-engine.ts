@@ -611,7 +611,10 @@ function analogNemoStep(
     rate = Math.min(1, rate);
     time += h * 0.001;
     if (!Number.isFinite(bank[0]) || !Number.isFinite(rate) || !Number.isFinite(time)) {
-      return seedNexusState("nemo");
+      throw new NexusValidationError(
+        "NON_FINITE_OUTPUT",
+        "simulation produced a non-finite value",
+      );
     }
   }
 
@@ -674,7 +677,10 @@ export function stepNexusState(
     y = Math.max(0.02, y);
   }
   if (![x, y, z, t].every(Number.isFinite)) {
-    return seedNexusState(program);
+    throw new NexusValidationError(
+      "NON_FINITE_OUTPUT",
+      "simulation produced a non-finite value",
+    );
   }
   return { x, y, z, t };
 }

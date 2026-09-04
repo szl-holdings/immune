@@ -144,4 +144,8 @@ test("unbounded or non-finite requests fail closed", () => {
     () => runNexus(request("nemo", { state: { x: -65, y: -70, z: 0, t: 0, bank: [1, 2] } })),
     (error: unknown) => error instanceof NexusValidationError && error.code === "INVALID_NEMO_BANK",
   );
+  assert.throws(
+    () => runNexus(request("lorenz", { dt: Number.POSITIVE_INFINITY })),
+    (error: unknown) => error instanceof NexusValidationError && error.code === "NON_FINITE_NUMBER",
+  );
 });

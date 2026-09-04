@@ -136,6 +136,10 @@ class NexusExecutionTests(unittest.TestCase):
                     state={"x": -65, "y": -70, "z": 0, "t": 0, "bank": [1, 2]},
                 )
             )
+        with self.assertRaises(NexusValidationError):
+            run_nexus(request("lorenz", dt="0.01"))
+        with self.assertRaises(NexusValidationError):
+            run_nexus(request("lorenz", chaos=True))
 
 
 if __name__ == "__main__":
