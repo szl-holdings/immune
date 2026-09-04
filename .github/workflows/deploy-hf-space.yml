@@ -1,0 +1,211 @@
+# Copyright 2026 SZL Holdings — SPDX-License-Identifier: Apache-2.0
+name: Deploy IMMUNE Spaces
+
+# Channel A = SZLHOLDINGS/immune (TypeScript HUD + kernel)
+# Channel B = SZLHOLDINGS/immune-lattice (Python kernel COP)
+# Do not delete either Space. First-class product tab remains a-11-oy.com/immune.
+on:
+  push:
+    branches: [main]
+    paths:
+      - frontend/**
+      - server/**
+      - python/**
+      - scripts/assert_hf_space_operational.py
+      - .github/workflows/deploy-hf-space.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-immune-spaces
+  cancel-in-progress: false
+
+jobs:
+  channel-a:
+    name: Publish SZLHOLDINGS/immune
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_SPACE: SZLHOLDINGS/immune
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+          cache: pnpm
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Install pinned Hugging Face publisher
+        run: python3 -m pip install --quiet "huggingface_hub==1.23.0"
+      - name: Require write-scoped HF_TOKEN
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}" || { echo "::error::HF_TOKEN is not set"; exit 1; }
+          python3 - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+          who = HfApi(token=os.environ["HF_TOKEN"]).whoami()
+          role = ((who.get("auth") or {}).get("accessToken") or {}).get("role")
+          if role == "read":
+              raise SystemExit("HF_TOKEN is read-only")
+          print("Authenticated Hugging Face publisher:", who.get("name", "<unknown>"))
+          PY
+      - name: Install, typecheck, and build exact source
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm run typecheck
+          SOURCE_REVISION="${GITHUB_SHA}" pnpm run build
+      - name: Ensure Space exists and publish Channel A
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import glob
+          import os
+          import time
+          import json
+          import urllib.parse
+          import urllib.request
+          from huggingface_hub import (
+              HfApi,
+              CommitOperationAdd,
+              CommitOperationDelete,
+          )
+
+          token = os.environ["HF_TOKEN"]
+          space = os.environ["HF_SPACE"]
+          api = HfApi(token=token)
+          try:
+              api.repo_info(repo_id=space, repo_type="space")
+          except Exception:
+              api.create_repo(
+                  repo_id=space,
+                  repo_type="space",
+                  space_sdk="docker",
+                  private=False,
+                  exist_ok=True,
+              )
+              print("Created public docker Space", space)
+          api.update_repo_visibility(repo_id=space, repo_type="space", private=False)
+          uploads = {
+              "Dockerfile": "frontend/deploy/Dockerfile",
+              ".dockerignore": "frontend/deploy/.dockerignore",
+              "README.md": "frontend/deploy/README.md",
+          }
+          manifest = "frontend/deploy/dist/hf-deploy-manifest.json"
+          if os.path.isfile(manifest):
+              uploads["hf-deploy-manifest.json"] = manifest
+          for local in glob.glob("frontend/deploy/dist/**/*", recursive=True):
+              if os.path.isfile(local):
+                  relative = os.path.relpath(local, "frontend/deploy").replace("\\", "/")
+                  uploads[relative] = local
+          existing = set(api.list_repo_files(space, repo_type="space"))
+          keep = set(uploads)
+          operations = [
+              CommitOperationAdd(path_in_repo=remote, path_or_fileobj=local)
+              for remote, local in sorted(uploads.items())
+          ]
+          for remote in sorted(existing - keep):
+              if not remote.startswith(".github/"):
+                  operations.append(CommitOperationDelete(path_in_repo=remote))
+          commit = api.create_commit(
+              repo_id=space,
+              repo_type="space",
+              operations=operations,
+              commit_message=f"deploy: source-bound IMMUNE {os.environ['GITHUB_SHA'][:12]}",
+          )
+          print("Published Channel A revision:", commit.oid)
+          PY
+
+  channel-b:
+    name: Publish SZLHOLDINGS/immune-lattice
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_SPACE: SZLHOLDINGS/immune-lattice
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Install pinned Hugging Face publisher
+        run: python3 -m pip install --quiet "huggingface_hub==1.23.0"
+      - name: Require write-scoped HF_TOKEN
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}" || { echo "::error::HF_TOKEN is not set"; exit 1; }
+          python3 - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+          who = HfApi(token=os.environ["HF_TOKEN"]).whoami()
+          role = ((who.get("auth") or {}).get("accessToken") or {}).get("role")
+          if role == "read":
+              raise SystemExit("HF_TOKEN is read-only")
+          print("Authenticated Hugging Face publisher:", who.get("name", "<unknown>"))
+          PY
+      - name: Ensure Space exists and publish Channel B
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import os
+          from huggingface_hub import HfApi, CommitOperationAdd, CommitOperationDelete
+          from pathlib import Path
+
+          token = os.environ["HF_TOKEN"]
+          space = os.environ["HF_SPACE"]
+          api = HfApi(token=token)
+          try:
+              api.repo_info(repo_id=space, repo_type="space")
+          except Exception:
+              api.create_repo(
+                  repo_id=space,
+                  repo_type="space",
+                  space_sdk="docker",
+                  private=False,
+                  exist_ok=True,
+              )
+              print("Created public docker Space", space)
+          api.update_repo_visibility(repo_id=space, repo_type="space", private=False)
+
+          uploads = {
+              "Dockerfile": "python/space/Dockerfile",
+              "requirements.txt": "python/requirements.txt",
+              "README.md": "python/space/README.md",
+              "server.py": "python/space/run.py",
+              "index.html": "python/space/index.html",
+          }
+          if Path("python/space/nexus.html").is_file():
+              uploads["nexus.html"] = "python/space/nexus.html"
+          root = Path("python/immune")
+          for path in root.rglob("*"):
+              if path.is_file() and path.suffix != ".pyc" and "__pycache__" not in path.parts:
+                  uploads["immune/" + str(path.relative_to(root)).replace("\\", "/")] = str(path)
+
+          existing = set(api.list_repo_files(space, repo_type="space"))
+          keep = set(uploads)
+          operations = [
+              CommitOperationAdd(path_in_repo=remote, path_or_fileobj=local)
+              for remote, local in sorted(uploads.items())
+          ]
+          for remote in sorted(existing - keep):
+              if not remote.startswith(".github/"):
+                  operations.append(CommitOperationDelete(path_in_repo=remote))
+          commit = api.create_commit(
+              repo_id=space,
+              repo_type="space",
+              operations=operations,
+              commit_message=f"deploy: source-bound IMMUNE lattice {os.environ['GITHUB_SHA'][:12]}",
+          )
+          print("Published Channel B revision:", commit.oid)
+          PY
