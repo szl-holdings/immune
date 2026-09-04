@@ -1,4 +1,4 @@
-name: Diagnose exact Trivy filesystem findings
+name: Diagnose exact Trivy SARIF findings
 
 on:
   push:
@@ -13,27 +13,67 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
 
-      - name: Checkout exact diagnostic branch
+      - name: Checkout the exact PR 100 merge tree
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ops/diagnose-trivy-20260904
+          ref: refs/pull/100/merge
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Print the full HIGH and CRITICAL filesystem finding set
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+      - name: Reproduce the required SARIF scan without failing the diagnostic
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.33.1
         with:
           scan-type: fs
           scan-ref: .
-          format: table
+          format: sarif
+          output: trivy-results.sarif
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: '0'
           version: v0.70.0
+
+      - name: Print only safe SARIF metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path('trivy-results.sarif').read_text(encoding='utf-8'))
+          rows = []
+          for run in payload.get('runs', []):
+              rules = {
+                  rule.get('id'): rule
+                  for rule in run.get('tool', {}).get('driver', {}).get('rules', [])
+                  if rule.get('id')
+              }
+              for result in run.get('results', []):
+                  rule_id = result.get('ruleId', 'UNKNOWN')
+                  rule = rules.get(rule_id, {})
+                  properties = rule.get('properties', {})
+                  locations = []
+                  for location in result.get('locations', []):
+                      physical = location.get('physicalLocation', {})
+                      artifact = physical.get('artifactLocation', {})
+                      region = physical.get('region', {})
+                      locations.append({
+                          'uri': artifact.get('uri'),
+                          'line': region.get('startLine'),
+                      })
+                  rows.append({
+                      'rule_id': rule_id,
+                      'level': result.get('level'),
+                      'security_severity': properties.get('security-severity'),
+                      'tags': properties.get('tags', []),
+                      'locations': locations,
+                  })
+          print(json.dumps({'result_count': len(rows), 'results': rows}, indent=2, sort_keys=True))
+          PY
