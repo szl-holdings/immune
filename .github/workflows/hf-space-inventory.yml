@@ -1,4 +1,4 @@
-name: hf-post-delete-estate-verification
+name: hf-active-estate-verification
 
 on:
   workflow_dispatch:
@@ -26,7 +26,7 @@ jobs:
       - name: Install pinned Hub client
         run: python -m pip install --disable-pip-version-check --no-cache-dir "huggingface_hub==1.23.0"
 
-      - name: Verify authenticated post-delete estate
+      - name: Verify authenticated active estate
         shell: bash
         run: |
           set -euo pipefail
@@ -35,7 +35,9 @@ jobs:
           python - <<'PY'
           import json
           import os
-          from huggingface_hub import HfApi
+          from pathlib import Path
+
+          from huggingface_hub import HfApi, hf_hub_download
 
           api = HfApi(token=os.environ["HF_TOKEN"])
           identity = api.whoami(token=os.environ["HF_TOKEN"])
@@ -50,6 +52,7 @@ jobs:
               "a11oy",
               "aegis-assurance",
               "counsel",
+              "david-leads",
               "finance",
               "killinchu",
               "lyte",
@@ -90,27 +93,68 @@ jobs:
               item = profile_spaces[name]
               runtime = api.get_space_runtime(repo_id=f"betterwithage/{name}")
               stage_value = getattr(runtime, "stage", None)
-              stage = str(getattr(stage_value, "value", stage_value) or "UNKNOWN").upper()
+              stage = str(
+                  getattr(stage_value, "value", stage_value) or "UNKNOWN"
+              ).upper()
               migrated_runtime[name] = {
                   "sha": str(item.sha or ""),
                   "private": bool(item.private),
                   "stage": stage,
               }
 
+          david_runtime = None
+          if "david-leads" in org_spaces:
+              item = org_spaces["david-leads"]
+              runtime = api.get_space_runtime(
+                  repo_id="SZLHOLDINGS/david-leads"
+              )
+              stage_value = getattr(runtime, "stage", None)
+              david_runtime = {
+                  "sha": str(item.sha or ""),
+                  "private": bool(item.private),
+                  "stage": str(
+                      getattr(stage_value, "value", stage_value) or "UNKNOWN"
+                  ).upper(),
+              }
+
+          manifest_path = Path(
+              hf_hub_download(
+                  repo_id="betterwithage/szl-command-centre",
+                  repo_type="space",
+                  filename="manifest.json",
+                  token=os.environ["HF_TOKEN"],
+                  force_download=True,
+              )
+          )
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          consolidated = manifest.get("consolidated_spaces")
+          if not isinstance(consolidated, list):
+              raise SystemExit("Command Centre manifest lacks consolidated_spaces")
+          retired_sources = {
+              item.get("source")
+              for item in consolidated
+              if isinstance(item, dict)
+          }
+
           receipt = {
-              "schema": "szl.hf-post-delete-estate-verification/v1",
+              "schema": "szl.hf-active-estate-verification/v2",
               "identity": identity_name,
               "org_count": len(org_names),
               "org_names": sorted(org_names),
               "expected_org_names": sorted(expected_org),
               "missing_org": sorted(missing_org),
               "unexpected_org": sorted(unexpected_org),
+              "david_runtime": david_runtime,
               "migrated_public_surfaces": sorted(migrated_keep),
               "missing_migrated_surfaces": sorted(missing_migrated),
               "retired_profile_surfaces_present": sorted(resurrected_profile),
               "migrated_runtime": migrated_runtime,
+              "retired_source_count": len(consolidated),
+              "david_present_in_retired_archive": (
+                  "SZLHOLDINGS/david-leads" in retired_sources
+              ),
           }
-          print("HF_POST_DELETE_ESTATE " + json.dumps(receipt, sort_keys=True))
+          print("HF_ACTIVE_ESTATE " + json.dumps(receipt, sort_keys=True))
 
           failures = []
           if missing_org:
@@ -125,6 +169,20 @@ jobs:
               failures.append(
                   f"retired profile Spaces reappeared: {sorted(resurrected_profile)}"
               )
+          if david_runtime is None:
+              failures.append("SZLHOLDINGS/david-leads is missing")
+          else:
+              if david_runtime["private"]:
+                  failures.append("SZLHOLDINGS/david-leads is private")
+              if david_runtime["stage"] != "RUNNING":
+                  failures.append(
+                      "SZLHOLDINGS/david-leads is not RUNNING: "
+                      + david_runtime["stage"]
+                  )
+              if len(david_runtime["sha"]) != 40:
+                  failures.append(
+                      "SZLHOLDINGS/david-leads lacks an exact revision"
+                  )
           for name, runtime in migrated_runtime.items():
               if runtime["private"]:
                   failures.append(f"betterwithage/{name} is private")
@@ -136,11 +194,19 @@ jobs:
                   failures.append(
                       f"betterwithage/{name} lacks an exact revision"
                   )
+          if len(consolidated) != 49:
+              failures.append(
+                  f"Command Centre retired-source count is {len(consolidated)}, expected 49"
+              )
+          if "SZLHOLDINGS/david-leads" in retired_sources:
+              failures.append("David Leads remains in the retired archive")
 
           if failures:
-              raise SystemExit("POST-DELETE ESTATE FAILED: " + "; ".join(failures))
+              raise SystemExit(
+                  "ACTIVE ESTATE FAILED: " + "; ".join(failures)
+              )
           print(
-              "POST-DELETE ESTATE PASS org=11 migrated=3 retired_profile=0",
+              "ACTIVE ESTATE PASS org=12 retired=49 public_surfaces=3",
               flush=True,
           )
           PY
