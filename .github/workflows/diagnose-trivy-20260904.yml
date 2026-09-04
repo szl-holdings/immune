@@ -1,4 +1,4 @@
-name: Diagnose exact Trivy dependency findings
+name: Diagnose exact Trivy filesystem findings
 
 on:
   push:
@@ -27,7 +27,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Print only HIGH and CRITICAL fixed dependency findings
+      - name: Print the full HIGH and CRITICAL filesystem finding set
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           scan-type: fs
@@ -35,6 +35,5 @@ jobs:
           format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          scanners: vuln
           exit-code: '0'
           version: v0.70.0
