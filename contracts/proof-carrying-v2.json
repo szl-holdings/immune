@@ -1,0 +1,19 @@
+{
+  "contract": "immune.proof-carrying/v2",
+  "kind": "ADDITIVE",
+  "frozenLedgerKeys": ["seq", "ts", "prevHash", "hash", "payload"],
+  "doNotRename": ["payload.sentra"],
+  "v2FieldsLiveInPayload": ["estate", "poorest", "energyClass", "energy_j"],
+  "hubBody": { "actor": "required", "intent": "required", "mode": "rejected-on-Space" },
+  "desk": "a-11-oy.com/immune",
+  "space": "SZLHOLDINGS/immune",
+  "org": "szl-holdings",
+  "hubOrg": "SZLHOLDINGS",
+  "energy": "UNAVAILABLE until RAPL/NVML MEASURED",
+  "frontier": "MODELED",
+  "unprivate_38": false,
+  "pausePrivateNeverDelete": true,
+  "aligned": false,
+  "missingOnHubTape": ["estate", "poorest", "energyClass"],
+  "note": "Next Space deploy may copy v2 fields into payload without rewriting genesis."
+}
