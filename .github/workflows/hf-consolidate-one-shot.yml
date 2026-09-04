@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/hf-consolidate-one-shot.yml
+      - scripts/hf_space_preserve_supplemental.py
       - scripts/hf_space_finalize_three_surface.py
   workflow_dispatch: {}
 
@@ -37,8 +38,10 @@ jobs:
       - name: Install pinned Hub client
         run: python -m pip install --disable-pip-version-check --no-cache-dir "huggingface_hub==1.23.0"
 
-      - name: Compile three-surface finalizer
-        run: python -m py_compile scripts/hf_space_finalize_three_surface.py
+      - name: Compile preservation and finalization engines
+        run: |
+          python -m py_compile scripts/hf_space_preserve_supplemental.py
+          python -m py_compile scripts/hf_space_finalize_three_surface.py
 
       - name: Fail closed if Hugging Face credential is absent
         shell: bash
@@ -46,6 +49,50 @@ jobs:
           set -euo pipefail
           test -n "${HF_TOKEN:-}" || { echo "::error::HF_TOKEN absent"; exit 2; }
           echo "::add-mask::$HF_TOKEN"
+
+      - name: Preserve every post-snapshot non-flagship Space
+        run: python scripts/hf_space_preserve_supplemental.py
+
+      - name: Bind finalizer to the effective immutable receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          revision = os.environ["HF_EFFECTIVE_PREDELETE_REVISION"]
+          count = int(os.environ["HF_EFFECTIVE_VICTIM_COUNT"])
+          if len(revision) != 40 or any(
+              character not in "0123456789abcdef" for character in revision.lower()
+          ):
+              raise SystemExit(f"invalid effective preservation revision: {revision!r}")
+          if count < 49 or count > 69:
+              raise SystemExit(f"unexpected effective victim count: {count}")
+
+          path = Path("scripts/hf_space_finalize_three_surface.py")
+          source = path.read_text(encoding="utf-8")
+          replacements = {
+              'PREDELETE_REVISION = "74b9c82538b4516deeacd2b440ad821a687f6ab5"':
+                  f'PREDELETE_REVISION = "{revision}"',
+              "EXPECTED_VICTIM_COUNT = 49":
+                  f"EXPECTED_VICTIM_COUNT = {count}",
+              "49 ORG SPACES PRESERVED + REMOVED":
+                  f"{count} ORG SPACES PRESERVED + REMOVED",
+          }
+          for old, new in replacements.items():
+              matches = source.count(old)
+              if matches != 1:
+                  raise SystemExit(
+                      f"expected exactly one finalizer binding {old!r}; found {matches}"
+                  )
+              source = source.replace(old, new)
+          path.write_text(source, encoding="utf-8")
+          print(
+              f"bound finalizer to revision={revision} victim_count={count}"
+          )
+          PY
+          python -m py_compile scripts/hf_space_finalize_three_surface.py
 
       - name: Finalize exact preserved org set and public profile topology
         run: python scripts/hf_space_finalize_three_surface.py
