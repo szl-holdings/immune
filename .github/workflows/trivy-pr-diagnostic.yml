@@ -28,12 +28,12 @@ jobs:
           ref: refs/pull/100/merge
           fetch-depth: 1
 
-      - name: Capture HIGH/CRITICAL vulnerability and secret metadata
+      - name: Capture HIGH/CRITICAL finding metadata
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.33.1
         with:
           scan-type: fs
           scan-ref: .
-          scanners: vuln,secret
+          scanners: vuln,secret,misconfig
           vuln-type: os,library
           format: json
           output: trivy-diagnostic.json
@@ -71,6 +71,19 @@ jobs:
                       "severity": item.get("Severity"),
                       "start_line": item.get("StartLine"),
                       "end_line": item.get("EndLine"),
+                  })
+              for item in result.get("Misconfigurations") or []:
+                  cause = item.get("CauseMetadata") or {}
+                  findings.append({
+                      "kind": "misconfiguration",
+                      "target": target,
+                      "id": item.get("AVDID") or item.get("ID"),
+                      "title": item.get("Title"),
+                      "message": item.get("Message"),
+                      "resolution": item.get("Resolution"),
+                      "severity": item.get("Severity"),
+                      "start_line": cause.get("StartLine"),
+                      "end_line": cause.get("EndLine"),
                   })
           print(json.dumps({"count": len(findings), "findings": findings}, sort_keys=True))
           PY
