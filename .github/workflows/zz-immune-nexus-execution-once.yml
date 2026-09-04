@@ -1,0 +1,150 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Apply IMMUNE NEXUS execution plane once
+
+"on":
+  push:
+    branches: [feat/immune-nexus-execution-plane-v1]
+    paths:
+      - .github/workflows/zz-immune-nexus-execution-once.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: immune-nexus-execution-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  apply-test-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout exact execution branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Require exact branch identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "feat/immune-nexus-execution-plane-v1"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v4.2.0
+        with:
+          version: 11.9.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.0.0
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Apply exact NEXUS source transaction
+        run: python scripts/apply_immune_nexus_execution_plane.py
+
+      - name: Prove Python execution plane
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-cache-dir -r python/requirements.txt
+          PYTHONPATH=python python -m unittest discover -s python/tests -v
+          python -m unittest tests.test_assert_hf_space_operational -v
+
+      - name: Install exact JavaScript dependency graph
+        run: pnpm install --frozen-lockfile
+
+      - name: Prove TypeScript contracts and execution plane
+        run: |
+          set -euo pipefail
+          pnpm run typecheck
+          pnpm test
+          node --experimental-strip-types --test tests/immune-nexus.test.ts
+
+      - name: Prove frontend evidence corpus
+        working-directory: frontend
+        run: node scripts/check-foundations-corpus.mjs
+
+      - name: Build exact standalone runtime
+        env:
+          SOURCE_REVISION: ${{ github.sha }}
+        run: pnpm run build
+
+      - name: Smoke exact standalone runtime
+        env:
+          SOURCE_REVISION: ${{ github.sha }}
+        run: node tests/smoke-standalone.mjs
+
+      - name: Record CI witness in immutable source receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("docs/receipts/immune-nexus-source-import-20260904.json")
+          payload = json.loads(path.read_text(encoding="utf-8"))
+          verification = payload.setdefault("verification", {})
+          verification.update(
+              {
+                  "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+                  "workflow_input_sha": os.environ["GITHUB_SHA"],
+                  "repository_ci_passed": True,
+                  "full_python_suite": "PASSED",
+                  "full_typescript_suite": "PASSED",
+                  "typecheck": "PASSED",
+                  "standalone_build": "PASSED",
+                  "standalone_smoke": "PASSED",
+                  "live_deployment_verified": False,
+                  "provider_mutation_performed": False,
+              }
+          )
+          path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Commit only proved durable source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf node_modules frontend/node_modules frontend/dist frontend/deploy/dist .pytest_cache
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
+          git config user.name "Lutar, Stephen P."
+          git config user.email "stephenlutar2@gmail.com"
+          git rm -f scripts/apply_immune_nexus_execution_plane.py
+          git rm -rf scripts/.immune-nexus-payload
+          git add \
+            package.json \
+            server/routes/immune/index.ts \
+            server/routes/immune/nexus-engine.ts \
+            server/routes/immune/nexus.ts \
+            tests/immune-nexus.test.ts \
+            python/immune/nexus.py \
+            python/immune/server.py \
+            python/tests/test_nexus.py \
+            frontend/public/nexus.html \
+            python/space/nexus.html \
+            contracts/immune-nexus.v1.json \
+            contracts/immune-nexus-parity-v1.json \
+            docs/IMMUNE_NEXUS_CONSOLIDATION.md \
+            docs/receipts/immune-nexus-source-import-20260904.json
+          git diff --cached --check
+          test -n "$(git diff --cached --name-only)"
+          git commit --signoff -m "feat(immune): add executable NEXUS dynamics plane"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
