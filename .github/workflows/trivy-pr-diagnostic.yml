@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Trivy PR dependency diagnostic
+
+on:
+  push:
+    branches:
+      - fix/remove-unused-re-20260904
+    paths:
+      - .github/workflows/trivy-pr-diagnostic.yml
+      - package.json
+      - pnpm-lock.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.13.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout exact branch revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v5.0.0
+
+      - name: Print HIGH/CRITICAL dependency findings
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.33.1
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          vuln-type: os,library
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          list-all-pkgs: true
+          exit-code: '0'
