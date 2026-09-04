@@ -96,7 +96,10 @@ jobs:
                   exist_ok=True,
               )
               print("Created public docker Space", space)
-          api.update_repo_visibility(repo_id=space, repo_type="space", private=False)
+          try:
+              api.update_repo_settings(repo_id=space, repo_type="space", private=False)
+          except Exception as exc:
+              print("visibility update skipped:", type(exc).__name__, exc)
           uploads = {
               "Dockerfile": "frontend/deploy/Dockerfile",
               ".dockerignore": "frontend/deploy/.dockerignore",
@@ -176,7 +179,10 @@ jobs:
                   exist_ok=True,
               )
               print("Created public docker Space", space)
-          api.update_repo_visibility(repo_id=space, repo_type="space", private=False)
+          try:
+              api.update_repo_settings(repo_id=space, repo_type="space", private=False)
+          except Exception as exc:
+              print("visibility update skipped:", type(exc).__name__, exc)
 
           uploads = {
               "Dockerfile": "python/space/Dockerfile",
