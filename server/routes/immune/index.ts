@@ -23,6 +23,7 @@ import { CycleReadinessError, runGovernedCycle } from "./cycle";
 import { publicKeyInfo } from "./signing";
 import agentRouter, { agentStatus } from "./agent";
 import inferRouter from "./infer";
+import nexusRouter from "./nexus";
 
 const router: IRouter = Router();
 
@@ -158,6 +159,11 @@ router.get("/agent-status", (_req: Request, res: Response) => {
 
 // The live governed agent — /agent/status and /agent/run.
 router.use("/agent", agentRouter);
+
+// NEXUS is now an executable internal IMMUNE simulation plane, not a second
+// public product. Every accepted run is SENTRA-gated, YAWAR-receipted, and
+// HUKLLA-evidenced; external effectors and arbitrary code remain disabled.
+router.use("/nexus", nexusRouter);
 
 // NEMO-gated inference — always operational (SOFTWARE compose when LLM is off).
 router.use(inferRouter);

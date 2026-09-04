@@ -1,0 +1,35 @@
+{
+  "schema": "szl.immune-nexus-parity-vectors/v1",
+  "source_repository": "szl-holdings/nexus",
+  "source_revision": "617fb49f061c9eb369c4d879a7c29af64c08e72e",
+  "numeric_hash_precision_decimal_places": 9,
+  "input": {
+    "mode": "OP",
+    "steps_standard": 64,
+    "steps_nemo": 40,
+    "dt_standard": 0.01,
+    "dt_nemo": 0.002,
+    "chaos": 0.45,
+    "drive": 0.92,
+    "seed": 0.2,
+    "repeatEvery": 32,
+    "axes": [0.97, 0.96, 0.93, 0.91, 0.9]
+  },
+  "output_hashes": {
+    "lorenz": "8c22f52d231d76c1b712f8e23449b4b6383ec8d2e376fbd1fb0f24db4ea564f4",
+    "harmonic": "109357851e006764b0292f2ad35987fe1e649dd4ad698b197f860bb5140b8736",
+    "vanderpol": "898bf5347e5a4a9c1237a496b399df3acf0a42f7390607c7d7238651d735c708",
+    "duffing": "aaa392333d8680d70ad33be51cd471c554b62e6b8d9eab197659895cb29df396",
+    "lotka": "5189c3ecca14fe1ca3f3c794ad7dce05b134bac1f773b4a6b98c6a08b148c612",
+    "nemo": "2b1dd69a8d95b352b91642f7b5202b3b788bf17f398ae9bcab7a90594b10a348"
+  },
+  "boundary": {
+    "external_calls": 0,
+    "external_effectors": false,
+    "arbitrary_code": false,
+    "arbitrary_urls": false,
+    "physical_hardware": false,
+    "energy": "UNAVAILABLE",
+    "uniqueness": "Conjecture 1 OPEN"
+  }
+}

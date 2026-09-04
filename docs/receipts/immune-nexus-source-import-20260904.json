@@ -1,0 +1,110 @@
+{
+  "authority": {
+    "arbitrary_code": false,
+    "arbitrary_urls": false,
+    "energy": "UNAVAILABLE",
+    "external_calls": 0,
+    "external_effectors": false,
+    "physical_hardware": false,
+    "uniqueness": "Conjecture 1 OPEN"
+  },
+  "destination": {
+    "base_revision": "4c573f7ccf4af6a15e57e8de4ecac34013720ece",
+    "capability_plane": "NEXUS",
+    "public_product": "IMMUNE",
+    "repository": "szl-holdings/immune"
+  },
+  "files": {
+    "contracts/immune-nexus-parity-v1.json": {
+      "bytes": 1216,
+      "sha256": "13fe120d817a79c4c17a53da02cd1c642ee33df2394ee50d95316529c583c86f"
+    },
+    "contracts/immune-nexus.v1.json": {
+      "bytes": 3059,
+      "sha256": "1959e535f48165870dd9d3eb25c3e77f80531214c1cb5d16accda181a652ee6a"
+    },
+    "docs/IMMUNE_NEXUS_CONSOLIDATION.md": {
+      "bytes": 5711,
+      "sha256": "52a923c5cbd693374354e7086c5d64fecb69d1975c975f2002e326d717633d54"
+    },
+    "frontend/public/nexus.html": {
+      "bytes": 13315,
+      "sha256": "e5e38b14da2f855f39eae25da9c6d343f7293b53d8c186cf768509b10435426f"
+    },
+    "package.json": {
+      "bytes": 996,
+      "sha256": "34d60f4a276b12263db0bd5f7e77447c5c37cfd94ee36afc22aee520ca40e762"
+    },
+    "python/immune/nexus.py": {
+      "bytes": 34115,
+      "sha256": "0f4ff091d797fbfc83ec4c56a1fc2d6fe88e0742fc6624e2ec74252affcd5700"
+    },
+    "python/immune/server.py": {
+      "bytes": 21330,
+      "sha256": "4d4d673ced9dff1edf54a7ed94a236aa7ef811ac171c88ff16a5b60424ca1d31"
+    },
+    "python/space/nexus.html": {
+      "bytes": 13315,
+      "sha256": "e5e38b14da2f855f39eae25da9c6d343f7293b53d8c186cf768509b10435426f"
+    },
+    "python/tests/test_nexus.py": {
+      "bytes": 5729,
+      "sha256": "9ea3d13fc52fc57c0c75e8bd653a9891af509c7aeb05a422aed025c58f2cbd6f"
+    },
+    "server/routes/immune/index.ts": {
+      "bytes": 4983,
+      "sha256": "52c2dacb291968ce60776f6000d31e5cc9db232b94cf7e5ff215a5a71bc0c1c5"
+    },
+    "server/routes/immune/nexus-engine.ts": {
+      "bytes": 32672,
+      "sha256": "3962c29c43d40b720fca2f42d4aa34619c0ed0a5a98dc2db28c7410d72f1808f"
+    },
+    "server/routes/immune/nexus.ts": {
+      "bytes": 12151,
+      "sha256": "d9c71ce9f9142f7229f5f763385a28ef852e9633ea8b68a8e2c3d89cdc1aacf3"
+    },
+    "tests/immune-nexus.test.ts": {
+      "bytes": 5362,
+      "sha256": "9ddc22e9fb9101ad0a572473fdfceb70166e878503f1115c570e44bb7c594d11"
+    }
+  },
+  "observed_at": "2026-09-04T14:26:12.624919Z",
+  "schema": "szl.immune-nexus-source-import/v1",
+  "source": {
+    "blobs": {
+      "server.py": "b423576f3a50f4a1ed249e86532b713b19e3ce37",
+      "src/lib/nexus/math.ts": "d71a0f7d40f2c29d906c03636547b1eebfe196f1"
+    },
+    "repository": "szl-holdings/nexus",
+    "revision": "617fb49f061c9eb369c4d879a7c29af64c08e72e"
+  },
+  "verification": {
+    "cross_language_output_hashes_equal": true,
+    "full_python_suite": "PASSED",
+    "full_typescript_suite": "PASSED",
+    "live_deployment_verified": false,
+    "programs_verified": [
+      "lorenz",
+      "harmonic",
+      "vanderpol",
+      "duffing",
+      "lotka",
+      "nemo"
+    ],
+    "provider_mutation_performed": false,
+    "python_tests": {
+      "passed": 8,
+      "runner": "PYTHONPATH=python python -m unittest discover -s python/tests -v"
+    },
+    "repository_ci_passed": true,
+    "standalone_build": "PASSED",
+    "standalone_smoke": "PASSED",
+    "typecheck": "PASSED",
+    "typescript_tests": {
+      "passed": 8,
+      "runner": "node --experimental-strip-types --test tests/immune-nexus.test.ts"
+    },
+    "workflow_input_sha": "a732706b300cb19c201d4ca1c953ad2dff2fc58f",
+    "workflow_run_id": "33886200614"
+  }
+}
