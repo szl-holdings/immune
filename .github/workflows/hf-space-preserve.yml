@@ -1,5 +1,6 @@
 name: hf-space-preserve-and-consolidate
 
+# Publisher freeze confirmed by immune PR #98; retry the exact preservation gate.
 on:
   workflow_dispatch:
   push:
