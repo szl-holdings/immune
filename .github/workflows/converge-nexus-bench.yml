@@ -14,11 +14,12 @@ on:
   workflow_dispatch: {}
 
 permissions:
+  actions: write
   contents: read
 
 concurrency:
   group: converge-nexus-bench
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   converge:
@@ -49,6 +50,17 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -n "${HF_TOKEN:-}" || { echo "::error::HF_TOKEN absent"; exit 2; }
           echo "::add-mask::$HF_TOKEN"
+
+      - name: Dispatch exact-current IMMUNE Space deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run deploy-hf-space.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$GITHUB_REF_NAME"
+          echo "Dispatched Deploy IMMUNE Spaces for $GITHUB_SHA"
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
