@@ -45,11 +45,7 @@ jobs:
           set -euo pipefail
           python -m py_compile python/immune/server.py
           python -m unittest -v tests.test_immune_lattice_source_witness
-          python - <<'PY'
-          import yaml
-          from pathlib import Path
-          yaml.safe_load(Path('.github/workflows/deploy-hf-space.yml').read_text(encoding='utf-8'))
-          PY
+          ruby -e 'require "yaml"; YAML.load_file(".github/workflows/deploy-hf-space.yml")'
           git diff --check
 
       - name: Commit only durable source-witness changes
