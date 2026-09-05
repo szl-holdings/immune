@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 """Prove retained NEXUS, Bench, and IMMUNE after Nexus Probe retirement."""
 from __future__ import annotations
@@ -61,7 +60,7 @@ def fetch_json(
     status, raw = fetch(url, payload=payload, bearer=bearer)
     decoded = json.loads(raw.decode())
     if not isinstance(decoded, dict):
-        raise RuntimeError(f"{url} returned non-object JSON")
+        raise TypeError(f"{url} returned non-object JSON")
     return status, decoded
 
 
