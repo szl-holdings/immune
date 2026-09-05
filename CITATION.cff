@@ -1,0 +1,15 @@
+# CITATION.cff — szl-holdings/immune
+# Covers IMMUNE (SENTRA admits / YAWAR seals) and the NEXUS holographic
+# analog-computer runtime it hosts (/api/immune/nexus/run, /nexus.html).
+# Mint step: enable the GitHub-Zenodo integration on this repo to mint a
+# concept DOI on the next release, then add `doi:` below.
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "IMMUNE — fail-closed governed-AI kernel hosting the NEXUS analog runtime"
+authors:
+  - family-names: Lutar
+    given-names: Stephen Paul
+license: Apache-2.0
+url: "https://huggingface.co/spaces/SZLHOLDINGS/immune"
+repository-code: "https://github.com/szl-holdings/immune"
