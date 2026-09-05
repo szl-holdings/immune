@@ -66,12 +66,14 @@ def update_workflow() -> None:
     )
     replace_once(
         WORKFLOW,
-        '''              "nexus.html": "python/space/nexus.html",
-          }
+        '''          if Path("python/space/nexus.html").is_file():
+              uploads["nexus.html"] = "python/space/nexus.html"
+          root = Path("python/immune")
 ''',
-        '''              "nexus.html": "python/space/nexus.html",
-              "source-identity.json": "python/space/source-identity.json",
-          }
+        '''          if Path("python/space/nexus.html").is_file():
+              uploads["nexus.html"] = "python/space/nexus.html"
+          uploads["source-identity.json"] = str(identity)
+          root = Path("python/immune")
 ''',
     )
     replace_last(
