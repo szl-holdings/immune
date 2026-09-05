@@ -1,0 +1,75 @@
+name: Apply IMMUNE lattice source witness
+
+on:
+  push:
+    branches:
+      - fix/immune-lattice-source-witness-20260905
+    paths:
+      - scripts/apply_immune_lattice_source_witness.py
+      - .github/workflows/apply-immune-lattice-source-witness.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-immune-lattice-source-witness
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    name: Add and prove exact Channel B source identity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Check out exact repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/immune-lattice-source-witness-20260905
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Materialize source identity contract
+        run: python scripts/apply_immune_lattice_source_witness.py
+
+      - name: Prove source and publisher controls
+        run: |
+          set -euo pipefail
+          python -m py_compile python/immune/server.py
+          python -m unittest -v tests.test_immune_lattice_source_witness
+          python - <<'PY'
+          import yaml
+          from pathlib import Path
+          yaml.safe_load(Path('.github/workflows/deploy-hf-space.yml').read_text(encoding='utf-8'))
+          PY
+          git diff --check
+
+      - name: Commit only durable source-witness changes
+        env:
+          BRANCH: fix/immune-lattice-source-witness-20260905
+        run: |
+          set -euo pipefail
+          git rm \
+            scripts/apply_immune_lattice_source_witness.py \
+            .github/workflows/apply-immune-lattice-source-witness.yml
+          git add \
+            python/immune/server.py \
+            python/space/Dockerfile \
+            .github/workflows/deploy-hf-space.yml \
+            tests/test_immune_lattice_source_witness.py
+          git diff --cached --check
+          git config user.name "SZL Frontier Operator"
+          git config user.email "stephenlutar2@gmail.com"
+          git commit \
+            -m "fix(immune): expose exact lattice source identity" \
+            -m "Bake a non-secret immutable source document into Channel B, expose the standard build-info and deployment routes, and require the canonical publisher to prove the running revision matches the protected GitHub SHA." \
+            -m "Signed-off-by: Stephen P. Lutar <stephenlutar2@gmail.com>"
+          git push origin "HEAD:${BRANCH}"
