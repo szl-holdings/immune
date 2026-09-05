@@ -8,6 +8,7 @@ on:
       - frontend/deploy/README.md
       - scripts/delete_nexus_probe.py
       - scripts/verify_nexus_bench_preflight.py
+      - scripts/verify_nexus_bench_preflight_v3.py
       - scripts/verify_nexus_bench_postdelete.py
       - .github/workflows/converge-nexus-bench.yml
   workflow_dispatch: {}
@@ -64,10 +65,11 @@ jobs:
           python -m py_compile
           scripts/delete_nexus_probe.py
           scripts/verify_nexus_bench_preflight.py
+          scripts/verify_nexus_bench_preflight_v3.py
           scripts/verify_nexus_bench_postdelete.py
 
-      - name: Verify archive, Bench static host, and current IMMUNE runtime
-        run: python scripts/verify_nexus_bench_preflight.py
+      - name: Verify archive, structured Bench sources, static host, and current IMMUNE
+        run: python scripts/verify_nexus_bench_preflight_v3.py
 
       - name: Delete only the exact archived Nexus Probe
         run: python scripts/delete_nexus_probe.py
