@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 """Delete only the exact archived Nexus Probe and re-prove retained NEXUS."""
 from __future__ import annotations

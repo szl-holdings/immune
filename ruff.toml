@@ -1,0 +1,5 @@
+# The convergence preflight emits a secret-free failure receipt for every terminal
+# provider or runtime exception, then exits non-zero. Keep the broad catch scoped to
+# that one bounded operator; all other repository lint behavior remains unchanged.
+[lint.per-file-ignores]
+"scripts/verify_nexus_bench_preflight.py" = ["BLE001"]
