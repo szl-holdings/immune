@@ -6,6 +6,7 @@ on:
       - fix/immune-lattice-source-witness-20260905
     paths:
       - scripts/apply_immune_lattice_source_witness.py
+      - scripts/apply_immune_lattice_source_witness_v2.py
       - .github/workflows/apply-immune-lattice-source-witness.yml
 
 permissions:
@@ -38,7 +39,7 @@ jobs:
           python-version: "3.12"
 
       - name: Materialize source identity contract
-        run: python scripts/apply_immune_lattice_source_witness.py
+        run: python scripts/apply_immune_lattice_source_witness_v2.py
 
       - name: Prove source and publisher controls
         run: |
@@ -55,6 +56,7 @@ jobs:
           set -euo pipefail
           git rm \
             scripts/apply_immune_lattice_source_witness.py \
+            scripts/apply_immune_lattice_source_witness_v2.py \
             .github/workflows/apply-immune-lattice-source-witness.yml
           git add \
             python/immune/server.py \
