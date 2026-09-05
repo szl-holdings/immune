@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Nexus and Bench convergence contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/nexus_bench_stage1.py
+      - scripts/delete_nexus_probe.py
+      - tests/test_nexus_bench_convergence.py
+      - .github/workflows/converge-nexus-bench.yml
+      - .github/workflows/nexus-bench-convergence-contract.yml
+  push:
+    branches: [main]
+    paths:
+      - scripts/nexus_bench_stage1.py
+      - scripts/delete_nexus_probe.py
+      - tests/test_nexus_bench_convergence.py
+      - .github/workflows/converge-nexus-bench.yml
+      - .github/workflows/nexus-bench-convergence-contract.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nexus-bench-convergence-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Idempotency, propagation, and receipt boundaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Check out exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install exact test closure
+        run: >-
+          python -m pip install --disable-pip-version-check --no-cache-dir
+          "huggingface_hub==1.30.0" "pytest==9.1.1" "ruff==0.16.6"
+
+      - name: Enforce syntax and unused-import boundary
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/nexus_bench_stage1.py scripts/delete_nexus_probe.py
+          ruff check scripts/nexus_bench_stage1.py scripts/delete_nexus_probe.py --select E9,F
+
+      - name: Run offline convergence contracts
+        env:
+          HF_TOKEN: offline-test-token
+        run: python -m pytest -q tests/test_nexus_bench_convergence.py
+
+      - name: Diff hygiene
+        run: git diff --check
