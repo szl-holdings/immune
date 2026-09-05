@@ -6,8 +6,9 @@ on:
     branches: [main]
     paths:
       - frontend/deploy/README.md
-      - scripts/nexus_bench_stage1.py
       - scripts/delete_nexus_probe.py
+      - scripts/verify_nexus_bench_preflight.py
+      - scripts/verify_nexus_bench_postdelete.py
       - .github/workflows/converge-nexus-bench.yml
   workflow_dispatch: {}
 
@@ -21,7 +22,7 @@ concurrency:
 jobs:
   converge:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 45
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_HOME: /tmp/hf-home
@@ -39,7 +40,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Verify source identity
+      - name: Verify source identity and credential presence
         shell: bash
         run: |
           set -euo pipefail
@@ -61,14 +62,18 @@ jobs:
       - name: Compile bounded operators
         run: >-
           python -m py_compile
-          scripts/nexus_bench_stage1.py
           scripts/delete_nexus_probe.py
+          scripts/verify_nexus_bench_preflight.py
+          scripts/verify_nexus_bench_postdelete.py
 
-      - name: Archive duplicate, repair Bench, and verify current IMMUNE
-        run: python scripts/nexus_bench_stage1.py
+      - name: Verify archive, Bench static host, and current IMMUNE runtime
+        run: python scripts/verify_nexus_bench_preflight.py
 
       - name: Delete only the exact archived Nexus Probe
         run: python scripts/delete_nexus_probe.py
+
+      - name: Re-prove retained NEXUS, Bench, and IMMUNE
+        run: python scripts/verify_nexus_bench_postdelete.py
 
       - name: Upload secret-free convergence receipts
         if: always()
