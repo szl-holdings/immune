@@ -22,6 +22,13 @@ YAWAR seals SHA-256 receipts, HUKLLA tripwires, NEXUS counterfactual dynamics.
 
 One product, two URLs. Do not delete this Space or Channel B.
 
+## Canonical NEXUS topology
+
+- Public executable plane: this Space at `/nexus.html` and `/api/immune/nexus/*`.
+- Dynamics source: `szl-holdings/nexus`; governed host: `szl-holdings/immune`.
+- `betterwithage/nexus` is a private preservation mirror, not a second public product.
+- Empty template probes are never promoted as source or runtime.
+
 Status is CONNECTING / REACHABLE / UNAVAILABLE. Never fabricate LIVE or PASS.
 Λ = Conjecture 1 OPEN. Energy is UNAVAILABLE unless a meter is actually read.
 
