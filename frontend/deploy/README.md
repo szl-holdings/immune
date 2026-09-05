@@ -27,7 +27,7 @@ One product, two URLs. Do not delete this Space or Channel B.
 - Public executable plane: this Space at `/nexus.html` and `/api/immune/nexus/*`.
 - Dynamics source: `szl-holdings/nexus`; governed host: `szl-holdings/immune`.
 - `betterwithage/nexus` is a private preservation mirror, not a second public product.
-- Empty template probes are never promoted as source or runtime.
+- Empty template probes are byte-archived before exact-SHA retirement; they are never promoted as source or runtime.
 
 Status is CONNECTING / REACHABLE / UNAVAILABLE. Never fabricate LIVE or PASS.
 Λ = Conjecture 1 OPEN. Energy is UNAVAILABLE unless a meter is actually read.
