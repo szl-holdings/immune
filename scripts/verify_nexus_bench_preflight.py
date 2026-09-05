@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 """Verify the preserved NEXUS, repaired Bench, and current IMMUNE runtime."""
 from __future__ import annotations
@@ -94,7 +93,7 @@ def fetch_json(
     status, raw = fetch(url, payload=payload, bearer=bearer, timeout=timeout)
     decoded = json.loads(raw.decode())
     if not isinstance(decoded, dict):
-        raise RuntimeError(f"{url} returned non-object JSON")
+        raise TypeError(f"{url} returned non-object JSON")
     return status, decoded
 
 
@@ -350,7 +349,7 @@ def main() -> int:
         report["immune"] = verify_immune()
         report["state"] = "ALL_GATES_PASS"
         exit_code = 0
-    except BaseException as error:
+    except Exception as error:
         report["state"] = "FAILED"
         report["error"] = f"{type(error).__name__}: {error}"[:1600]
         print("::error::" + report["error"])
