@@ -1,28 +1,25 @@
 {
-  "contract": "immune.proof-carrying/v2",
+  "contract": "immune.proof-carrying/v2.1",
   "kind": "ADDITIVE",
   "frozenLedgerKeys": ["seq", "ts", "prevHash", "hash", "payload"],
-  "doNotRename": ["payload.sentra"],
+  "doNotRename": ["payload.sentra", "payload.estate", "payload.energyClass"],
   "v2FieldsLiveInPayload": ["estate", "poorest", "energyClass", "energy_j"],
+  "v21FieldsInPayload": ["evidenceTier", "directive", "claims", "adjacent", "scope", "nexusOrgan"],
+  "evidenceTier": "SOFTWARE_RECEIPT",
+  "directive": ["RELEASE", "BLOCK", "DEFER"],
+  "claims": {
+    "execution": "SOFTWARE",
+    "identity": "MEASURED",
+    "input": "MEASURED",
+    "policy": "MEASURED"
+  },
+  "adjacent": ["TRACE", "AIREP", "R+2", "AIR", "SLSA", "PUNKGO"],
   "hubBody": { "actor": "required", "intent": "required", "mode": "rejected-on-Space" },
   "desk": "a-11-oy.com/immune",
   "space": "SZLHOLDINGS/immune",
-  "org": "szl-holdings",
-  "hubOrg": "SZLHOLDINGS",
   "energy": "UNAVAILABLE until RAPL/NVML MEASURED",
   "frontier": "MODELED",
+  "ato": false,
   "unprivate_38": false,
-  "pausePrivateNeverDelete": true,
-  "aligned": true,
-  "channelA": {
-    "measuredAt": "2026-09-04T20:24:03Z",
-    "seqFrom": 7,
-    "exampleSeq": 10,
-    "estate": "e7b04c982887ec1f",
-    "poorest": "unmeasured",
-    "energyClass": "UNAVAILABLE",
-    "energy_j": null
-  },
-  "missingOnHubTape": [],
-  "note": "Channel A tape MEASURED from seq 7. Channel B payload is additive in python/immune/runtime.py. Frozen outer keys untouched. Energy remains UNAVAILABLE."
+  "note": "v2.1 is additive inside payload. Frozen outer keys untouched. Energy remains UNAVAILABLE on HF CPU."
 }
