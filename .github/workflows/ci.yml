@@ -53,3 +53,16 @@ jobs:
         env:
           SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node tests/smoke-standalone.mjs
+      - name: Verify built frontend asset delivery and missing-asset boundary
+        id: static_delivery
+        env:
+          SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node tests/static-delivery.mjs
+      - name: Retain exact built-delivery observation
+        if: ${{ always() && steps.static_delivery.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: immune-static-delivery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/static-delivery/observation.json
+          if-no-files-found: error
+          retention-days: 90
