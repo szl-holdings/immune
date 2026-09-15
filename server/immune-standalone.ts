@@ -122,6 +122,32 @@ if (staticDir) {
       maxAge: "5m",
     }),
   );
+  // Static hosting above owns existing artifact bytes. Missing assets must
+  // never receive index.html: that converts a missing script into a misleading
+  // HTTP 200 and a browser parse error. Document navigation still uses the SPA.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    let requestedPath: string;
+    try {
+      requestedPath = decodeURIComponent(req.path);
+    } catch {
+      res.setHeader("Cache-Control", "no-store");
+      res.status(400).json({ error: "invalid asset path" });
+      return;
+    }
+    const destination = req.get("Sec-Fetch-Dest") ?? "";
+    const assetDestination = /^(?:script|style|font|image|audio|video|track|worker|sharedworker|serviceworker|manifest)$/i;
+    const assetSuffix = /\.(?:[cm]?js|css|map|json|wasm|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|eot|mp[34]|ogg|wav|webm|pdf)$/i;
+    if (
+      requestedPath.startsWith("/assets/") ||
+      assetSuffix.test(requestedPath) ||
+      assetDestination.test(destination)
+    ) {
+      res.setHeader("Cache-Control", "no-store");
+      res.status(404).json({ error: "asset not found" });
+      return;
+    }
+    next();
+  });
   // SPA fallback — serve index.html for any non-API, non-asset route.
   app.get("/{*splat}", sendIndex);
 } else {
