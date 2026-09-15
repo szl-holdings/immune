@@ -17,9 +17,10 @@ updates:
         patterns:
           - "*"
 
-  # npm (frontend) dependencies
+  # Root owns pnpm-workspace.yaml and the shared pnpm-lock.yaml. The updater
+  # must see both root and frontend importers, not change frontend in isolation.
   - package-ecosystem: "npm"
-    directory: "/frontend"
+    directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
