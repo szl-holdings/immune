@@ -66,3 +66,57 @@ jobs:
           path: reports/static-delivery/observation.json
           if-no-files-found: error
           retention-days: 90
+
+  # Review-only acquisition on this existing draft. Never satisfies or replaces
+  # build-and-smoke. Remove this job once the reviewed lockfile is committed.
+  lockfile-review-candidate:
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'szl/fix-holographic-static-delivery' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+      - name: Generate unadmitted lock candidate with lifecycle scripts disabled
+        env:
+          EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
+          test "$(pnpm --version)" = "11.9.0"
+          mkdir lock-review
+          git rev-parse HEAD > lock-review/source-sha.txt
+          node --version > lock-review/node-version.txt
+          pnpm --version > lock-review/pnpm-version.txt
+          cp package.json pnpm-workspace.yaml lock-review/
+          cp frontend/package.json lock-review/frontend-package.json
+          sha256sum package.json frontend/package.json pnpm-workspace.yaml pnpm-lock.yaml > lock-review/source-input-sha256.txt
+          pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+          git diff --check
+          git diff --exit-code -- package.json frontend/package.json pnpm-workspace.yaml
+          test "$(git diff --name-only)" = "pnpm-lock.yaml"
+          cp pnpm-lock.yaml lock-review/
+          git diff -- pnpm-lock.yaml > lock-review/lockfile-candidate.patch
+          sha256sum lock-review/* > lock-review/SHA256SUMS.txt
+          printf '%s\n' 'REVIEW ONLY: original frozen CI remains required; not committed, built, scanned, or deployed.' > lock-review/BOUNDARY.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: immune-lock-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: lock-review/
+          if-no-files-found: error
+          retention-days: 7
