@@ -68,3 +68,30 @@ jobs:
           path: reports/static-delivery/observation.json
           if-no-files-found: error
           retention-days: 90
+      - name: Set up production publisher Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Qualify pinned SDK against actual built bundles without provider mutation
+        id: publisher_sdk
+        env:
+          SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/immune-publisher-qualification"
+          qpython="$RUNNER_TEMP/immune-publisher-qualification/bin/python"
+          "$qpython" -m pip install --disable-pip-version-check 'huggingface_hub==1.23.0'
+          mkdir -p reports/publication-sdk
+          "$qpython" -m pip freeze --all > reports/publication-sdk/environment.txt
+          "$qpython" -m unittest discover -s tests -p 'test_immune_publication*.py' -v 2>&1 | tee reports/publication-sdk/tests-normal.log
+          "$qpython" -O -m unittest discover -s tests -p 'test_immune_publication*.py' -v 2>&1 | tee reports/publication-sdk/tests-optimized.log
+          "$qpython" tests/check_publication_sdk.py
+      - name: Retain source-bound publisher qualification
+        if: ${{ always() && steps.publisher_sdk.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: immune-publisher-sdk-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/publication-sdk/
+          if-no-files-found: error
+          retention-days: 90
