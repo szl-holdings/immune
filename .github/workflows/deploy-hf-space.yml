@@ -12,6 +12,8 @@ on:
       - server/**
       - python/**
       - scripts/assert_hf_space_operational.py
+      - scripts/immune_publication_guard.py
+      - tests/test_immune_publication_guard.py
       - .github/workflows/deploy-hf-space.yml
   workflow_dispatch: {}
 
@@ -28,9 +30,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_SPACE: SZLHOLDINGS/immune
     steps:
+      - name: Require canonical main before credential use
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_REPOSITORY" = szl-holdings/immune
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
         with:
@@ -45,14 +52,18 @@ jobs:
           python-version: "3.12"
       - name: Install pinned Hugging Face publisher
         run: python3 -m pip install --quiet "huggingface_hub==1.23.0"
+      - name: Validate publication boundary offline
+        run: python3 -m unittest discover -s tests -p 'test_immune_publication*.py' -v
       - name: Require write-scoped HF_TOKEN
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           set -euo pipefail
           test -n "${HF_TOKEN:-}" || { echo "::error::HF_TOKEN is not set"; exit 1; }
           python3 - <<'PY'
           import os
           from huggingface_hub import HfApi
-          who = HfApi(token=os.environ["HF_TOKEN"]).whoami()
+          who = HfApi(endpoint="https://huggingface.co", token=os.environ["HF_TOKEN"]).whoami()
           role = ((who.get("auth") or {}).get("accessToken") or {}).get("role")
           if role == "read":
               raise SystemExit("HF_TOKEN is read-only")
@@ -66,40 +77,21 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm run typecheck
           SOURCE_REVISION="${GITHUB_SHA}" pnpm run build
-      - name: Ensure Space exists and publish Channel A
+      - name: Publish existing Channel A with bounded ownership and parent guard
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           set -euo pipefail
           python3 <<'PY'
           import glob
           import os
-          import time
-          import json
-          import urllib.parse
-          import urllib.request
-          from huggingface_hub import (
-              HfApi,
-              CommitOperationAdd,
-              CommitOperationDelete,
-          )
+          from pathlib import Path
+          from scripts.immune_publication_guard import publish_existing
+          from huggingface_hub import HfApi
 
           token = os.environ["HF_TOKEN"]
           space = os.environ["HF_SPACE"]
-          api = HfApi(token=token)
-          try:
-              api.repo_info(repo_id=space, repo_type="space")
-          except Exception:
-              api.create_repo(
-                  repo_id=space,
-                  repo_type="space",
-                  space_sdk="docker",
-                  private=False,
-                  exist_ok=True,
-              )
-              print("Created public docker Space", space)
-          try:
-              api.update_repo_settings(repo_id=space, repo_type="space", private=False)
-          except Exception as exc:
-              print("visibility update skipped:", type(exc).__name__, exc)
+          api = HfApi(endpoint="https://huggingface.co", token=token)
           uploads = {
               "Dockerfile": "frontend/deploy/Dockerfile",
               ".dockerignore": "frontend/deploy/.dockerignore",
@@ -112,77 +104,72 @@ jobs:
               if os.path.isfile(local):
                   relative = os.path.relpath(local, "frontend/deploy").replace("\\", "/")
                   uploads[relative] = local
-          existing = set(api.list_repo_files(space, repo_type="space"))
-          keep = set(uploads)
-          operations = [
-              CommitOperationAdd(path_in_repo=remote, path_or_fileobj=local)
-              for remote, local in sorted(uploads.items())
-          ]
-          for remote in sorted(existing - keep):
-              if not remote.startswith(".github/"):
-                  operations.append(CommitOperationDelete(path_in_repo=remote))
-          commit = api.create_commit(
-              repo_id=space,
-              repo_type="space",
-              operations=operations,
-              commit_message=f"deploy: source-bound IMMUNE {os.environ['GITHUB_SHA'][:12]}",
+          result = publish_existing(
+              api, space, uploads, os.environ["GITHUB_SHA"],
+              checkout=Path.cwd(),
+              receipt_path=Path("reports/publication-boundary/channel-a.json"),
           )
-          print("Published Channel A revision:", commit.oid)
+          print("Channel A source committed; live deployment UNVERIFIED:", result["hub_commit"])
           PY
+      - name: Retain Channel A publication boundary evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: immune-publication-boundary-a-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/publication-boundary/channel-a.json
+          if-no-files-found: error
+          retention-days: 90
 
   channel-b:
     name: Publish SZLHOLDINGS/immune-lattice
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_SPACE: SZLHOLDINGS/immune-lattice
     steps:
+      - name: Require canonical main before credential use
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_REPOSITORY" = szl-holdings/immune
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
       - name: Install pinned Hugging Face publisher
         run: python3 -m pip install --quiet "huggingface_hub==1.23.0"
+      - name: Validate publication boundary offline
+        run: python3 -m unittest discover -s tests -p 'test_immune_publication*.py' -v
       - name: Require write-scoped HF_TOKEN
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           set -euo pipefail
           test -n "${HF_TOKEN:-}" || { echo "::error::HF_TOKEN is not set"; exit 1; }
           python3 - <<'PY'
           import os
           from huggingface_hub import HfApi
-          who = HfApi(token=os.environ["HF_TOKEN"]).whoami()
+          who = HfApi(endpoint="https://huggingface.co", token=os.environ["HF_TOKEN"]).whoami()
           role = ((who.get("auth") or {}).get("accessToken") or {}).get("role")
           if role == "read":
               raise SystemExit("HF_TOKEN is read-only")
           print("Authenticated Hugging Face publisher:", who.get("name", "<unknown>"))
           PY
-      - name: Ensure Space exists and publish Channel B
+      - name: Publish existing Channel B with bounded ownership and parent guard
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           set -euo pipefail
           python3 <<'PY'
           import os
-          from huggingface_hub import HfApi, CommitOperationAdd, CommitOperationDelete
+          from huggingface_hub import HfApi
           from pathlib import Path
+          from scripts.immune_publication_guard import publish_existing
 
           token = os.environ["HF_TOKEN"]
           space = os.environ["HF_SPACE"]
-          api = HfApi(token=token)
-          try:
-              api.repo_info(repo_id=space, repo_type="space")
-          except Exception:
-              api.create_repo(
-                  repo_id=space,
-                  repo_type="space",
-                  space_sdk="docker",
-                  private=False,
-                  exist_ok=True,
-              )
-              print("Created public docker Space", space)
-          try:
-              api.update_repo_settings(repo_id=space, repo_type="space", private=False)
-          except Exception as exc:
-              print("visibility update skipped:", type(exc).__name__, exc)
+          api = HfApi(endpoint="https://huggingface.co", token=token)
 
           uploads = {
               "Dockerfile": "python/space/Dockerfile",
@@ -198,20 +185,18 @@ jobs:
               if path.is_file() and path.suffix != ".pyc" and "__pycache__" not in path.parts:
                   uploads["immune/" + str(path.relative_to(root)).replace("\\", "/")] = str(path)
 
-          existing = set(api.list_repo_files(space, repo_type="space"))
-          keep = set(uploads)
-          operations = [
-              CommitOperationAdd(path_in_repo=remote, path_or_fileobj=local)
-              for remote, local in sorted(uploads.items())
-          ]
-          for remote in sorted(existing - keep):
-              if not remote.startswith(".github/"):
-                  operations.append(CommitOperationDelete(path_in_repo=remote))
-          commit = api.create_commit(
-              repo_id=space,
-              repo_type="space",
-              operations=operations,
-              commit_message=f"deploy: source-bound IMMUNE lattice {os.environ['GITHUB_SHA'][:12]}",
+          result = publish_existing(
+              api, space, uploads, os.environ["GITHUB_SHA"],
+              checkout=Path.cwd(),
+              receipt_path=Path("reports/publication-boundary/channel-b.json"),
           )
-          print("Published Channel B revision:", commit.oid)
+          print("Channel B source committed; live deployment UNVERIFIED:", result["hub_commit"])
           PY
+      - name: Retain Channel B publication boundary evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: immune-publication-boundary-b-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/publication-boundary/channel-b.json
+          if-no-files-found: error
+          retention-days: 90

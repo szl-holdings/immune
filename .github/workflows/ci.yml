@@ -32,6 +32,8 @@ jobs:
           python-version: "3.11"
       - name: Fail-closed operational and dependency-workspace contracts
         run: python3 -m unittest tests.test_assert_hf_space_operational tests.test_dependency_workspace -v
+      - name: Existing-Space publication boundary (offline)
+        run: python3 -m unittest discover -s tests -p 'test_immune_publication*.py' -v
       - name: Python kernel (aligned with src/lib/immune)
         run: |
           python3 -m pip install -r python/requirements.txt
