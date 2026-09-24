@@ -15,7 +15,19 @@ updates:
     groups:
       actions:
         patterns:
-          - "*"
+        - '*'
+        update-types:
+        - minor
+        - patch
+        exclude-patterns:
+        - torch*
+        - transformers
+        - accelerate
+        - vllm
+        - unsloth*
+        - openai
+    cooldown:
+      default-days: 3
 
   # Root owns pnpm-workspace.yaml and the shared pnpm-lock.yaml. The updater
   # must see both root and frontend importers, not change frontend in isolation.
@@ -32,4 +44,19 @@ updates:
     groups:
       npm:
         patterns:
-          - "*"
+        - '*'
+        update-types:
+        - minor
+        - patch
+        exclude-patterns:
+        - torch*
+        - transformers
+        - accelerate
+        - vllm
+        - unsloth*
+        - openai
+    cooldown:
+      default-days: 7
+      semver-major-days: 21
+      semver-minor-days: 7
+      semver-patch-days: 3
