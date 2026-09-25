@@ -2,9 +2,9 @@
   "schema": "szl.contract-snapshot/v1",
   "contract_id": "urn:szl:contracts:decision-genome:v1",
   "source_repository": "szl-holdings/platform",
-  "source_revision": "7c0030419d62ea5ed01da2684171148d713f57a5",
+  "source_revision": "9e58f052a7fba212bc74dcc4fd92adc412ffa865",
   "source_path": "packages/contracts/src/decision-genome.ts",
-  "source_blob_sha": "7a3c81b75cc1218c3c783ffb3b294803b5eb94c0",
-  "sha256": "b0723ef632c07192195728c4a737cbc6bc7865c643082ab53278e6489a6f8512",
+  "source_blob_sha": "d193feb45f7e780681735efd091b1485cc2799a9",
+  "sha256": "91ca377c20a33f52be44cc810516b99bde3da6d174ae7df509df66f57f166f33",
   "license": "Apache-2.0"
 }
