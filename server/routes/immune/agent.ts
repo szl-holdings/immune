@@ -122,7 +122,7 @@ function systemPrompt(): string {
 const StepSchema = z.object({
   thought: z.string().max(600).optional(),
   action: z
-    .object({ tool: z.string().max(64), args: z.record(z.unknown()).optional() })
+    .object({ tool: z.string().max(64), args: z.record(z.string(), z.unknown()).optional() })
     .optional(),
   final: z.string().max(1200).optional(),
 });
