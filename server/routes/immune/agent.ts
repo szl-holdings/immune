@@ -122,12 +122,12 @@ function systemPrompt(): string {
 const StepSchema = z.object({
   thought: z.string().max(600).optional(),
   action: z
-    .object({ tool: z.string().max(64), args: z.record(z.unknown()).optional() })
+    .object({ tool: z.string().max(64), args: z.record(z.string(), z.unknown()).optional() })
     .optional(),
   final: z.string().max(1200).optional(),
 });
 
-function parseModelStep(raw: string): z.infer<typeof StepSchema> | null {
+export function parseModelStep(raw: string): z.infer<typeof StepSchema> | null {
   let text = raw.trim();
   // Tolerate accidental markdown fences without inventing content.
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
