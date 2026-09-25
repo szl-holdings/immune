@@ -128,7 +128,7 @@ export const DecisionGenomeEventSchema = z.object({
   inputDigests: z.array(z.string().regex(/^[a-f0-9]{64}$/)).default([]),
   policyVersion: z.string().min(1).max(128),
   evidenceLabel: EvidenceLabelSchema,
-  payload: z.record(z.unknown()),
+  payload: z.record(z.string(), z.unknown()),
 });
 export type DecisionGenomeEvent = z.infer<typeof DecisionGenomeEventSchema>;
 
