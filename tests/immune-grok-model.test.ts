@@ -151,6 +151,17 @@ test("partial INFERENCE_* config with an xAI key discloses the Grok model actual
   assert.equal(fetchCalls[0].body.model, "grok-4.7");
 });
 
+test("partial INFERENCE_* config with a base URL but no key discloses provider xAI, the provider actually called", async () => {
+  process.env.INFERENCE_BASE_URL = "https://api.groq.com/openai/v1";
+  process.env.INFERENCE_MODEL = "llama-3.3-70b-versatile";
+  process.env.XAI_API_KEY = PLACEHOLDER_KEY;
+  assert.deepEqual(inferenceInfo(), { configured: true, provider: "xAI", model: "grok-4.7" });
+  await chatComplete(MSG);
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0].url, "https://api.x.ai/v1/chat/completions");
+  assert.equal(fetchCalls[0].body.model, "grok-4.7");
+});
+
 test("request budget is unchanged by this rollout (max_tokens 400, temperature 0.2)", async () => {
   process.env.XAI_API_KEY = PLACEHOLDER_KEY;
   await chatComplete(MSG);

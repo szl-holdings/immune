@@ -64,12 +64,14 @@ export function inferenceInfo(): {
   provider: string | null;
   model: string | null;
 } {
-  // Disclose the model the request path would actually call (same resolver).
+  // Disclose the provider and model the request path would actually call
+  // (same resolver). When the INFERENCE_* trio is incomplete the request goes
+  // to api.x.ai, so the provider is xAI even if INFERENCE_BASE_URL is set.
   const model = activeModel();
   const configured = model !== null;
   return {
     configured,
-    provider: configured ? providerLabel() : null,
+    provider: configured ? (groqReady() ? providerLabel() : "xAI") : null,
     model,
   };
 }
