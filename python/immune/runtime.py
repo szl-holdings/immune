@@ -359,6 +359,12 @@ class ImmuneRuntime:
                 "poorest": "unmeasured",
                 "energyClass": "UNAVAILABLE",
                 "energy_j": None,
+                "evidenceTier": "SOFTWARE_RECEIPT",
+                "directive": "RELEASE",
+                "claims": {"execution": "SOFTWARE", "identity": "MEASURED", "input": "MEASURED", "policy": "MEASURED"},
+                "adjacent": ["TRACE", "AIREP", "R+2", "AIR", "SLSA", "PUNKGO"],
+                "scope": "covers: SENTRA, YAWAR, HUKLLA, NEXUS organ · does-not-cover: TEE quotes, ATO, fold-38 · energy: UNAVAILABLE · tier: SOFTWARE_RECEIPT",
+                "nexusOrgan": True,
             }
             payload_bytes = len(canonical_bytes({"payload": payload}))
             receipt = self.append_receipt(payload)
