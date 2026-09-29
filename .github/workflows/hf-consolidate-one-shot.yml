@@ -1,20 +1,15 @@
 name: hf-finalize-david-and-49-retired
 
+# Completed one-shot (2026-09). Dispatch only: a push must never re-run it.
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/hf-consolidate-one-shot.yml
-      - scripts/hf_reconstruct_command_manifest_v2.py
-      - scripts/hf_cleanup_resurrected_spaces.py
-      - scripts/hf_restore_david_and_rebalance.py
   workflow_dispatch: {}
 
 permissions:
   contents: read
 
+# Multi-asset Hub job: canonical org write lock (plan D3).
 concurrency:
-  group: hf-finalize-david-and-49-retired
+  group: hf-write/org/SZLHOLDINGS
   cancel-in-progress: false
 
 jobs:

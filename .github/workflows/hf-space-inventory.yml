@@ -1,14 +1,17 @@
 name: hf-active-estate-verification
 
+# Completed one-shot (2026-09). Dispatch only: a push must never re-run it.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/hf-space-inventory.yml
 
 permissions:
   contents: read
+
+# Read-only diagnostic holding the write-scoped HF_TOKEN: it runs under the org
+# write lock so it never observes a half-applied Hub transaction (plan D3).
+concurrency:
+  group: hf-write/org/SZLHOLDINGS
+  cancel-in-progress: false
 
 jobs:
   verify:

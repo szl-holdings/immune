@@ -1,19 +1,16 @@
 name: hf-space-preserve-and-consolidate
 
 # Publisher freeze confirmed by immune PR #98; retry the exact preservation gate.
+# Completed one-shot (2026-09). Dispatch only: a push must never re-run it.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/hf-space-preserve.yml
-      - scripts/hf_space_preserve_and_consolidate.py
 
 permissions:
   contents: read
 
+# Multi-asset Hub job: canonical org write lock (plan D3).
 concurrency:
-  group: hf-space-preserve-and-consolidate
+  group: hf-write/org/SZLHOLDINGS
   cancel-in-progress: false
 
 jobs:
