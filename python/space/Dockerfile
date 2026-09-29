@@ -1,7 +1,7 @@
 # IMMUNE Python kernel — Channel B. Flattened HF Space layout.
 # Digest-pinned OCI index for python:3.12-slim (3.12.14-slim-trixie, linux/amd64
 # included), identical on mirror.gcr.io and registry-1.docker.io on 2026-09-29.
-FROM mirror.gcr.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+FROM mirror.gcr.io/library/python:3.14-slim@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=7860 IMMUNE_DATA_DIR=/app/data/immune
 COPY requirements.txt ./requirements.txt
