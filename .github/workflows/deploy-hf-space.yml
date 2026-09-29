@@ -12,6 +12,7 @@ on:
       - server/**
       - python/**
       - scripts/assert_hf_space_operational.py
+      - scripts/attest_hf_space_runtime.py
       - scripts/immune_publication_guard.py
       - tests/test_immune_publication_guard.py
       - .github/workflows/deploy-hf-space.yml
@@ -28,7 +29,11 @@ jobs:
   channel-a:
     name: Publish SZLHOLDINGS/immune
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 55
+    # Canonical per-asset Hub write lock (plan D3).
+    concurrency:
+      group: hf-write/space/SZLHOLDINGS/immune
+      cancel-in-progress: false
     env:
       HF_SPACE: SZLHOLDINGS/immune
     steps:
@@ -111,19 +116,38 @@ jobs:
           )
           print("Channel A source committed; live deployment UNVERIFIED:", result["hub_commit"])
           PY
+      - name: Attest exact Channel A commit RUNNING and live routes
+        # Public API and Space host only; no credential. Plan D4.
+        run: |
+          set -euo pipefail
+          python3 -m scripts.attest_hf_space_runtime \
+            --space "$HF_SPACE" \
+            --publication-receipt reports/publication-boundary/channel-a.json \
+            --receipt reports/publication-boundary/channel-a-live.json \
+            --timeout 1200 \
+            --smoke-path / \
+            --smoke-path /healthz \
+            --smoke-path /health \
+            --smoke-path /readyz
       - name: Retain Channel A publication boundary evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: immune-publication-boundary-a-${{ github.run_id }}-${{ github.run_attempt }}
-          path: reports/publication-boundary/channel-a.json
+          path: |
+            reports/publication-boundary/channel-a.json
+            reports/publication-boundary/channel-a-live.json
           if-no-files-found: error
           retention-days: 90
 
   channel-b:
     name: Publish SZLHOLDINGS/immune-lattice
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
+    # Canonical per-asset Hub write lock (plan D3).
+    concurrency:
+      group: hf-write/space/SZLHOLDINGS/immune-lattice
+      cancel-in-progress: false
     env:
       HF_SPACE: SZLHOLDINGS/immune-lattice
     steps:
@@ -192,11 +216,26 @@ jobs:
           )
           print("Channel B source committed; live deployment UNVERIFIED:", result["hub_commit"])
           PY
+      - name: Attest exact Channel B commit RUNNING and live routes
+        # Public API and Space host only; no credential. Plan D4.
+        run: |
+          set -euo pipefail
+          python3 -m scripts.attest_hf_space_runtime \
+            --space "$HF_SPACE" \
+            --publication-receipt reports/publication-boundary/channel-b.json \
+            --receipt reports/publication-boundary/channel-b-live.json \
+            --timeout 1200 \
+            --smoke-path / \
+            --smoke-path /healthz \
+            --smoke-path /health \
+            --smoke-path /readyz
       - name: Retain Channel B publication boundary evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: immune-publication-boundary-b-${{ github.run_id }}-${{ github.run_attempt }}
-          path: reports/publication-boundary/channel-b.json
+          path: |
+            reports/publication-boundary/channel-b.json
+            reports/publication-boundary/channel-b-live.json
           if-no-files-found: error
           retention-days: 90

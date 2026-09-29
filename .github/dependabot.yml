@@ -60,3 +60,24 @@ updates:
       semver-major-days: 21
       semver-minor-days: 7
       semver-patch-days: 3
+
+  # Base images are digest-pinned; this keeps tag and digest moving together.
+  - package-ecosystem: "docker"
+    directories:
+      - "/python"
+      - "/python/space"
+      - "/frontend/deploy"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "America/New_York"
+    labels:
+      - "dependencies"
+    open-pull-requests-limit: 5
+    groups:
+      docker:
+        patterns:
+        - '*'
+    cooldown:
+      default-days: 3
