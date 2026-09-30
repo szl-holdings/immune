@@ -8,8 +8,9 @@ COPY python/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY python/immune ./immune
 COPY python/space/index.html ./index.html
+COPY python/space/nexus.html ./nexus.html
 COPY python/space/run.py ./server.py
 EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/readyz', timeout=4)"
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/healthz', timeout=4)"
 CMD ["python", "-u", "server.py"]

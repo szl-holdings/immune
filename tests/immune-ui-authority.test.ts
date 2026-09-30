@@ -4,9 +4,12 @@ import path from "node:path";
 import test from "node:test";
 import {
   authorityVisualState,
+  authorityVerificationLabel,
   deriveAuthorityView,
+  deriveWholeSystemReadinessView,
   firstPaintSystemStatus,
   initialAuthorityTransportState,
+  READINESS_MAX_AGE_MS,
   transitionAuthorityTransportState,
 } from "../frontend/src/lib/authority-view";
 import { startAnimationLoop } from "../frontend/src/lib/animation-loop";
@@ -19,7 +22,12 @@ import {
   OPERATOR_ERROR_SUMMARY_MAX_LENGTH,
   summarizeOperatorError,
 } from "../frontend/src/lib/operator-error";
-import type { ImmuneState } from "../frontend/src/lib/immune-api";
+import {
+  fetchImmuneReadiness,
+  parseImmuneReadiness,
+  type ImmuneReadiness,
+  type ImmuneState,
+} from "../frontend/src/lib/immune-api";
 
 const OBSERVED_AT = Date.parse("2026-08-01T12:00:00.000Z");
 
@@ -52,8 +60,25 @@ function snapshot(overrides: Partial<ImmuneState["tripwireState"]> = {}): Immune
     authorityReceiptHash: "b".repeat(64),
     authority: {
       enabled: true,
-      version: "immune.action.v1",
+      version: "immune.action.v2",
       keyId: "0123456789abcdef",
+      trustEpoch: "abcdef0123456789abcdef0123456789",
+      instanceId: "0123456789abcdef0123456789abcdef",
+      audience: "hf-space:SZLHOLDINGS/immune",
+      source: {
+        repository: "szl-holdings/immune",
+        revision: "a".repeat(40),
+      },
+      deployment: {
+        space: "SZLHOLDINGS/immune",
+        revision: "c".repeat(40),
+      },
+      durability: {
+        required: true,
+        verified: true,
+        path: "/data/immune",
+      },
+      externalOperator: true,
     },
     durableState: {
       mode: tripwireState.mode,
@@ -64,6 +89,69 @@ function snapshot(overrides: Partial<ImmuneState["tripwireState"]> = {}): Immune
       revision: tripwireState.revision,
     },
     tripwireState,
+  };
+}
+
+function readyz(): ImmuneReadiness {
+  return {
+    schema: "szl.immune-readiness/v1",
+    status: "READY",
+    ready: true,
+    runtime_ready: true,
+    read_ready: true,
+    authority_ready: true,
+    write_ready: true,
+    blockers: [],
+    source: {
+      repository: "szl-holdings/immune",
+      revision: "a".repeat(40),
+      build_revision: "a".repeat(40),
+      alignment_state: "OBSERVED_RUNTIME_HASH_MATCH",
+      manifest_schema: "szl.hf-deploy-manifest/v2",
+    },
+    build: {
+      state: "OBSERVED_HASH_MATCH",
+      artifact_count: 7,
+      runtime_hash_match: true,
+      artifact_set_algorithm: "sha256(json(sorted[path,sha256]))",
+      deployment_manifest_sha256: "c".repeat(64),
+      artifact_set_sha256: "d".repeat(64),
+    },
+    runtime: {
+      immune_server_sha256: "e".repeat(64),
+      public_index_sha256: "f".repeat(64),
+      artifact_integrity: {
+        status: "MATCH",
+        checked: 7,
+        failures: [],
+      },
+    },
+    ledger: {
+      ok: true,
+      count: 1,
+      first_bad_seq: null,
+      durability: { required: true, verified: true, path: "/data/immune/evidence", mount_path: "/data", reason: "verified test fixture" },
+    },
+    authority: {
+      enabled: true,
+      evidence_state: "VERIFIED",
+      key_id: "0123456789abcdef",
+      version: "immune.action.v2",
+      audience: "hf-space:SZLHOLDINGS/immune",
+      source_revision: "a".repeat(40),
+      deployment: {
+        space: "SZLHOLDINGS/immune",
+        revision: "c".repeat(40),
+      },
+      external_operator: true,
+      receipt_count: 1,
+      receipt_hash: "b".repeat(64),
+      durability: {
+        required: true,
+        verified: true,
+        path: "/data/immune",
+      },
+    },
   };
 }
 
@@ -80,6 +168,70 @@ test("cached VERIFIED state survives a refresh error until signed expiry", () =>
   });
   assert.equal(missing.evidenceState, "UNAVAILABLE");
   assert.equal(authorityVisualState(missing), "UNAVAILABLE");
+});
+
+test("legacy or malformed authority metadata can never render green", () => {
+  const legacy = snapshot();
+  (legacy.authority as { version: string }).version = "immune.action.v1";
+  const legacyView = deriveAuthorityView(legacy, null, { nowMs: OBSERVED_AT });
+  assert.equal(legacyView.evidenceState, "FAILED");
+  assert.equal(legacyView.mode, "SENTRA_REJECT");
+
+  const wrongSource = snapshot();
+  wrongSource.authority.source.revision = "b".repeat(40);
+  wrongSource.authority.source.repository = "szl-holdings/immune";
+  wrongSource.authority.externalOperator = false as true;
+  const wrongSourceView = deriveAuthorityView(wrongSource, null, {
+    nowMs: OBSERVED_AT,
+  });
+  assert.equal(wrongSourceView.evidenceState, "FAILED");
+  assert.equal(wrongSourceView.mode, "SENTRA_REJECT");
+});
+
+test("VERIFIED requires a configured trust root and complete receipt metadata", () => {
+  const cases: Array<[string, (candidate: ImmuneState) => void]> = [
+    ["disabled trust root", (candidate) => { candidate.authority.enabled = false; }],
+    ["invalid key id", (candidate) => { candidate.authority.keyId = "not-a-key-id"; }],
+    ["invalid instance id", (candidate) => { candidate.authority.instanceId = "not-an-instance"; }],
+    ["empty receipt chain", (candidate) => { candidate.authorityReceiptCount = 0; }],
+    ["invalid receipt hash", (candidate) => { candidate.authorityReceiptHash = "bad"; }],
+  ];
+
+  for (const [name, mutate] of cases) {
+    const candidate = snapshot();
+    mutate(candidate);
+    const view = deriveAuthorityView(candidate, null, { nowMs: OBSERVED_AT });
+    assert.equal(view.evidenceState, "FAILED", name);
+    assert.equal(authorityVisualState(view), "FAILED", name);
+  }
+});
+
+test("VERIFIED request, revision, and durable metadata must match exactly", () => {
+  const cases: Array<[string, (candidate: ImmuneState) => void]> = [
+    ["top-level request mismatch", (candidate) => { candidate.requestId = "authority-view-other"; }],
+    ["top-level revision mismatch", (candidate) => { candidate.revision = 2; }],
+    ["missing signed request", (candidate) => {
+      candidate.requestId = null;
+      candidate.tripwireState.requestId = null;
+    }],
+    ["nonpositive signed revision", (candidate) => {
+      candidate.revision = 0;
+      candidate.tripwireState.revision = 0;
+      candidate.durableState.revision = 0;
+    }],
+    ["durable mode mismatch", (candidate) => { candidate.durableState.mode = "SENTRA_REJECT"; }],
+    ["durable request mismatch", (candidate) => {
+      candidate.durableState.requestId = "authority-view-other";
+    }],
+  ];
+
+  for (const [name, mutate] of cases) {
+    const candidate = snapshot();
+    mutate(candidate);
+    const view = deriveAuthorityView(candidate, null, { nowMs: OBSERVED_AT });
+    assert.equal(view.evidenceState, "FAILED", name);
+    assert.equal(authorityVisualState(view), "FAILED", name);
+  }
 });
 
 test("STALE and malformed tripwire responses cannot render an active control", () => {
@@ -127,6 +279,173 @@ test("only a consistent VERIFIED server state can engage the tripwire scene", ()
   );
   assert.equal(inconsistent.evidenceState, "FAILED");
   assert.equal(authorityVisualState(inconsistent), "FAILED");
+});
+
+test("verified reject and deadman labels never claim whole-system write readiness", () => {
+  const cases: Array<[ImmuneState["mode"], boolean, string | null, string]> = [
+    ["SENTRA_REJECT", false, null, "VERIFIED_REJECT"],
+    ["DEADMAN", true, "T07", "VERIFIED_DEADMAN"],
+  ];
+
+  for (const [mode, deadman, tripwire, visual] of cases) {
+    const view = deriveAuthorityView(
+      snapshot({ mode, deadman, tripwire }),
+      null,
+      { nowMs: OBSERVED_AT },
+    );
+    const label = authorityVerificationLabel(view);
+    assert.equal(view.evidenceState, "VERIFIED", mode);
+    assert.equal(authorityVisualState(view), visual, mode);
+    assert.equal(label, "Authority evidence verified", mode);
+    assert.doesNotMatch(label, /write[- ]?ready|system ready/i, mode);
+  }
+});
+
+test("authority-only label remains narrow when readiness or integrity is false", () => {
+  const readiness = {
+    ready: false,
+    write_ready: false,
+    ledger: { ok: false },
+  };
+  const view = deriveAuthorityView(snapshot(), null, { nowMs: OBSERVED_AT });
+  const label = authorityVerificationLabel(view);
+
+  assert.equal(readiness.ready, false);
+  assert.equal(readiness.write_ready, false);
+  assert.equal(readiness.ledger.ok, false);
+  assert.equal(label, "Authority evidence verified");
+  assert.doesNotMatch(label, /write[- ]?ready|system ready/i);
+});
+
+test("typed readiness fetch accepts and parses both 200 and fail-closed 503 bodies", async () => {
+  const ready = readyz();
+  const blocked: ImmuneReadiness = {
+    ...ready,
+    status: "READ_ONLY",
+    ready: false,
+    authority_ready: false,
+    write_ready: false,
+    blockers: ["ACTION_AUTHORITY_UNAVAILABLE"],
+  };
+  for (const [status, body] of [[200, ready], [503, blocked]] as const) {
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      })) as typeof fetch;
+    const parsed = await fetchImmuneReadiness(fetchImpl);
+    assert.deepEqual(parsed, body);
+  }
+  assert.throws(
+    () => parseImmuneReadiness({ ...ready, ledger: { ok: "yes" } }),
+    /does not match/,
+  );
+});
+
+test("whole-system write readiness requires one fresh exact-bound ready contract", () => {
+  const state = snapshot();
+  const authority = deriveAuthorityView(state, null, { nowMs: OBSERVED_AT });
+  const exact = deriveWholeSystemReadinessView(
+    readyz(),
+    state,
+    authority,
+    null,
+    { nowMs: OBSERVED_AT, observedAtMs: OBSERVED_AT },
+  );
+  assert.equal(exact.state, "READY");
+  assert.equal(exact.writeReady, true);
+  assert.equal(exact.label, "WRITE READY");
+
+  const stale = deriveWholeSystemReadinessView(
+    readyz(),
+    state,
+    authority,
+    null,
+    {
+      nowMs: OBSERVED_AT + READINESS_MAX_AGE_MS,
+      observedAtMs: OBSERVED_AT,
+    },
+  );
+  assert.equal(stale.state, "STALE");
+  assert.equal(stale.writeReady, false);
+
+  const failedRefresh = deriveWholeSystemReadinessView(
+    readyz(),
+    state,
+    authority,
+    new Error("readyz unavailable"),
+    { nowMs: OBSERVED_AT, observedAtMs: OBSERVED_AT },
+  );
+  assert.equal(failedRefresh.state, "UNAVAILABLE");
+  assert.equal(failedRefresh.writeReady, false);
+});
+
+test("readyz false flags, integrity, durability, and binding mismatches disable writes", () => {
+  const state = snapshot();
+  const authority = deriveAuthorityView(state, null, { nowMs: OBSERVED_AT });
+  const project = (readiness: ImmuneReadiness) =>
+    deriveWholeSystemReadinessView(
+      readiness,
+      state,
+      authority,
+      null,
+      { nowMs: OBSERVED_AT, observedAtMs: OBSERVED_AT },
+    );
+
+  for (const field of [
+    "ready",
+    "runtime_ready",
+    "read_ready",
+    "authority_ready",
+    "write_ready",
+  ] as const) {
+    const candidate = readyz();
+    candidate[field] = false;
+    assert.equal(project(candidate).writeReady, false, field);
+  }
+
+  const corruptLedger = readyz();
+  corruptLedger.ledger.ok = false;
+  assert.equal(project(corruptLedger).writeReady, false);
+
+  const corruptRuntime = readyz();
+  corruptRuntime.runtime.artifact_integrity.status = "MISMATCH";
+  assert.equal(project(corruptRuntime).writeReady, false);
+
+  const nondurable = readyz();
+  nondurable.authority.durability.verified = false;
+  assert.equal(project(nondurable).writeReady, false);
+
+  const wrongSource = readyz();
+  wrongSource.authority.source_revision = "9".repeat(40);
+  assert.equal(project(wrongSource).writeReady, false);
+
+  const wrongKey = readyz();
+  wrongKey.authority.key_id = "fedcba9876543210";
+  assert.equal(project(wrongKey).writeReady, false);
+
+  const wrongReceipt = readyz();
+  wrongReceipt.authority.receipt_hash = "9".repeat(64);
+  assert.equal(project(wrongReceipt).writeReady, false);
+});
+
+test("verified reject and deadman remain non-write-ready despite a contradictory READY body", () => {
+  for (const [mode, deadman, tripwire] of [
+    ["SENTRA_REJECT", false, null],
+    ["DEADMAN", true, "T07"],
+  ] as const) {
+    const state = snapshot({ mode, deadman, tripwire });
+    const authority = deriveAuthorityView(state, null, { nowMs: OBSERVED_AT });
+    const view = deriveWholeSystemReadinessView(
+      readyz(),
+      state,
+      authority,
+      null,
+      { nowMs: OBSERVED_AT, observedAtMs: OBSERVED_AT },
+    );
+    assert.equal(view.state, "INVALID", mode);
+    assert.equal(view.writeReady, false, mode);
+  }
 });
 
 test("cached VERIFIED state ages to STALE without any server response", () => {
@@ -360,7 +679,7 @@ test("animation loop cleanup cancels repeated transitions and prevents reschedul
   }
 });
 
-test("Home is the sole authority query and every security surface consumes its projection", () => {
+test("Home owns independent state and readiness queries and projects them to security surfaces", () => {
   const repoRoot = path.resolve(import.meta.dirname, "..");
   const home = fs.readFileSync(path.join(repoRoot, "frontend/src/pages/Home.tsx"), "utf8");
   const surfaces = [
@@ -370,7 +689,13 @@ test("Home is the sole authority query and every security surface consumes its p
   ];
 
   assert.equal((home.match(/useGetImmuneState\(\)/g) ?? []).length, 1);
+  assert.equal((home.match(/useGetImmuneReadiness\(\)/g) ?? []).length, 1);
   assert.match(home, /deriveAuthorityView\(stateQuery\.data, stateQuery\.error,/);
+  assert.match(home, /deriveWholeSystemReadinessView/);
+  assert.match(home, /data-testid="whole-system-readiness"/);
+  assert.match(home, /systemReadiness=\{systemReadiness\}/);
+  assert.match(home, /LatticeCop authority=\{authority\} writeReady=\{systemReadiness.writeReady\}/);
+  assert.match(home, /InferConsole writeReady=\{systemReadiness.writeReady\}/);
   assert.match(home, /useState\(initialAuthorityTransportState\)/);
   assert.match(home, /transitionAuthorityTransportState/);
   assert.match(home, /updateTransport\(\);/);
@@ -441,6 +766,8 @@ test("governed-cycle UX requires real input and keeps proof labels evidence-scop
   assert.doesNotMatch(controls, /No governed-cycle receipt was written/);
   assert.match(controls, /currentMode === "PASS"/);
   assert.match(controls, /!authority\.deadman/);
+  assert.match(controls, /systemReadiness\.writeReady/);
+  assert.match(controls, /getGetImmuneReadinessQueryKey/);
   assert.match(controls, /Accepted input writes a real governed-cycle receipt/);
   assert.match(controls, /aria-describedby="cycle-write-warning"/);
   assert.doesNotMatch(controls, /operator@immune\.demo|DEMO: inject payload/);
@@ -451,6 +778,9 @@ test("governed-cycle UX requires real input and keeps proof labels evidence-scop
   assert.match(home, /UNAVAILABLE \/ LIMITS/);
   assert.match(home, /Public readback is not an ATO or a performance claim/);
   assert.match(home, /firstPaintSystemStatus\(stateQuery\.data, stateQuery\.error, authority\)/);
+  assert.match(home, /Authority State/);
+  assert.match(home, /authorityVerificationLabel/);
+  assert.doesNotMatch(home, /Write-ready authority/i);
   assert.doesNotMatch(home, /Nothing on this page is fabricated/);
 });
 

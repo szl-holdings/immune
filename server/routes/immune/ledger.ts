@@ -11,6 +11,133 @@ const DATA_DIR = process.env.IMMUNE_DATA_DIR
 const LEDGER_PATH = path.join(DATA_DIR, "ledger.jsonl");
 const EVIDENCE_PATH = path.join(DATA_DIR, "huklla_evidence.jsonl");
 
+export interface LedgerDurability {
+  required: true;
+  verified: boolean;
+  path: string;
+  mount_path: "/data";
+  reason: string;
+}
+
+type DurabilityStat = Pick<fs.Stats,
+  "dev" | "ino" | "isDirectory" | "isFile" | "isSymbolicLink">;
+
+export interface LedgerDurabilityFileSystem {
+  readMountInfo(): string;
+  lstat(file: string): DurabilityStat;
+  realpath(file: string): string;
+  access(file: string): void;
+  openExisting(file: string): number;
+  fstat(descriptor: number): DurabilityStat;
+  fsync(descriptor: number): void;
+  close(descriptor: number): void;
+}
+
+const DURABILITY_FILESYSTEM: LedgerDurabilityFileSystem = {
+  readMountInfo: () => fs.readFileSync("/proc/self/mountinfo", "utf8"),
+  lstat: (file) => fs.lstatSync(file),
+  realpath: (file) => fs.realpathSync(file),
+  access: (file) => fs.accessSync(file, fs.constants.R_OK | fs.constants.W_OK),
+  // Never create, truncate, seed, migrate, or append evidence during a probe.
+  openExisting: (file) => fs.openSync(file, fs.constants.O_RDWR | fs.constants.O_NOFOLLOW),
+  fstat: (descriptor) => fs.fstatSync(descriptor),
+  fsync: (descriptor) => fs.fsyncSync(descriptor),
+  close: (descriptor) => fs.closeSync(descriptor),
+};
+
+export function ledgerDurability(options: {
+  dataDir?: string;
+  fileSystem?: LedgerDurabilityFileSystem;
+} = {}): LedgerDurability {
+  const dataDir = options.dataDir ?? DATA_DIR;
+  const io = options.fileSystem ?? DURABILITY_FILESYSTEM;
+  const report = (verified: boolean, reason: string): LedgerDurability => ({
+    required: true,
+    verified,
+    path: dataDir,
+    mount_path: "/data",
+    reason,
+  });
+  if (dataDir !== "/data/immune/evidence") {
+    return report(false, "receipt evidence is not configured at /data/immune/evidence");
+  }
+  try {
+    const mounts = io.readMountInfo().split(/\r?\n/).filter(Boolean).map((line) => {
+      const parts = line.split(" - ");
+      if (parts.length !== 2) throw new Error("malformed mount observation");
+      const fields = parts[0].split(" ");
+      const filesystem = parts[1].split(" ");
+      if (fields.length < 6 || filesystem.length < 3) throw new Error("malformed mount observation");
+      return {
+        id: fields[0],
+        point: fields[4].replace(/\\([0-7]{3})/g, (_match, octal: string) =>
+          String.fromCharCode(Number.parseInt(octal, 8))),
+        options: fields[5].split(","),
+        filesystem: filesystem[0],
+        superOptions: filesystem[2].split(","),
+      };
+    });
+    const dataMounts = mounts.filter((mount) => mount.point === "/data");
+    if (dataMounts.length !== 1) {
+      return report(false, "exact persistent /data mount is unavailable or ambiguous");
+    }
+    const dataMount = dataMounts[0];
+    if (
+      !dataMount.options.includes("rw") ||
+      !dataMount.superOptions.includes("rw") ||
+      ["", "overlay", "tmpfs", "ramfs", "squashfs"].includes(dataMount.filesystem)
+    ) {
+      return report(false, "/data is not a writable persistent filesystem");
+    }
+    const targets = [
+      "/data/immune", dataDir,
+      `${dataDir}/ledger.jsonl`, `${dataDir}/huklla_evidence.jsonl`,
+    ];
+    for (const target of targets) {
+      const covering = mounts.filter((mount) =>
+        target === mount.point || target.startsWith(`${mount.point}/`),
+      ).sort((left, right) => right.point.length - left.point.length);
+      if (covering[0]?.id !== dataMount.id) {
+        return report(false, "authority and evidence paths are not on the same /data mount");
+      }
+    }
+    const dataStat = io.lstat("/data");
+    for (const directory of ["/data", "/data/immune", dataDir]) {
+      const stat = io.lstat(directory);
+      if (
+        !stat.isDirectory() || stat.isSymbolicLink() ||
+        stat.dev !== dataStat.dev || io.realpath(directory) !== directory
+      ) {
+        return report(false, "receipt evidence directory is symlinked or outside the /data filesystem");
+      }
+      io.access(directory);
+    }
+    for (const file of targets.slice(2)) {
+      const stat = io.lstat(file);
+      if (
+        !stat.isFile() || stat.isSymbolicLink() || stat.dev !== dataStat.dev ||
+        io.realpath(file) !== file
+      ) {
+        return report(false, "receipt evidence file is not a regular /data file");
+      }
+      let descriptor: number | undefined;
+      try {
+        descriptor = io.openExisting(file);
+        const opened = io.fstat(descriptor);
+        if (!opened.isFile() || opened.dev !== stat.dev || opened.ino !== stat.ino) {
+          return report(false, "receipt evidence file changed during durability observation");
+        }
+        io.fsync(descriptor);
+      } finally {
+        if (descriptor !== undefined) io.close(descriptor);
+      }
+    }
+    return report(true, "existing YAWAR and HUKLLA files are writable and fsync-capable on the exact /data mount; restart proof remains separate");
+  } catch {
+    return report(false, "receipt evidence storage is missing, inaccessible, or not fsync-capable");
+  }
+}
+
 export interface Receipt {
   seq: number;
   ts: string;

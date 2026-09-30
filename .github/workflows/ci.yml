@@ -18,6 +18,9 @@ jobs:
     steps:
       # actions/checkout@v4.1.7
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       # actions/setup-node@v4
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
         with:
@@ -31,7 +34,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Fail-closed operational and dependency-workspace contracts
-        run: python3 -m unittest tests.test_assert_hf_space_operational tests.test_attest_hf_space_runtime tests.test_dependency_workspace -v
+        run: python3 -m unittest tests.test_assert_hf_space_operational tests.test_attest_hf_space_runtime tests.test_dependency_workspace tests.test_immune_v2_packaging -v
       - name: Existing-Space publication boundary (offline)
         run: python3 -m unittest discover -s tests -p 'test_immune_publication*.py' -v
       - name: Python kernel (aligned with src/lib/immune)
@@ -43,7 +46,7 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
       - name: Authority persistence, signature, replay, and tamper tests
-        run: pnpm test
+        run: pnpm exec tsx --test tests/*.test.ts
       - name: Foundations honesty guard (dependency-free)
         working-directory: frontend
         run: node scripts/check-foundations-corpus.mjs
@@ -54,6 +57,8 @@ jobs:
       - name: Smoke exact built runtime
         env:
           SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+          IMMUNE_EXPECTED_HF_REVISION: cccccccccccccccccccccccccccccccccccccccc
+          HF_SPACE_REVISION: cccccccccccccccccccccccccccccccccccccccc
         run: node tests/smoke-standalone.mjs
       - name: Verify built frontend asset delivery and missing-asset boundary
         id: static_delivery

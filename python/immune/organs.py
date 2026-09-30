@@ -64,7 +64,12 @@ def local_organ_mesh() -> dict[str, Any]:
     runtime = get_runtime()
     snap = runtime.snapshot()
     ready = runtime.readiness()
-    live_mode = snap["mode"] if snap["evidenceState"] == "VERIFIED" else "PASS"
+    evidence_state = str(snap.get("evidenceState") or "UNAVAILABLE")
+    live_mode = (
+        str(snap.get("mode") or "UNAVAILABLE")
+        if evidence_state == "VERIFIED"
+        else evidence_state
+    )
     organs = [
         {
             "id": "heart",
@@ -74,7 +79,7 @@ def local_organ_mesh() -> dict[str, Any]:
             "status": "READY" if ready["write_ready"] else ready["status"],
             "honesty": "LIVE",
             "provenance": "LIVE",
-            "detail": f"Immune {ready['status']} · write_ready={ready['write_ready']} · {ready.get('status')} · mode {live_mode}",
+            "detail": f"Immune {ready['status']} · write_ready={ready['write_ready']} · mode {live_mode}",
             "href": "https://huggingface.co/spaces/SZLHOLDINGS/immune",
         },
         {
@@ -107,7 +112,7 @@ def local_organ_mesh() -> dict[str, Any]:
             "status": "LIVE",
             "honesty": "LIVE",
             "provenance": "LIVE",
-            "detail": f"mode {live_mode} · receipts {runtime.ledger_count()} · kid {runtime.key_id}",
+            "detail": f"mode {live_mode} · receipts {runtime.ledger_count()} · receipt-signing kid {runtime.key_id}",
             "href": "https://szlholdings-immune.hf.space",
         },
         {
@@ -130,6 +135,7 @@ def local_organ_mesh() -> dict[str, Any]:
             "evidenceState": snap["evidenceState"],
             "receiptCount": runtime.ledger_count(),
             "keyId": runtime.key_id,
+            "keyPurpose": "RECEIPT_SIGNING_ONLY",
             "provenance": "LIVE",
             "href": "https://huggingface.co/spaces/SZLHOLDINGS/immune",
         },
@@ -185,7 +191,12 @@ def dashboard() -> dict[str, Any]:
             "version": "v1",
             "mode": "shadow",
             "kernels": ["decision-genome"],
-            "outputs": ["ALLOW_OBSERVE", "REVIEW_REQUIRED", "QUARANTINE_RECOMMENDED", "WITHHOLD"],
+            "outputs": [
+                "ALLOW_OBSERVE",
+                "REVIEW_REQUIRED",
+                "QUARANTINE_RECOMMENDED",
+                "WITHHOLD",
+            ],
             "invariant": "executable:false",
         },
     }

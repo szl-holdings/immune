@@ -5,6 +5,7 @@ import { ShieldCheck, ShieldAlert, Skull, Activity, Play, FileSignature, AlertTr
 import {
   useSubmitImmuneAction,
   useRunImmuneCycle,
+  getGetImmuneReadinessQueryKey,
   getGetImmuneStateQueryKey,
   getGetImmuneLedgerLatestQueryKey,
   getVerifyImmuneLedgerQueryKey,
@@ -13,6 +14,7 @@ import {
   type ImmuneMode,
   type SignedActionEnvelope,
 } from "@/lib/immune-api";
+import type { WholeSystemReadinessView } from "@/lib/authority-view";
 import { summarizeOperatorError } from "@/lib/operator-error";
 
 const MODES: { id: ImmuneMode; label: string; sub: string; icon: React.FC<any> }[] = [
@@ -34,7 +36,13 @@ const TRIPWIRES = [
   { id: "T10", name: "evidence.gap" },
 ];
 
-export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireState }) {
+export function ControlsPanel({
+  authority,
+  systemReadiness,
+}: {
+  authority: AuthoritativeTripwireState;
+  systemReadiness: WholeSystemReadinessView;
+}) {
   const qc = useQueryClient();
   const submitAction = useSubmitImmuneAction();
   const runCycle = useRunImmuneCycle();
@@ -51,10 +59,12 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
   const canRunCycle =
     evidenceState === "VERIFIED" &&
     currentMode === "PASS" &&
-    !authority.deadman;
+    !authority.deadman &&
+    systemReadiness.writeReady;
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: getGetImmuneStateQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetImmuneReadinessQueryKey() });
     qc.invalidateQueries({ queryKey: getGetImmuneLedgerLatestQueryKey() });
     qc.invalidateQueries({ queryKey: getVerifyImmuneLedgerQueryKey() });
     qc.invalidateQueries({ queryKey: getGetImmuneEvidenceLatestQueryKey() });
@@ -197,7 +207,7 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
             data-testid="input-signed-action-envelope"
             value={envelopeDraft}
             onChange={(event) => setEnvelopeDraft(event.target.value)}
-            placeholder='{"version":"immune.action.v1", ...}'
+            placeholder='{"version":"immune.action.v2","audience":"hf-space:SZLHOLDINGS/immune", ...}'
             className="min-h-20 w-full resize-y rounded-sm border border-border/50 bg-black/70 p-2 font-mono text-[9px] text-foreground focus:border-primary focus:outline-none"
           />
           <button
@@ -295,7 +305,7 @@ export function ControlsPanel({ authority }: { authority: AuthoritativeTripwireS
               : canRunCycle
                 ? "Run Governed Cycle"
                 : evidenceState === "VERIFIED"
-                  ? "Authority not write-ready"
+                  ? "System not write-ready"
                 : "Evidence unavailable"}
           </span>
         </button>

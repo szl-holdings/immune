@@ -31,11 +31,14 @@
     .mono { font-family:ui-monospace, Menlo, monospace }
     .tiny { font:10px ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--muted) }
     .card { background:var(--subtle); border:1px solid var(--line); border-radius:10px; padding:12px }
-    .row { display:flex; justify-content:space-between; gap:8px; align-items:center }
+    .row { display:flex; justify-content:space-between; gap:8px; align-items:center;flex-wrap:wrap }
+    .panel,.card { min-width:0;overflow-wrap:anywhere }
+    input { min-width:0 }
     .list { display:grid; gap:8px }
     button, .act { font:12px ui-sans-serif; background:var(--primary); color:#1a1408; border:0;
       border-radius:8px; padding:10px 14px; min-height:44px; cursor:pointer; font-weight:600 }
     button.ghost { background:transparent; color:var(--fg); border:1px solid var(--line) }
+    button:disabled { cursor:not-allowed; opacity:.55 }
     input, textarea { width:100%; background:var(--subtle); color:var(--fg); border:1px solid var(--line);
       border-radius:8px; padding:10px; font:inherit }
     a { color:var(--primary) }
@@ -49,9 +52,9 @@
     <div class="mark">Λ</div>
     <div>
       <h1>IMMUNE</h1>
-      <p class="kicker">Python kernel · live operator · YAWAR · SENTRA</p>
+      <p class="kicker">Python compatibility kernel · read-only observer · YAWAR · SENTRA</p>
     </div>
-    <span id="pill" class="pill">BOOTING</span>
+    <span id="pill" class="pill bad" role="status" aria-live="polite">BOOTING</span>
   </header>
   <main>
     <section class="panel">
@@ -64,12 +67,12 @@
     </section>
     <div class="grid cols">
       <section class="panel">
-        <h2>Cycle</h2>
-        <p class="muted">SENTRA inspect → YAWAR seal → HUKLLA. Defense only.</p>
-        <textarea id="intent" rows="3">observe inbound radar, isolate, deceive</textarea>
+        <h2>Guarded inspection</h2>
+        <p class="muted">External v2 authority is required before any governed write can be admitted.</p>
+        <label for="intent" class="muted">Inspection intent (read-only channel)</label>
+        <textarea id="intent" rows="3">observe inbound radar</textarea>
         <div class="row" style="margin-top:10px">
-          <button id="cycle">Seal cycle</button>
-          <button class="ghost" id="reset">Reset PASS</button>
+          <button id="cycle" disabled>Run guarded inspection</button>
         </div>
         <div id="cycleOut" class="list" style="margin-top:12px"></div>
       </section>
@@ -77,7 +80,7 @@
         <h2>Second brain</h2>
         <p class="muted" id="brainMeta">575 SOFTWARE handles</p>
         <div class="row">
-          <input id="q" value="yawar receipts" />
+          <input id="q" value="yawar receipts" aria-label="Search software handles" />
           <button id="retrieve">Retrieve</button>
         </div>
         <div id="hits" class="list" style="margin-top:12px"></div>
@@ -93,7 +96,7 @@
       <div id="votes" class="list"></div>
     </section>
   </main>
-  <footer>live operator · write-ready · Λ = conjecture 1 · doctrine v11 · not demo</footer>
+  <footer>read-only compatibility channel · external v2 authority required · doctrine v11</footer>
 <script>
 const $ = (id) => document.getElementById(id);
 function pill(ok, text) {
@@ -104,33 +107,51 @@ async function j(path, opt) {
   const r = await fetch(path, opt);
   return r.json();
 }
-function card(html) { return `<div class="card">${html}</div>`; }
+async function statusJson(path) {
+  const response = await fetch(path, { cache: "no-store" });
+  let body = {};
+  try { body = await response.json(); } catch (_) { body = {}; }
+  return { ok: response.ok, status: response.status, body };
+}
+function renderCards(target, rows) {
+  target.replaceChildren();
+  for (const row of rows) {
+    const card = document.createElement("div");
+    card.className = "card";
+    for (const value of row) {
+      const line = document.createElement("p");
+      line.textContent = String(value ?? "UNAVAILABLE");
+      card.appendChild(line);
+    }
+    target.appendChild(card);
+  }
+}
 
 async function refresh() {
-  const dash = await j("/api/immune/dashboard");
-  const ready = dash.readiness || {};
+  const [dash, readinessResponse] = await Promise.all([
+    j("/api/immune/dashboard"),
+    statusJson("/readyz")
+  ]);
+  const ready = readinessResponse.body || dash.readiness || {};
   const auth = dash.authority || {};
-  pill(ready.write_ready, ready.write_ready ? "WRITE-READY LIVE" : (ready.status || "NOT READY"));
+  const contradictory = ready.write_ready === true || dash.readiness?.write_ready === true;
+  pill(false, contradictory ? "READ_ONLY / INCONSISTENT" : (ready.status || "NOT READY"));
+  $("cycle").disabled = true;
   $("reason").textContent = `${auth.evidenceState || "—"} · ${auth.reason || ""} · receipts ${dash.ledger?.count ?? 0}`;
-  $("kid").textContent = "kid " + (auth.authority?.keyId || "—");
+  $("kid").textContent = "action kid " + (auth.authority?.keyId || "—");
   $("hash").textContent = (dash.ledger?.lastHash || "").slice(0, 48);
   const organs = dash.organs?.organs || [];
-  $("organs").innerHTML = organs.map(o => card(`<div class="row"><strong>${o.title}</strong><span class="tiny ok">${o.provenance}</span></div><p class="muted">${o.detail}</p>`)).join("");
+  renderCards($("organs"), organs.map(o => [o.title, o.provenance, o.detail]));
   const mesh = dash.mesh || {};
   $("meshMeta").textContent = `${mesh.liveCount || 0}-of-${mesh.of || 4} · ${mesh.reached ? "QUORUM" : "OPEN"}`;
-  $("votes").innerHTML = (mesh.votes || []).map(v => card(`<div class="row"><strong>${v.title}</strong><span class="${v.live?"ok":"bad"}">${v.stage}</span></div>`)).join("");
+  renderCards($("votes"), (mesh.votes || []).map(v => [v.title, v.stage]));
   const brain = dash.brain || {};
   $("brainMeta").textContent = `${brain.chunks || 575} handles · loss ${brain.trained?.finalLoss ?? "—"} · acc ${brain.trained?.accuracy ?? "—"}`;
 }
 
-async function cycle() {
-  const body = await j("/api/immune/cycle", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ actor: "immune:live-operator", intent: $("intent").value })
-  });
-  $("cycleOut").innerHTML = card(`<div class="row"><span class="${body.pass?"ok":"bad"}">${body.pass?"SEALED":"REFUSED"}</span><span class="tiny">${body.sentra?.signatureMatched || ""}</span></div><p class="muted">${body.sentra?.reason || ""}</p><p class="mono tiny">${(body.receipt?.hash || "").slice(0,40)}</p>`);
-  await refresh();
+function cycle() {
+  $("cycle").disabled = true;
+  $("cycleOut").textContent = "EXTERNAL_ACTION_REQUIRED: this compatibility UI never submits a governed write.";
 }
 async function retrieve() {
   const body = await j("/api/immune/brain", {
@@ -138,12 +159,14 @@ async function retrieve() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ q: $("q").value, k: 6 })
   });
-  $("hits").innerHTML = (body.hits || []).map(h => card(`<div class="row"><strong>${h.handle}</strong><span class="tiny">${h.score}</span></div><p class="muted">${h.excerpt}</p>`)).join("");
+  renderCards($("hits"), (body.hits || []).map(h => [h.handle, h.score, h.excerpt]));
 }
+function unavailable() { $("cycle").disabled = true; pill(false, "UNAVAILABLE"); }
 $("cycle").onclick = cycle;
-$("retrieve").onclick = retrieve;
-$("reset").onclick = async () => { await j("/api/immune/reset", { method:"POST", headers:{"Content-Type":"application/json"}, body:"{}" }); await refresh(); };
-refresh().then(retrieve);
+$("retrieve").onclick = () => retrieve().catch(unavailable);
+refresh().then(retrieve).catch(unavailable);
+setInterval(() => { if (!document.hidden) refresh().catch(unavailable); }, 15000);
+window.addEventListener("offline", unavailable);
 </script>
 </body>
 </html>

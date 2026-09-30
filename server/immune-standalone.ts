@@ -1,4 +1,4 @@
-// IMMUNE standalone server — a MINIMAL Express app for the public investor demo.
+// IMMUNE standalone server - a minimal Express app for the public evidence HUD.
 //
 // It deliberately mounts ONLY the immune router (the real SHA-256 receipt-chain,
 // SENTRA, HUKLLA tripwires, threat-intel endpoints) — no Bingle/Mulé/auth/DB.
@@ -11,32 +11,44 @@ import express, { type Request, type Response, type NextFunction } from "express
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { bootDemoOperator } from "./routes/immune/demo-operator";
 import immuneRouter from "./routes/immune";
 import { ledgerCount, ledgerLastHash } from "./routes/immune/ledger";
 import { getState, publicAuthoritySnapshot } from "./routes/immune/state";
 import {
   bindRuntimeStaticDir,
   buildInfo,
+  getRuntimeHashBinding,
   resolveRuntimeStaticDir,
   sourceAttestation,
 } from "./source-attestation";
 import { readinessHttpResult } from "./readiness";
+import { loadActionTrustDocument } from "./action-trust.js";
 
 const __serverDir = path.dirname(fileURLToPath(import.meta.url));
 const staticDir = bindRuntimeStaticDir(resolveRuntimeStaticDir(__serverDir));
+delete process.env.IMMUNE_ACTION_PUBLIC_KEY;
+delete process.env.IMMUNE_ACTION_TRUST_EPOCH;
+delete process.env.IMMUNE_ACTION_TRUST_PROOF_B64;
+const actionTrust = loadActionTrustDocument(
+  path.join(__serverDir, "immune-action-trust.json"),
+);
+if (actionTrust.configured) {
+  process.env.IMMUNE_ACTION_PUBLIC_KEY = actionTrust.publicKeyB64;
+  process.env.IMMUNE_ACTION_TRUST_EPOCH = actionTrust.trustEpoch;
+  process.env.IMMUNE_ACTION_TRUST_PROOF_B64 = actionTrust.possessionProofB64;
+}
+delete process.env.IMMUNE_ACTION_SOURCE_REVISION;
+const actionSource = getRuntimeHashBinding({ staticDir });
+if (
+  actionSource.available &&
+  actionSource.source_repository === "szl-holdings/immune" &&
+  actionSource.source_revision &&
+  (!process.env.SPACE_ID || process.env.SPACE_ID === "SZLHOLDINGS/immune")
+) {
+  process.env.IMMUNE_ACTION_SOURCE_REVISION = actionSource.source_revision;
+}
 
 const app = express();
-
-try {
-  bootDemoOperator();
-} catch (error) {
-  // eslint-disable-next-line no-console
-  console.error(
-    "[immune-standalone] operator boot failed (fail-closed):",
-    error instanceof Error ? error.message : String(error),
-  );
-}
 
 app.disable("x-powered-by");
 // Behind the Hugging Face / nginx proxy, honor X-Forwarded-For so req.ip is the
@@ -165,7 +177,7 @@ if (staticDir) {
   });
 }
 
-// Final safety net so errors never leak stack traces to the demo audience.
+// Final safety net so errors never leak stack traces to the public audience.
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message = err instanceof Error ? err.message : String(err);
   // eslint-disable-next-line no-console
@@ -182,11 +194,15 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, "0.0.0.0", () => {
+const bindAddress = process.env.IMMUNE_BIND_ADDRESS ?? "0.0.0.0";
+if (!["0.0.0.0", "127.0.0.1", "::1"].includes(bindAddress)) {
+  throw new Error("Invalid IMMUNE_BIND_ADDRESS");
+}
+app.listen(port, bindAddress, () => {
   const ledgerDir = path.resolve(process.cwd(), "data", "immune");
   const ledgerPresent = fs.existsSync(path.join(ledgerDir, "ledger.jsonl"));
   // eslint-disable-next-line no-console
   console.log(
-    `[immune-standalone] listening on 0.0.0.0:${port} | static=${staticDir ?? "none"} | ledger=${ledgerPresent ? ledgerDir : "EMPTY (fresh chain)"}`
+    `[immune-standalone] listening on ${bindAddress}:${port} | static=${staticDir ?? "none"} | ledger=${ledgerPresent ? ledgerDir : "EMPTY (fresh chain)"}`
   );
 });

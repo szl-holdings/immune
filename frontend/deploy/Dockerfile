@@ -1,4 +1,4 @@
-# IMMUNE investor demo — self-contained image.
+# IMMUNE public evidence runtime - self-contained image.
 # Build context = this deploy/ directory. Run build-standalone.sh FIRST to produce ./dist.
 #
 #   bash build-standalone.sh
@@ -28,16 +28,19 @@ WORKDIR /app
 # Self-contained server bundle, the vite-built SPA, and the REAL receipt/evidence chain.
 COPY dist/immune-server.js ./immune-server.js
 COPY dist/hf-deploy-manifest.json ./hf-deploy-manifest.json
+COPY dist/immune-action-trust.json ./immune-action-trust.json
 COPY dist/public ./public
 COPY dist/data ./data
 
-# Hugging Face Spaces runs the container as a non-root user (UID 1000); the immune
-# ledger appends to ./data/immune, so that path must be writable by that user.
-RUN chmod -R a+rwX /app/data && chown -R 1000:1000 /app
+# Bundled evidence is immutable historical evidence, never the production append
+# target. The owner must preserve/migrate the exact live chain into the existing
+# persistent volume before activation. No startup copy/reset is authorized here.
+RUN chown -R 1000:1000 /app && chmod -R a-w /app/data
 
 ENV NODE_ENV=production \
     PORT=7860 \
-    IMMUNE_DEMO_OPERATOR=1
+    IMMUNE_AUTHORITY_DATA_DIR=/data/immune \
+    IMMUNE_DATA_DIR=/data/immune/evidence
 
 EXPOSE 7860
 

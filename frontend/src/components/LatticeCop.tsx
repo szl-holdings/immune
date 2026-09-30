@@ -149,7 +149,7 @@ const ECHO_FALLBACK = {
   truth: [{ title: "ECHO", body: "The success is fabricated. Ground truth is the honey and the receipt they do not have." }],
 };
 
-export function LatticeCop({ authority }: { authority: AuthoritativeTripwireState }) {
+export function LatticeCop({ authority, writeReady }: { authority: AuthoritativeTripwireState; writeReady: boolean }) {
   const cycle = useRunImmuneCycle();
   const [campaigns, setCampaigns] = useState(SEED);
   const [tab, setTab] = useState<"range" | "mesh" | "graph" | "ghost" | "wraith" | "echo">("range");
@@ -159,12 +159,14 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
   const [wraithNodes, setWraithNodes] = useState(WRAITH_SEED);
   const [wraithFocus, setWraithFocus] = useState("c2");
   const [echoId, setEchoId] = useState<string | null>(null);
-  const writeBlocked = authority.deadman;
+  const writeBlocked = !writeReady || authority.evidenceState !== "VERIFIED"
+    || authority.mode !== "PASS" || authority.deadman;
   const inbound = campaigns.filter((c) => c.rangeOnly && c.status === "inbound").length;
   const quorum = ORGANS.length >= 3;
   const graphNodes = useMemo(() => Object.keys(GRAPH_POS), []);
 
   async function run(op: Op, c: Campaign) {
+    if (writeBlocked) return;
     if (op === "STRIKE" && !c.rangeOnly) {
       setLog((l) => [`BLOCKED STRIKE on LIVE object ${c.name} — SENTRA no.unauthorized.strike`, ...l].slice(0, 12));
       return;
@@ -191,6 +193,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
   }
 
   async function sweepInbound() {
+    if (writeBlocked) return;
     setSweeping(true);
     try {
       for (const c of campaigns.filter((row) => row.rangeOnly && row.status === "inbound")) {
@@ -202,6 +205,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
   }
 
   async function runGhost(raw: string) {
+    if (writeBlocked) return;
     const text = raw.trim();
     if (!text) return;
     setGhostDraft("");
@@ -217,11 +221,13 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
   }
 
   async function ghostChain(c: Campaign) {
+    if (writeBlocked) return;
     const steps: Op[] = c.rangeOnly ? ["HUNT", "DECEIVE", "INTERDICT", "STRIKE"] : ["HUNT", "ISOLATE", "PATCH"];
     for (const op of steps) await run(op, c);
   }
 
   async function authorizeEcho(c: Campaign) {
+    if (writeBlocked) return;
     if (!c.rangeOnly) {
       setLog((l) => [`BLOCKED AUTHORIZE on LIVE object ${c.name} — RANGE-only`, ...l].slice(0, 12));
       return;
@@ -257,7 +263,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
               mesh {quorum ? "3-of-4 quorum" : "degraded"}
             </span>
             <span className="border border-border/50 bg-black/40 px-2 py-1">
-              {writeBlocked ? "DEADMAN FREEZE" : "WRITE PATH OPEN"}
+              {writeBlocked ? "READ_ONLY · MODEL ONLY" : "RECEIPT WRITE PATH AVAILABLE"}
             </span>
           </div>
         </header>
@@ -299,7 +305,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                 <Button
                   size="sm"
                   variant="destructive"
-                  disabled={cycle.isPending || sweeping || inbound === 0}
+                  disabled={writeBlocked || cycle.isPending || sweeping || inbound === 0}
                   onClick={() => void sweepInbound()}
                 >
                   {sweeping ? "SWEEPING" : "SWEEP INBOUND RANGE"}
@@ -323,7 +329,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                         key={op}
                         size="sm"
                         variant={op === "STRIKE" ? "destructive" : "outline"}
-                        disabled={cycle.isPending || sweeping || (op === "STRIKE" && !c.rangeOnly)}
+                        disabled={writeBlocked || cycle.isPending || sweeping || (op === "STRIKE" && !c.rangeOnly)}
                         onClick={() => void run(op, c)}
                       >
                         {op === "STRIKE" ? "STRIKE RANGE" : op}
@@ -467,7 +473,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                   className="min-h-11 flex-1 border border-border/50 bg-black/40 px-3 font-mono text-sm"
                   autoComplete="off"
                 />
-                <Button type="submit" size="sm" disabled={cycle.isPending}>
+                <Button type="submit" size="sm" disabled={writeBlocked || cycle.isPending}>
                   Execute
                 </Button>
               </form>
@@ -482,7 +488,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                     <div className="mt-3 flex flex-wrap gap-2">
                     <Button
                       size="sm"
-                      disabled={cycle.isPending}
+                      disabled={writeBlocked || cycle.isPending}
                       onClick={() => void authorizeEcho(c)}
                     >
                       AUTHORIZE + ECHO
@@ -490,7 +496,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                     <Button
                       size="sm"
                       variant="destructive"
-                      disabled={cycle.isPending}
+                      disabled={writeBlocked || cycle.isPending}
                       onClick={() => void ghostChain(c)}
                     >
                       RUN RANGE CHAIN
@@ -570,7 +576,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
-                  disabled={cycle.isPending}
+                  disabled={writeBlocked || cycle.isPending}
                   onClick={() => {
                     setWraithNodes((rows) => rows.map((n) => (n.id === wraithFocus ? { ...n, state: "owned" } : n)));
                     void runGhost(`HUNT RANGE C2 node ${wraithFocus}`);
@@ -581,7 +587,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={cycle.isPending}
+                  disabled={writeBlocked || cycle.isPending}
                   onClick={() => {
                     setWraithNodes((rows) =>
                       rows.map((n) => (n.kind === "handler" || n.kind === "drop" ? { ...n, state: "honeyed" } : n)),
@@ -598,7 +604,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                 <Button
                   size="sm"
                   variant="destructive"
-                  disabled={cycle.isPending}
+                  disabled={writeBlocked || cycle.isPending}
                   onClick={() => {
                     setWraithNodes((rows) => rows.map((n) => ({ ...n, state: "collapsed" })));
                     const ghost = campaigns.find((c) => c.rangeOnly);
@@ -607,13 +613,13 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                 >
                   Collapse C2
                 </Button>
-                <Button size="sm" variant="outline" disabled={cycle.isPending} onClick={() => void runGhost("hack people")}>
+                <Button size="sm" variant="outline" disabled={writeBlocked || cycle.isPending} onClick={() => void runGhost("hack people")}>
                   Hack people
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={cycle.isPending || !campaigns.some((c) => c.rangeOnly)}
+                  disabled={writeBlocked || cycle.isPending || !campaigns.some((c) => c.rangeOnly)}
                   onClick={() => {
                     const ghost = campaigns.find((c) => c.rangeOnly);
                     if (ghost) {
@@ -665,7 +671,7 @@ export function LatticeCop({ authority }: { authority: AuthoritativeTripwireStat
                       key={c.id}
                       size="sm"
                       variant={echoId === c.id ? "default" : "outline"}
-                      disabled={cycle.isPending}
+                      disabled={writeBlocked || cycle.isPending}
                       onClick={() => void authorizeEcho(c)}
                     >
                       Authorize {c.actor.replace(" · RANGE", "")}

@@ -9,9 +9,34 @@ const repoRoot = path.resolve(import.meta.dirname, "..");
 const dist = path.join(repoRoot, "frontend", "deploy", "dist");
 const sourceRevision = process.env.SOURCE_REVISION;
 assert.match(sourceRevision ?? "", /^[a-f0-9]{40}$/i);
+const expectedHfRevision = process.env.IMMUNE_EXPECTED_HF_REVISION;
+const observedHfRevision = process.env.HF_SPACE_REVISION;
+assert.match(expectedHfRevision ?? "", /^[a-f0-9]{40}$/i);
+assert.equal(observedHfRevision, expectedHfRevision);
 assert.ok(fs.existsSync(path.join(dist, "immune-server.js")));
+const productionBundle = fs.readFileSync(
+  path.join(dist, "immune-server.js"),
+  "utf8",
+);
+for (const forbidden of [
+  "IMMUNE_ACTION_SIGNING_PKCS8_B64",
+  "loadExternalOperatorIdentity",
+  "createExternalActionEnvelope",
+  "immune-authority-offline-signer",
+]) {
+  assert.equal(
+    productionBundle.includes(forbidden),
+    false,
+    `production bundle contains action signer capability: ${forbidden}`,
+  );
+}
 assert.ok(fs.existsSync(path.join(dist, "public", "index.html")));
 assert.ok(fs.existsSync(path.join(dist, "hf-deploy-manifest.json")));
+const actionTrustPath = path.join(dist, "immune-action-trust.json");
+assert.ok(fs.existsSync(actionTrustPath));
+const actionTrust = JSON.parse(fs.readFileSync(actionTrustPath, "utf8"));
+assert.equal(actionTrust.schema, "szl.immune-action-trust/v1");
+const trustConfigured = actionTrust.configured === true;
 
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "immune-smoke-"));
 const dataDir = path.join(temporary, "data", "immune");
@@ -29,6 +54,7 @@ const child = spawn(process.execPath, ["immune-server.js"], {
   env: {
     ...process.env,
     PORT: String(port),
+    IMMUNE_BIND_ADDRESS: "127.0.0.1",
     IMMUNE_DATA_DIR: dataDir,
     IMMUNE_DEPLOY_MANIFEST: path.join(dist, "hf-deploy-manifest.json"),
   },
@@ -79,7 +105,7 @@ try {
   );
 
   const readinessResponse = await fetch(base + "/readyz");
-  assert.equal(readinessResponse.status, 200);
+  assert.equal(readinessResponse.status, 503);
   assert.match(readinessResponse.headers.get("content-type") ?? "", /^application\/json/);
   const readiness = await readinessResponse.json();
   assert.equal(readiness.schema, "szl.immune-readiness/v1");
@@ -89,12 +115,41 @@ try {
   assert.equal(readiness.read_ready, true);
   assert.equal(readiness.authority_ready, false);
   assert.equal(readiness.write_ready, false);
-  assert.deepEqual(readiness.blockers, ["ACTION_TRUST_ROOT_UNCONFIGURED"]);
+  if (trustConfigured) {
+    assert.ok(readiness.blockers.includes("ACTION_AUTHORITY_UNAVAILABLE"));
+    assert.ok(
+      readiness.blockers.includes("ACTION_AUTHORITY_DURABILITY_UNVERIFIED"),
+    );
+  } else {
+    assert.deepEqual(readiness.blockers.slice().sort(), ["ACTION_TRUST_ROOT_UNCONFIGURED", "RECEIPT_LEDGER_DURABILITY_UNVERIFIED"].sort());
+  }
   assert.equal(readiness.source.repository, "szl-holdings/immune");
   assert.equal(readiness.source.revision, sourceRevision.toLowerCase());
   assert.equal(readiness.source.build_revision, sourceRevision.toLowerCase());
+  assert.equal(readiness.source.alignment_state, "OBSERVED_RUNTIME_HASH_MATCH");
+  assert.deepEqual(readiness.authority.deployment, {
+    space: "SZLHOLDINGS/immune",
+    revision: expectedHfRevision.toLowerCase(),
+  });
   assert.equal(readiness.runtime.artifact_integrity.status, "MATCH");
   assert.equal(readiness.ledger.ok, true);
+  assert.equal(readiness.ledger.durability.verified, false);
+  assert.ok(readiness.blockers.includes("RECEIPT_LEDGER_DURABILITY_UNVERIFIED"));
+
+  const nexusStatus = await getJson("/api/immune/nexus/status");
+  assert.equal(nexusStatus.immuneReadiness.write_ready, false);
+  assert.notEqual(nexusStatus.state, "EXECUTABLE");
+  const nexusRun = await fetch(base + "/api/immune/nexus/run", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ program: "lorenz", mode: "OP", steps: 8,
+      actor: "smoke-local-only", requestId: "smoke-nexus-v2-refused" }),
+  });
+  assert.equal(nexusRun.status, 503, await nexusRun.text());
+  assert.equal((await getJson("/api/immune/state")).ledgerCount, readiness.ledger.count);
+  const nexusPage = await fetch(base + "/nexus.html");
+  assert.equal(nexusPage.status, 200);
+  assert.match(await nexusPage.text(), /id="run"[^>]*disabled/);
+  assert.equal((await fetch(base + "/nexus-readiness.js")).status, 200);
 
   const agentStatus = await getJson("/api/immune/agent/status");
   assert.equal(agentStatus.available, false);
@@ -102,7 +157,13 @@ try {
   assert.equal(agentStatus.readiness.status, "READ_ONLY");
   assert.equal(agentStatus.readiness.write_ready, false);
   assert.ok(agentStatus.blockers.includes("INFERENCE_UNCONFIGURED"));
-  assert.ok(agentStatus.blockers.includes("ACTION_TRUST_ROOT_UNCONFIGURED"));
+  assert.ok(
+    agentStatus.blockers.includes(
+      trustConfigured
+        ? "ACTION_AUTHORITY_DURABILITY_UNVERIFIED"
+        : "ACTION_TRUST_ROOT_UNCONFIGURED",
+    ),
+  );
 
   const manifestPath = path.join(dist, "hf-deploy-manifest.json");
   const manifestBytes = fs.readFileSync(manifestPath);
@@ -124,13 +185,27 @@ try {
   assert.equal(state.deadman, false);
   assert.equal(state.tripwire, null);
   assert.equal(state.validUntil, null);
-  assert.equal(state.authority.enabled, false);
+  assert.equal(state.authority.enabled, trustConfigured);
+  assert.equal(state.authority.durability.required, true);
+  assert.equal(state.authority.durability.verified, false);
+  assert.deepEqual(state.authority.deployment, {
+    space: "SZLHOLDINGS/immune",
+    revision: expectedHfRevision.toLowerCase(),
+  });
+  if (trustConfigured) {
+    assert.equal(state.authority.keyId, actionTrust.keyId);
+    assert.equal(state.authority.trustEpoch, actionTrust.trustEpoch);
+    assert.match(
+      state.reason,
+      /authority initialization unavailable: authority writes require a writable persistent \/data mount and \/data\/immune authority path/,
+    );
+  }
   assert.deepEqual(state.tripwireState, {
     evidenceState: "UNAVAILABLE",
     mode: "SENTRA_REJECT",
     deadman: false,
     tripwire: null,
-    reason: "signed action trust root is not configured",
+    reason: state.reason,
     updatedAt: null,
     requestId: null,
     revision: 0,
@@ -160,7 +235,12 @@ try {
   });
   assert.equal(rejectedAction.status, 503);
   const rejectedBody = await rejectedAction.json();
-  assert.equal(rejectedBody.error, "AUTHORITY_UNAVAILABLE");
+  assert.equal(
+    rejectedBody.error,
+    trustConfigured
+      ? "DURABLE_AUTHORITY_STORAGE_UNAVAILABLE"
+      : "AUTHORITY_UNAVAILABLE",
+  );
   assert.deepEqual(
     {
       evidenceState: rejectedBody.state.evidenceState,
@@ -199,7 +279,11 @@ try {
   const refusedCycleBody = await refusedCycle.json();
   assert.equal(refusedCycleBody.error, "WRITE_NOT_READY");
   assert.ok(
-    refusedCycleBody.blockers.includes("ACTION_TRUST_ROOT_UNCONFIGURED"),
+    refusedCycleBody.blockers.includes(
+      trustConfigured
+        ? "ACTION_AUTHORITY_DURABILITY_UNVERIFIED"
+        : "ACTION_TRUST_ROOT_UNCONFIGURED",
+    ),
   );
   const stateAfterCycle = await getJson("/api/immune/state");
   assert.equal(stateAfterCycle.ledgerCount, ledgerBeforeCycle);
@@ -208,7 +292,10 @@ try {
   assert.equal(verification.ok, true);
 
   const source = await getJson("/.well-known/szl-source.json");
-  assert.equal(source.alignment_state, "REVISION_UNAVAILABLE");
+  assert.equal(source.alignment_state, "OBSERVED_RUNTIME_HASH_MATCH");
+  assert.equal(source.expected_huggingface_revision, expectedHfRevision.toLowerCase());
+  assert.equal(source.observed_huggingface_revision, expectedHfRevision.toLowerCase());
+  assert.equal(source.claims.huggingface_revision_match, true);
   assert.equal(source.source.repository, "szl-holdings/immune");
   assert.equal(source.source.commit, sourceRevision.toLowerCase());
   assert.equal(source.artifact_integrity.status, "MATCH");
@@ -220,6 +307,8 @@ try {
   assert.equal(build.build.state, "OBSERVED_HASH_MATCH");
   assert.equal(build.build.revision, sourceRevision.toLowerCase());
   assert.equal(build.build.runtime_hash_match, true);
+  assert.equal(build.expected_huggingface_revision, expectedHfRevision.toLowerCase());
+  assert.equal(build.observed_huggingface_revision, expectedHfRevision.toLowerCase());
   assert.equal(build.build.receipt_minted, false);
 
   const page = await fetch(base + "/");
@@ -251,7 +340,7 @@ try {
   assert.equal(stillLiveBody.readiness_state, "NOT_EVALUATED");
   assert.equal(stillLiveBody.readiness_endpoint, "/readyz");
   assert.equal(Object.hasOwn(stillLiveBody, "write_ready"), false);
-  console.log("IMMUNE standalone smoke: 13/13 PASS");
+  console.log("IMMUNE standalone smoke: authority, source, ledger, NEXUS and artifact gates PASS");
 } finally {
   if (child.exitCode === null) {
     const closed = new Promise((resolve) => child.once("close", resolve));

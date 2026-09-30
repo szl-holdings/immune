@@ -1,4 +1,4 @@
-"""Live-operator Ed25519 key + runtime bundle. Matches src/lib/immune/persist.ts."""
+"""Receipt-signing Ed25519 key and local runtime bundle."""
 
 from __future__ import annotations
 
@@ -9,16 +9,13 @@ import os
 from pathlib import Path
 from typing import Any
 
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
-    NoEncryption,
-    PrivateFormat,
     PublicFormat,
     load_der_private_key,
 )
-
-OPERATOR_ACTOR = "immune:live-operator"
 
 
 def data_dir() -> Path:
@@ -33,31 +30,31 @@ def _try_write(path: Path, body: str) -> None:
         pass
 
 
-def load_or_create_operator_key() -> dict[str, Any]:
-    key_path = data_dir() / "operator.json"
+def load_receipt_key() -> dict[str, Any]:
+    """Use only the existing YAWAR secret; never create or copy private keys."""
+    absent = {"privateKey": None, "publicKeyB64": None, "keyId": None}
+    configured = os.environ.get("IMMUNE_SIGNING_KEY")
+    if not configured:
+        return absent
     try:
-        if key_path.exists():
-            raw = json.loads(key_path.read_text(encoding="utf-8"))
-            der = base64.b64decode(raw["pkcs8"])
-            private_key = load_der_private_key(der, password=None)
-            return {
-                "privateKey": private_key,
-                "publicKeyB64": raw["publicKeyB64"],
-                "keyId": raw["keyId"],
-            }
-    except Exception:
-        pass
-
-    private_key = Ed25519PrivateKey.generate()
-    public_raw = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-    public_key_b64 = base64.b64encode(public_raw).decode("ascii")
-    key_id = hashlib.sha256(public_raw).hexdigest()[:16]
-    pkcs8 = private_key.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())
-    _try_write(
-        key_path,
-        json.dumps({"pkcs8": base64.b64encode(pkcs8).decode("ascii"), "publicKeyB64": public_key_b64, "keyId": key_id}),
-    )
-    return {"privateKey": private_key, "publicKeyB64": public_key_b64, "keyId": key_id}
+        raw = base64.b64decode(configured, validate=True)
+        private_key = (
+            Ed25519PrivateKey.from_private_bytes(raw)
+            if len(raw) == 32
+            else load_der_private_key(raw, password=None)
+        )
+        if not isinstance(private_key, Ed25519PrivateKey):
+            return absent
+        public_raw = private_key.public_key().public_bytes(
+            Encoding.Raw, PublicFormat.Raw
+        )
+        return {
+            "privateKey": private_key,
+            "publicKeyB64": base64.b64encode(public_raw).decode("ascii"),
+            "keyId": hashlib.sha256(public_raw).hexdigest()[:16],
+        }
+    except (TypeError, ValueError, UnsupportedAlgorithm):
+        return absent
 
 
 def load_bundle() -> dict[str, Any] | None:
