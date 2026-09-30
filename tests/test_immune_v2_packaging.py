@@ -124,6 +124,18 @@ class CompatibilityAuthorityTests(unittest.TestCase):
 
 
 class ImageBoundaryTests(unittest.TestCase):
+    def test_ci_installs_runtime_dependencies_before_contract_imports(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+        installation = "python3 -m pip install -r python/requirements.txt"
+        contracts = "python3 -m unittest tests.test_assert_hf_space_operational"
+        kernel = "PYTHONPATH=python python3 -m unittest discover -s python/tests -v"
+        self.assertEqual(workflow.count(installation), 1)
+        self.assertLess(workflow.index(installation), workflow.index(contracts))
+        self.assertLess(workflow.index(contracts), workflow.index(kernel))
+        self.assertIn("tests.test_immune_v2_packaging -v", workflow)
+
     def test_pinned_node24_and_process_only_healthcheck_are_preserved(self) -> None:
         docker = DOCKER_PATH.read_text(encoding="utf-8")
         self.assertIn(
