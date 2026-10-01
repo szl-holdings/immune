@@ -1,0 +1,213 @@
+# Copyright 2026 SZL Holdings - SPDX-License-Identifier: Apache-2.0
+name: Apply Immune external authority
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Exact externally authorized Immune mode
+        required: true
+        type: choice
+        options:
+          - PASS
+          - SENTRA_REJECT
+          - DEADMAN
+      tripwire:
+        description: T01-T10 only when mode is DEADMAN; otherwise leave empty
+        required: false
+        type: string
+      lease_minutes:
+        description: PASS 5-15 minutes; reject/deadman 5-1440 minutes
+        required: true
+        default: "15"
+        type: string
+      expected_authority_instance_id:
+        description: Exact 32-hex live durable authority instance ID
+        required: true
+        type: string
+      expected_revision:
+        description: Exact current authority receipt count/revision
+        required: true
+        type: string
+      expected_receipt_hash:
+        description: GENESIS at revision 0; otherwise exact 64-hex receipt head
+        required: true
+        type: string
+      confirmation:
+        description: Type APPLY IMMUNE AUTHORITY V2 exactly
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  attestations: read
+  contents: read
+
+concurrency:
+  group: immune-production-mutation
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      IMMUNE_ACTION_PUBLIC_KEY: ${{ vars.IMMUNE_ACTION_PUBLIC_KEY }}
+      IMMUNE_ACTION_TRUST_EPOCH: ${{ vars.IMMUNE_ACTION_TRUST_EPOCH }}
+      INPUT_MODE: ${{ inputs.mode }}
+      INPUT_TRIPWIRE: ${{ inputs.tripwire }}
+      INPUT_LEASE_MINUTES: ${{ inputs.lease_minutes }}
+      INPUT_EXPECTED_AUTHORITY_INSTANCE_ID: ${{ inputs.expected_authority_instance_id }}
+      INPUT_EXPECTED_REVISION: ${{ inputs.expected_revision }}
+      INPUT_EXPECTED_RECEIPT_HASH: ${{ inputs.expected_receipt_hash }}
+    steps:
+      - name: Require canonical main and explicit operator confirmation
+        env:
+          INPUT_CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = "refs/heads/main" || {
+            echo "::error::External authority actions are admitted only from canonical main."
+            exit 1
+          }
+          test "${INPUT_CONFIRMATION}" = "APPLY IMMUNE AUTHORITY V2" || {
+            echo "::error::Exact confirmation phrase is required."
+            exit 1
+          }
+          test -n "${IMMUNE_ACTION_PUBLIC_KEY:-}" || {
+            echo "::error::Public action trust pin is not configured."
+            exit 1
+          }
+          test -n "${IMMUNE_ACTION_TRUST_EPOCH:-}" || {
+            echo "::error::Public action trust epoch is not configured."
+            exit 1
+          }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+          cache: pnpm
+      - name: Require terminal exact-head CI
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/require-exact-ci-success.mjs
+      - name: Install exact graph without lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Discover immutable deploy run without signer access
+        id: discovery
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}" || {
+            echo "::error::HF_TOKEN is required for independent provider and volume readback."
+            exit 1
+          }
+          pnpm exec tsx server/tools/immune-authority-action.ts discover immune-authority-discovery.json
+      - name: Download receipt from the exact discovered deploy run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: immune-hf-release-${{ github.sha }}
+          path: immune-authority-release
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.discovery.outputs.deploy_run_id }}
+      - name: Require one exact downloaded receipt file
+        run: |
+          set -euo pipefail
+          test -f immune-authority-release/immune-hf-release-receipt.json
+          test "$(find immune-authority-release -type f | wc -l)" -eq 1
+      - name: Verify receipt attestation is bound to the canonical deploy workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh attestation verify immune-authority-release/immune-hf-release-receipt.json --repo "${GITHUB_REPOSITORY}" --signer-repo "${GITHUB_REPOSITORY}" --signer-workflow "szl-holdings/immune/.github/workflows/deploy-hf-space.yml" --deny-self-hosted-runners
+      - name: Prepare exact unsigned intent without signer access
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          IMMUNE_RELEASE_ATTESTATION_VERIFIED: "1"
+        run: |
+          set -euo pipefail
+          pnpm exec tsx server/tools/immune-authority-action.ts prepare immune-authority-discovery.json immune-authority-release/immune-hf-release-receipt.json immune-authority-intent.json
+      - name: Sign exact intent in a network-credential-free process
+        id: signer
+        env:
+          ACTION_PRIVATE_KEY: ${{ secrets.IMMUNE_ACTION_SIGNING_PKCS8_B64 }}
+          ACTION_PUBLIC_KEY: ${{ vars.IMMUNE_ACTION_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${ACTION_PRIVATE_KEY:-}" || {
+            echo "::error::IMMUNE_ACTION_SIGNING_PKCS8_B64 is not configured."
+            exit 1
+          }
+          NODE_BIN="$(command -v node)"
+          /usr/bin/env -i IMMUNE_ACTION_SIGNING_PKCS8_B64="${ACTION_PRIVATE_KEY}" IMMUNE_ACTION_PUBLIC_KEY="${ACTION_PUBLIC_KEY}" "${NODE_BIN}" server/tools/immune-authority-signer.mjs immune-authority-intent.json immune-authority-envelope.json
+          unset ACTION_PRIVATE_KEY
+      - name: Submit exactly once and reconcile exact action
+        id: apply-action
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          IMMUNE_RELEASE_ATTESTATION_VERIFIED: "1"
+        run: |
+          set -euo pipefail
+          pnpm exec tsx server/tools/immune-authority-action.ts submit immune-authority-discovery.json immune-authority-release/immune-hf-release-receipt.json immune-authority-intent.json immune-authority-envelope.json immune-authority-application-evidence.json
+      - name: Retain exact public action evidence
+        if: ${{ always() && steps.apply-action.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: immune-authority-action-${{ github.sha }}-${{ github.run_id }}
+          path: immune-authority-application-evidence.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+      - name: Prepare bounded fail-closed cleanup after uncertain submit
+        id: cleanup-prepare
+        if: ${{ failure() && steps.apply-action.outcome == 'failure' && inputs.mode == 'PASS' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          IMMUNE_RELEASE_ATTESTATION_VERIFIED: "1"
+        run: |
+          set -euo pipefail
+          pnpm exec tsx server/tools/immune-authority-action.ts prepare-reject immune-authority-discovery.json immune-authority-release/immune-hf-release-receipt.json immune-authority-failclosed-intent.json
+      - name: Sign bounded cleanup in a network-credential-free process
+        if: ${{ always() && steps.cleanup-prepare.outcome == 'success' }}
+        env:
+          ACTION_PRIVATE_KEY: ${{ secrets.IMMUNE_ACTION_SIGNING_PKCS8_B64 }}
+          ACTION_PUBLIC_KEY: ${{ vars.IMMUNE_ACTION_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${ACTION_PRIVATE_KEY:-}"
+          NODE_BIN="$(command -v node)"
+          /usr/bin/env -i IMMUNE_ACTION_SIGNING_PKCS8_B64="${ACTION_PRIVATE_KEY}" IMMUNE_ACTION_PUBLIC_KEY="${ACTION_PUBLIC_KEY}" "${NODE_BIN}" server/tools/immune-authority-signer.mjs immune-authority-failclosed-intent.json immune-authority-failclosed-envelope.json
+          unset ACTION_PRIVATE_KEY
+      - name: Submit one bounded fail-closed cleanup and reconcile it
+        id: cleanup-apply
+        if: ${{ always() && steps.cleanup-prepare.outcome == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          IMMUNE_RELEASE_ATTESTATION_VERIFIED: "1"
+        run: |
+          set -euo pipefail
+          pnpm exec tsx server/tools/immune-authority-action.ts submit immune-authority-discovery.json immune-authority-release/immune-hf-release-receipt.json immune-authority-failclosed-intent.json immune-authority-failclosed-envelope.json immune-authority-failclosed-evidence.json
+      - name: Retain exact fail-closed action evidence
+        if: ${{ always() && steps.cleanup-apply.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: immune-authority-failclosed-${{ github.sha }}-${{ github.run_id }}
+          path: immune-authority-failclosed-evidence.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0

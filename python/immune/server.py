@@ -1,4 +1,4 @@
-"""Stdlib HTTP — HF Space port 7860. Live operator, no demo default."""
+"""Stdlib HTTP compatibility channel for the externally authorized runtime."""
 
 from __future__ import annotations
 
@@ -37,7 +37,9 @@ _REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$")
 
 
 def _json_bytes(payload: object) -> bytes:
-    return json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
 def _nexus_catalog() -> dict:
@@ -45,10 +47,26 @@ def _nexus_catalog() -> dict:
         "schema": "szl.immune-nexus-catalog/v1",
         "sourceRevision": NEXUS_SOURCE_REVISION,
         "programs": [
-            {"id": "lorenz", "label": "LRNZ", "job": "chaotic attractor stress surface"},
-            {"id": "harmonic", "label": "HARM", "job": "bounded oscillator and sign-change witness"},
-            {"id": "vanderpol", "label": "VDP", "job": "nonlinear self-excited oscillator"},
-            {"id": "duffing", "label": "DFFG", "job": "forced nonlinear counterfactual"},
+            {
+                "id": "lorenz",
+                "label": "LRNZ",
+                "job": "chaotic attractor stress surface",
+            },
+            {
+                "id": "harmonic",
+                "label": "HARM",
+                "job": "bounded oscillator and sign-change witness",
+            },
+            {
+                "id": "vanderpol",
+                "label": "VDP",
+                "job": "nonlinear self-excited oscillator",
+            },
+            {
+                "id": "duffing",
+                "label": "DFFG",
+                "job": "forced nonlinear counterfactual",
+            },
             {"id": "lotka", "label": "LTKA", "job": "coupled population dynamics"},
             {
                 "id": "nemo",
@@ -142,12 +160,18 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = json.loads(raw.decode() or "{}")
             if not isinstance(data, dict):
-                raise NexusValidationError("INVALID_REQUEST", "request body must be a JSON object")
+                raise NexusValidationError(
+                    "INVALID_REQUEST", "request body must be a JSON object"
+                )
             return data
         except UnicodeDecodeError as error:
-            raise NexusValidationError("INVALID_JSON", "request body is not UTF-8") from error
+            raise NexusValidationError(
+                "INVALID_JSON", "request body is not UTF-8"
+            ) from error
         except json.JSONDecodeError as error:
-            raise NexusValidationError("INVALID_JSON", "request body is not valid JSON") from error
+            raise NexusValidationError(
+                "INVALID_JSON", "request body is not valid JSON"
+            ) from error
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
@@ -159,7 +183,9 @@ class Handler(BaseHTTPRequestHandler):
                 Path(__file__).resolve().parent.parent / "space" / "index.html",
                 Path("index.html"),
             ]
-            target = next((candidate for candidate in candidates if candidate.exists()), None)
+            target = next(
+                (candidate for candidate in candidates if candidate.exists()), None
+            )
             if target:
                 self._send(200, target.read_bytes(), "text/html; charset=utf-8")
                 return
@@ -175,20 +201,64 @@ class Handler(BaseHTTPRequestHandler):
                 Path("/app/nexus.html"),
                 Path("nexus.html"),
             ]
-            target = next((candidate for candidate in candidates if candidate.exists()), None)
+            target = next(
+                (candidate for candidate in candidates if candidate.exists()), None
+            )
             if target:
                 self._send(200, target.read_bytes(), "text/html; charset=utf-8")
                 return
             self._json(404, {"error": "NEXUS_UI_NOT_BUNDLED"})
             return
-        if path in ("/health", "/healthz", "/readyz"):
+        if path in ("/health", "/healthz"):
+            self._json(
+                200,
+                {
+                    "ok": True,
+                    "status": "LIVE",
+                    "service": "immune-lattice",
+                    "channel": "python",
+                    "readiness_endpoint": "/readyz",
+                },
+            )
+            return
+        if path == "/readyz":
             try:
                 runtime = get_runtime()
                 ready = runtime.readiness()
                 snap = runtime.snapshot()
+                ledger = runtime.verify_ledger()
+                authority = (
+                    snap.get("authority")
+                    if isinstance(snap.get("authority"), dict)
+                    else {}
+                )
+                runtime_ready = (
+                    ready.get("runtime_ready") is True and ledger.get("ok") is True
+                )
+                authority_ready = (
+                    ready.get("authority_ready") is True
+                    and authority.get("enabled") is True
+                    and snap.get("evidenceState") == "VERIFIED"
+                )
+                write_ready = (
+                    ready.get("write_ready") is True
+                    and runtime_ready
+                    and authority_ready
+                )
                 body = {
                     **ready,
-                    "ok": True,
+                    "ok": write_ready,
+                    "status": "READY"
+                    if write_ready
+                    else ("READ_ONLY" if runtime_ready else "NOT_READY"),
+                    "ready": write_ready,
+                    "runtime_ready": runtime_ready,
+                    "read_ready": ready.get("read_ready") is True
+                    and ledger.get("ok") is True,
+                    "authority_ready": authority_ready,
+                    "write_ready": write_ready,
+                    "live_operator": False,
+                    "demo_operator": False,
                     "service": "immune-lattice",
                     "lambda_status": "Conjecture 1",
                     "energy": None,
@@ -198,31 +268,48 @@ class Handler(BaseHTTPRequestHandler):
                         "channel": "python",
                         "alignment": "src/lib/immune",
                     },
-                    "ledger": runtime.verify_ledger(),
+                    "ledger": ledger,
                     "authority": {
-                        "enabled": True,
+                        "enabled": authority.get("enabled") is True,
+                        "version": authority.get("version"),
                         "evidence_state": snap["evidenceState"],
-                        "key_id": runtime.key_id,
+                        "key_id": authority.get("keyId"),
+                        "audience": authority.get("audience"),
+                        "source": authority.get("source"),
                         "receipt_count": snap["authorityReceiptCount"],
                         "receipt_hash": snap["authorityReceiptHash"],
-                        "live_operator": True,
+                        "live_operator": False,
                         "demo_operator": False,
+                        "external_operator": ready.get("external_operator") is True,
                     },
                     "nexus": nexus_status(),
                 }
-                self._json(200, body)
+                self._json(200 if write_ready else 503, body)
             except Exception as exc:
                 self._json(
-                    200,
+                    503,
                     {
-                        "ok": True,
+                        "ok": False,
+                        "status": "NOT_READY",
+                        "ready": False,
+                        "runtime_ready": False,
+                        "read_ready": False,
+                        "authority_ready": False,
+                        "write_ready": False,
+                        "blockers": ["RUNTIME_EXCEPTION"],
                         "service": "immune-lattice",
                         "channel": "python",
-                        "honesty": "STRUCTURAL-ONLY",
                         "lambda_status": "Conjecture 1",
                         "energy": None,
                         "error": str(exc)[:200],
                         "nexus": {"state": "UNAVAILABLE"},
+                        "authority": {
+                            "enabled": False,
+                            "key_id": None,
+                            "live_operator": False,
+                            "demo_operator": False,
+                            "external_operator": True,
+                        },
                     },
                 )
             return
@@ -261,7 +348,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             found = _find_nexus_receipt(runtime, request_id)
             if not found:
-                self._json(404, {"error": "NEXUS_RECEIPT_NOT_FOUND", "requestId": request_id})
+                self._json(
+                    404, {"error": "NEXUS_RECEIPT_NOT_FOUND", "requestId": request_id}
+                )
                 return
             receipt, nexus = found
             self._json(
@@ -288,18 +377,20 @@ class Handler(BaseHTTPRequestHandler):
             return
         runtime = get_runtime()
         if path == "/api/immune/cycle":
-            actor = str(data.get("actor") or "immune:live-operator")
+            actor = str(data.get("actor") or "immune:compatibility-client")
             intent = str(data.get("intent") or "")
             extra = data.get("agent") if isinstance(data.get("agent"), dict) else None
             self._json(200, runtime.run_cycle(actor, intent, extra))
             return
-        if path == "/api/immune/reset":
-            self._json(200, runtime.reset())
-            return
-        if path == "/api/immune/mode":
-            mode = str(data.get("mode") or "PASS")
-            trip = data.get("tripwire")
-            self._json(200, runtime.set_mode(mode, str(trip) if trip else None))
+        if path in ("/api/immune/reset", "/api/immune/mode"):
+            self._json(
+                503,
+                {
+                    "ok": False,
+                    "write_ready": False,
+                    "error": "EXTERNAL_ACTION_REQUIRED",
+                },
+            )
             return
         if path == "/api/immune/brain":
             q = str(data.get("q") or data.get("query") or "")
@@ -356,12 +447,17 @@ class Handler(BaseHTTPRequestHandler):
                     503,
                     {
                         "error": "WRITE_NOT_READY",
+                        "reason": "EXTERNAL_ACTION_REQUIRED",
+                        "write_ready": False,
                         "blockers": ready["blockers"],
                         "computationPerformed": False,
+                        "externalEffectPerformed": False,
                     },
                 )
                 return
-            intent = f"nexus.simulate:{input_payload['program']}:{input_payload['mode']}"
+            intent = (
+                f"nexus.simulate:{input_payload['program']}:{input_payload['mode']}"
+            )
             authority = runtime.snapshot()
             preflight = sentra_inspect(
                 {
@@ -380,7 +476,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(
                     409,
                     {
-                        "error": "DEADMAN_ACTIVE" if authority["deadman"] else "SENTRA_REJECTED",
+                        "error": "DEADMAN_ACTIVE"
+                        if authority["deadman"]
+                        else "SENTRA_REJECTED",
                         "sentra": preflight,
                         "computationPerformed": False,
                     },
@@ -390,8 +488,13 @@ class Handler(BaseHTTPRequestHandler):
             existing = _find_nexus_receipt(runtime, request_id)
             if existing:
                 stored_receipt, stored_nexus = existing
-                stored_actor = str((stored_receipt.get("payload") or {}).get("actor") or "")
-                if stored_actor != actor or stored_nexus.get("inputHash") != presented_input_hash:
+                stored_actor = str(
+                    (stored_receipt.get("payload") or {}).get("actor") or ""
+                )
+                if (
+                    stored_actor != actor
+                    or stored_nexus.get("inputHash") != presented_input_hash
+                ):
                     self._json(
                         409,
                         {
@@ -467,13 +570,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/sentra":
             rec = sentra_inspect(
                 {
-                    "actor": "immune:live-operator",
+                    "actor": "immune:compatibility-client",
                     "intent": str(data.get("signal") or data.get("intent") or ""),
                 },
                 runtime.snapshot()["mode"],
             )
             cycle = runtime.run_cycle(
-                "immune:live-operator",
+                "immune:compatibility-client",
                 str(data.get("signal") or data.get("intent") or "sentra-admit"),
             )
             self._json(
@@ -489,7 +592,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/yawar":
             cycle = runtime.run_cycle(
-                "immune:live-operator", str(data.get("event") or "yawar-append")
+                "immune:compatibility-client", str(data.get("event") or "yawar-append")
             )
             self._json(
                 200,
@@ -503,7 +606,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ("/api/bind", "/api/canary"):
             label = str(data.get("engine") or data.get("id") or path.rsplit("/", 1)[-1])
-            cycle = runtime.run_cycle("immune:live-operator", f"{path} {label}")
+            cycle = runtime.run_cycle("immune:compatibility-client", f"{path} {label}")
             self._json(
                 200,
                 {

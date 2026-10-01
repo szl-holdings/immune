@@ -19,10 +19,11 @@ on:
   workflow_dispatch: {}
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
-  group: deploy-immune-spaces
+  group: immune-production-mutation
   cancel-in-progress: false
 
 jobs:
@@ -36,6 +37,10 @@ jobs:
       cancel-in-progress: false
     env:
       HF_SPACE: SZLHOLDINGS/immune
+      IMMUNE_ACTION_PUBLIC_KEY: ${{ vars.IMMUNE_ACTION_PUBLIC_KEY }}
+      IMMUNE_ACTION_TRUST_EPOCH: ${{ vars.IMMUNE_ACTION_TRUST_EPOCH }}
+      IMMUNE_ACTION_TRUST_PROOF_B64: ${{ vars.IMMUNE_ACTION_TRUST_PROOF_B64 }}
+      IMMUNE_AUTHORITY_VOLUME_SOURCE: ${{ vars.IMMUNE_AUTHORITY_VOLUME_SOURCE }}
     steps:
       - name: Require canonical main before credential use
         shell: bash
@@ -55,6 +60,18 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
+      - name: Require terminal exact-head source qualification
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/require-exact-ci-success.mjs
+      - name: Require complete public action trust before publisher credentials
+        run: |
+          node --input-type=module <<'NODE'
+          import { actionTrustDocumentFromEnvironment } from './server/action-trust.js';
+          const trust = actionTrustDocumentFromEnvironment();
+          if (!trust.configured) throw new Error('External v2 public trust is unconfigured; publication blocked');
+          console.log(JSON.stringify({schema: trust.schema, keyId: trust.keyId, trustEpoch: trust.trustEpoch}));
+          NODE
       - name: Install pinned Hugging Face publisher
         run: python3 -m pip install --quiet "huggingface_hub==1.23.0"
       - name: Validate publication boundary offline
@@ -81,6 +98,7 @@ jobs:
           set -euo pipefail
           pnpm install --frozen-lockfile
           pnpm run typecheck
+          pnpm exec tsx --test tests/*.test.ts
           SOURCE_REVISION="${GITHUB_SHA}" pnpm run build
       - name: Publish existing Channel A with bounded ownership and parent guard
         env:
@@ -114,6 +132,9 @@ jobs:
               checkout=Path.cwd(),
               receipt_path=Path("reports/publication-boundary/channel-a.json"),
           )
+          # This bounded publication receipt is NOT an external-authority release
+          # attestation. No settings write, second commit, or automatic rollback.
+          # Activation still requires a separately qualified exact live receipt.
           print("Channel A source committed; live deployment UNVERIFIED:", result["hub_commit"])
           PY
       - name: Attest exact Channel A commit RUNNING and live routes

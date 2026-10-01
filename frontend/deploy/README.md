@@ -34,8 +34,10 @@ Status is CONNECTING / REACHABLE / UNAVAILABLE. Never fabricate LIVE or PASS.
 
 ## Lorenz OP (measured)
 
-`POST /api/immune/nexus/run` with `{program:"lorenz",mode:"OP",steps:320}`
-returns HTTP 201, `governed.pass=true`, hash-only YAWAR payload.
+With a current external-v2 lease and whole-system readiness, an admitted
+`POST /api/immune/nexus/run` returns HTTP 201 and a hash-only YAWAR payload.
+Without that authority the route returns 503 before execution. The table below
+records historical software output, not proof of current write readiness.
 
 | Field | Value |
 |---|---|
@@ -45,7 +47,8 @@ returns HTTP 201, `governed.pass=true`, hash-only YAWAR payload.
 | outputHash | `4071a2f2faca744907747cb2cc82a9d841e125fa287240505f9f9a8454a399ac` |
 | truth | MEASURED_SOFTWARE_SIMULATION |
 
-Channel B produces the same hashes.
+Channel B retains deterministic verification of these hashes; its privileged
+action path remains read-only until a separate authority integration is released.
 
 ## License
 
@@ -56,6 +59,24 @@ Apache License 2.0. Third-party data retains upstream terms.
 - `immune-server.js` — Express kernel + SPA host
 - `public/` — vite-built HUD including `nexus.html`
 - `data/immune/` — append-only receipt + evidence chain
+- `immune-action-trust.json` — public pin, trust epoch, owner possession proof,
+  and durable-volume binding; never an action private key
 
 Listens on `PORT` (default 7860). Contract: `GET /readyz`, `GET /api/immune/state`,
 `GET /api/immune/nexus/status`, `POST /api/immune/nexus/run`.
+
+## External authority activation
+
+The serving image cannot sign its own PASS. Canonical publication first proves
+the exact merged source and a read-only runtime. The separate owner action
+workflow may then submit one short-lived `immune.action.v2` envelope, bound to
+the exact source, Space revision, public key, durable store instance, and receipt
+head. Missing or contradictory proof returns 503 and disables governed controls.
+
+Production requires an owner-held Ed25519 signer with a matching public pin,
+trust epoch and possession proof, plus a verified writable `/data` volume.
+Deployment and operator actions share one mutation queue. The publisher sets
+`IMMUNE_EXPECTED_HF_REVISION` and `HF_SPACE_REVISION` to the returned Hub commit,
+reads both back twice, and independently verifies provider and runtime bytes.
+See the source repository's external-authority activation guide for prerequisites
+and the forward-only initial migration boundary.

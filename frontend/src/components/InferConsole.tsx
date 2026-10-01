@@ -21,13 +21,14 @@ type InferResult = {
   energy: string;
 };
 
-export default function InferConsole() {
+export default function InferConsole({ writeReady }: { writeReady: boolean }) {
   const [prompt, setPrompt] = useState(EXAMPLES[0]);
   const [busy, setBusy] = useState(false);
   const [run, setRun] = useState<InferResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function go(next: string) {
+    if (!writeReady || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -65,7 +66,7 @@ export default function InferConsole() {
           </div>
         </div>
         <span className="border border-primary/60 bg-primary/10 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-primary">
-          LIVE
+          {writeReady ? "AVAILABLE · UNMEASURED" : "READ_ONLY"}
         </span>
       </div>
       <div className="space-y-4 p-5">
@@ -86,7 +87,7 @@ export default function InferConsole() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={busy || prompt.trim().length < 4}
+            disabled={!writeReady || busy || prompt.trim().length < 4}
             onClick={() => void go(prompt.trim())}
             className="inline-flex min-h-11 items-center gap-2 border border-primary bg-primary/10 px-4 font-mono text-[11px] uppercase tracking-widest text-primary hover:bg-primary/20 disabled:opacity-50"
           >
@@ -100,7 +101,6 @@ export default function InferConsole() {
               disabled={busy}
               onClick={() => {
                 setPrompt(ex);
-                void go(ex);
               }}
               className="inline-flex min-h-11 items-center border border-border px-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:border-primary/50"
             >

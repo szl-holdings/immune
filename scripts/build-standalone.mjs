@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { build as buildFrontend } from "vite";
+import { actionTrustDocumentFromEnvironment } from "../server/action-trust.js";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const frontendDir = path.join(repoRoot, "frontend");
@@ -29,6 +30,11 @@ await buildFrontend({
 
 fs.rmSync(deployOutput, { recursive: true, force: true });
 fs.mkdirSync(deployOutput, { recursive: true });
+fs.writeFileSync(
+  path.join(deployOutput, "immune-action-trust.json"),
+  `${JSON.stringify(actionTrustDocumentFromEnvironment(), null, 2)}\n`,
+  "utf8",
+);
 
 await bundle({
   entryPoints: [path.join(repoRoot, "server", "immune-standalone.ts")],

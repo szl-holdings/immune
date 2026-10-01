@@ -18,13 +18,15 @@
     button,input,select{font:inherit}
     button{min-height:44px;border:1px solid var(--line);background:#0a110e;color:var(--ink);padding:.65rem .8rem;cursor:pointer}
     button:hover,button:focus-visible{border-color:var(--phosphor);outline:none}
+    button:disabled{opacity:.55;cursor:not-allowed}
+    input[type=text]{width:100%;min-width:0;min-height:44px;background:var(--bg);color:var(--ink);border:1px solid var(--line);padding:.65rem}
     button[aria-pressed="true"]{background:var(--phosphor);color:#041006;border-color:var(--phosphor)}
     .skip{position:absolute;left:-9999px}.skip:focus{left:1rem;top:1rem;z-index:20;background:#fff;color:#000;padding:.75rem}
     .shell{max-width:1280px;margin:auto;padding:clamp(1rem,3vw,2rem)}
     header{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:1rem}
     h1{font-size:clamp(1.35rem,3vw,2.4rem);letter-spacing:.08em;margin:.2rem 0}.eyebrow{color:var(--amber);font-size:.75rem;letter-spacing:.15em;text-transform:uppercase}
     .truth{max-width:48rem;color:var(--muted);line-height:1.65;font-size:.82rem}
-    .status{border:1px solid var(--line);padding:.7rem;min-width:13rem;font-size:.72rem;line-height:1.6;background:rgba(4,6,7,.8)}
+    .status{border:1px solid var(--line);padding:.7rem;min-width:13rem;font-size:.72rem;line-height:1.6;background:rgba(4,6,7,.8);white-space:pre-line;overflow-wrap:anywhere}
     .grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(18rem,.75fr);gap:1rem}
     .panel{border:1px solid var(--line);background:rgba(9,16,13,.88);padding:1rem;box-shadow:inset 0 1px rgba(255,255,255,.03)}
     .crt{border:8px solid #101713;background:#010302;min-height:330px;position:relative;overflow:hidden}
@@ -52,8 +54,8 @@
   <header>
     <div>
       <div class="eyebrow">IMMUNE / Counterfactual Dynamics</div>
-      <h1>NEXUS EXECUTION PLANE</h1>
-      <p class="truth">Six bounded deterministic programs execute inside IMMUNE. SENTRA admits the request; the software simulator runs with zero external calls; YAWAR seals input and output hashes; HUKLLA records the evidence state. This is measured software simulation—not a physical chip, not an effector, and not a uniqueness theorem.</p>
+      <h1>NEXUS VERIFICATION PLANE</h1>
+      <p class="truth">This Python compatibility channel is action-authority READ_ONLY. Six bounded deterministic programs remain available for read-only replay verification; governed execution requires external v2 authority in the canonical IMMUNE channel. Replay verification does not issue a YAWAR receipt or prove live authority. These are software simulations, not physical chips or effectors.</p>
     </div>
     <div class="status" id="status" role="status" aria-live="polite">Connecting to /api/immune/nexus/status…</div>
   </header>
@@ -81,9 +83,13 @@
         <label class="control"><span>Chaos</span><input id="chaos" type="range" min="0" max="1" step="0.01" value="0.45"><output id="chaosOut">0.45</output></label>
         <label class="control"><span>Drive</span><input id="drive" type="range" min="0" max="1" step="0.01" value="0.92"><output id="driveOut">0.92</output></label>
         <div class="actions">
-          <button id="run" type="button">Execute + receipt</button>
+          <button id="run" type="button" disabled aria-describedby="authorityBoundary">Execute + receipt</button>
           <button id="verify" type="button">Replay verify</button>
         </div>
+        <p class="truth" id="authorityBoundary">Execution is unavailable in this compatibility channel; no action private key is loaded here.</p>
+        <label class="label" for="expectedHash">Expected output SHA-256 for selected input</label>
+        <input id="expectedHash" type="text" autocomplete="off" spellcheck="false" maxlength="64" pattern="[a-f0-9]{64}" aria-describedby="replayHelp">
+        <p class="truth" id="replayHelp">Set the original input above and paste its output hash. Replay compares deterministic output only; it cannot establish source provenance or authority.</p>
       </section>
       <section class="panel" aria-labelledby="evidenceTitle">
         <div class="eyebrow" id="evidenceTitle">Exact evidence</div>
@@ -111,18 +117,29 @@
     $('stepsOut').value=$('steps').value;$('dtOut').value=Number($('dt').value).toFixed(4);$('chaosOut').value=Number($('chaos').value).toFixed(2);$('driveOut').value=Number($('drive').value).toFixed(2);
     $('programRead').textContent=`${PROGRAMS.find(x=>x[0]===state.program)?.[1]||state.program} / ${state.mode}`;
   }
-  function requestId(){return `web-${Date.now().toString(36)}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36)}`}
-  function payload(includeIdentity=true){
+  function payload(){
     const p={program:state.program,mode:state.mode,steps:Number($('steps').value),dt:Number($('dt').value),chaos:Number($('chaos').value),drive:Number($('drive').value),seed:0.2,repeatEvery:64,axes:[0.97,0.96,0.93,0.91,0.9,0.92,0.88,0.91]};
     if(state.last&&state.mode!=='IC')p.state=state.last;
-    if(includeIdentity){p.actor='immune:web-operator';p.requestId=requestId()}
     return p
   }
   async function post(path,body){
     const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},body:JSON.stringify(body)});let j;try{j=await r.json()}catch{j={error:'NON_JSON_RESPONSE'}}if(!r.ok)throw Object.assign(new Error(j.detail||j.error||`HTTP ${r.status}`),{body:j,status:r.status});return j
   }
-  async function loadStatus(){try{const r=await fetch('/api/immune/nexus/status',{headers:{accept:'application/json','cache-control':'no-cache'}});const j=await r.json();$('status').innerHTML=`<span class="${j.state==='EXECUTABLE'?'ok':'warn'}">${j.state||'UNKNOWN'}</span><br>source ${String(j.source?.revision||'UNAVAILABLE').slice(0,12)}<br>write-ready ${j.immuneReadiness?.write_ready===true?'YES':'NO'}<br>effectors DISABLED`; }catch(e){$('status').innerHTML=`<span class="bad">UNAVAILABLE</span><br>${escapeHtml(e.message)}`}}
-  function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+  async function loadStatus(){
+    $('run').disabled=true;
+    try{
+      const [statusResponse,readyResponse]=await Promise.all([
+        fetch('/api/immune/nexus/status',{headers:{accept:'application/json'},cache:'no-store',signal:AbortSignal.timeout(10000)}),
+        fetch('/readyz',{headers:{accept:'application/json'},cache:'no-store',signal:AbortSignal.timeout(10000)})
+      ]);
+      if(!statusResponse.ok||![200,503].includes(readyResponse.status))throw new Error('Status observation unavailable');
+      const [status,ready]=await Promise.all([statusResponse.json(),readyResponse.json()]);
+      const contradictory=ready.write_ready===true||status.immuneReadiness?.write_ready===true;
+      $('status').className='status '+(contradictory?'bad':'warn');
+      $('status').textContent=`ACTION READ_ONLY${contradictory?' / contradictory readiness rejected':''}\nsource ${String(status.source?.revision||'UNAVAILABLE').slice(0,40)}\nruntime ${String(ready.status||'UNKNOWN')}\nwrite-ready NO\neffectors DISABLED`;
+    }catch(error){$('status').className='status bad';$('status').textContent=`UNAVAILABLE\n${error.message}\nwrite-ready NO`;}
+    finally{$('run').disabled=true;}
+  }
   function clearCanvas(){const c=$('scope'),x=c.getContext('2d');x.fillStyle='#010302';x.fillRect(0,0,c.width,c.height);x.fillStyle='#8ca99a';x.font='22px ui-monospace';x.fillText('Awaiting governed NEXUS execution',32,50)}
   function draw(result){
     const c=$('scope'),x=c.getContext('2d'),w=c.width,h=c.height;x.fillStyle='rgba(1,3,2,.92)';x.fillRect(0,0,w,h);
@@ -130,8 +147,12 @@
     for(let r=0;r<rows;r++)for(let q=0;q<cols;q++){const I=Math.min(1,Number(field[r][q]||0)/2.4);if(I<.04)continue;x.fillStyle=`rgba(114,255,152,${.025+I*.16})`;x.fillRect(q*cw,r*rh,cw+.5,rh+.5)}
     const trail=result.trail||[];if(trail.length){const xs=trail.map(p=>p[0]),ys=trail.map(p=>p[1]),minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys),sx=(w-100)/(maxX-minX||1),sy=(h-100)/(maxY-minY||1);x.strokeStyle='#72ff98';x.lineWidth=2;x.beginPath();trail.forEach((p,i)=>{const px=50+(p[0]-minX)*sx,py=h-50-(p[1]-minY)*sy;i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();const p=trail.at(-1),px=50+(p[0]-minX)*sx,py=h-50-(p[1]-minY)*sy;x.fillStyle='#ffc45b';x.beginPath();x.arc(px,py,6,0,Math.PI*2);x.fill()}
   }
-  $('run').onclick=async()=>{const b=$('run');b.disabled=true;$('evidence').textContent='SENTRA admission → deterministic simulation → YAWAR receipt → HUKLLA evidence…';try{const req=payload(true);state.requestId=req.requestId;state.lastInput=Object.fromEntries(Object.entries(req).filter(([k])=>!['actor','requestId'].includes(k)));const j=await post('/api/immune/nexus/run',req);state.last=j.result.finalState;state.hash=j.result.outputHash;draw(j.result);$('hashRead').textContent=state.hash.slice(0,16)+'…';const lam=j.result.formulas?.lambda;$('lambdaRead').textContent=lam?.value==null?'UNAVAILABLE':`${Number(lam.value).toFixed(4)} · ${lam.status}`;$('receiptRead').textContent=j.governed?.receipt?.hash?.slice(0,16)+'…'||'UNAVAILABLE';$('evidence').textContent=JSON.stringify({requestId:j.requestId,replayed:j.replayed,execution:j.result.execution,source:j.result.source,outputHash:j.result.outputHash,invariants:j.result.invariants,receipt:j.governed?.receipt,huklla:j.governed?.huklla},null,2)}catch(e){$('evidence').textContent=JSON.stringify(e.body||{error:e.message},null,2);$('receiptRead').textContent='REFUSED'}finally{b.disabled=false;loadStatus()}};
-  $('verify').onclick=async()=>{if(!state.hash){$('evidence').textContent='Execute a run before replay verification.';return}const b=$('verify');b.disabled=true;try{const req={...(state.lastInput||payload(false)),expectedOutputHash:state.hash};const j=await post('/api/immune/nexus/verify',req);$('evidence').textContent=JSON.stringify(j,null,2);$('hashRead').textContent=(j.verified?'VERIFIED ':'FAILED ')+j.observedOutputHash.slice(0,12)}catch(e){$('evidence').textContent=JSON.stringify(e.body||{error:e.message},null,2)}finally{b.disabled=false}};
+  $('run').onclick=()=>{$('run').disabled=true;$('evidence').textContent='EXTERNAL_ACTION_REQUIRED: Channel B never submits governed execution.';};
+  $('verify').onclick=async()=>{const expected=$('expectedHash').value.trim();if(!/^[a-f0-9]{64}$/.test(expected)){$('evidence').textContent='Enter the 64-character lowercase output hash for the selected input.';return}const b=$('verify');b.disabled=true;try{const req={...payload(),expectedOutputHash:expected};const j=await post('/api/immune/nexus/verify',req);$('evidence').textContent=JSON.stringify(j,null,2);$('hashRead').textContent=(j.verified===true?'REPLAY MATCH ':'REPLAY MISMATCH ')+String(j.observedOutputHash||'UNAVAILABLE').slice(0,12);$('receiptRead').textContent='NO NEW RECEIPT'}catch(e){$('evidence').textContent=JSON.stringify(e.body||{error:e.message},null,2)}finally{b.disabled=false}};
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadStatus();else $('run').disabled=true;});
+  window.addEventListener('offline',()=>{$('run').disabled=true;$('status').textContent='OFFLINE\nwrite-ready NO';});
+  window.addEventListener('online',loadStatus);
+  setInterval(()=>{if(!document.hidden)loadStatus();},15000);
   sync();clearCanvas();loadStatus();
 })();
 </script>

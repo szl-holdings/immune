@@ -15,10 +15,12 @@ Proof: [a11oy.net](https://a11oy.net)
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](./LICENSE)
 
-**Stage: REACHABLE · WRITE-READY · MEASURED software simulation.** IMMUNE is the
-governed AI safety layer: every accepted agent action is sealed into an
-append-only SHA-256 hash-linked receipt chain. Status is CONNECTING, REACHABLE,
-or UNAVAILABLE — never a fabricated LIVE analog or PASS theorem. Λ = Conjecture 1 OPEN.
+**External action authority requires a witnessed v2 deployment and operator lease.**
+IMMUNE seals admitted transitions into an append-only SHA-256 receipt chain.
+Runtime availability is CONNECTING, REACHABLE, or UNAVAILABLE; write readiness
+requires current source, deployment, ledger, durable state, and external authority
+to agree. Historical self-signed v1 PASS states do not establish v2 readiness.
+NEXUS results remain measured software simulations. Λ = Conjecture 1 OPEN.
 
 - **Product tab:** https://a-11-oy.com/immune
 - **Channel A kernel HUD:** https://szlholdings-immune.hf.space (`SZLHOLDINGS/immune`)
@@ -45,7 +47,10 @@ Default NEXUS showcase on both Spaces. Software simulation only.
 | truth | MEASURED_SOFTWARE_SIMULATION |
 | Channel A/B parity | hashes match |
 
-`POST /api/immune/nexus/run` returns HTTP 201 with `governed.pass=true` when SENTRA admits the compact YAWAR payload (hashes, not floats).
+`POST /api/immune/nexus/run` returns HTTP 201 with `governed.pass=true` only while
+whole-system write readiness and SENTRA admission both pass. It returns 503
+without execution when authority is unavailable. The table records a historical
+software result, not current authority or deployment proof.
 
 ## Consolidation (do not delete either Space)
 
@@ -53,8 +58,8 @@ There are two Hugging Face Spaces. They are **one product, two channels** — no
 
 | Surface | What it is | Keep? |
 |---|---|---|
-| `SZLHOLDINGS/immune` | Channel A. TypeScript HUD + kernel. Already LIVE / WRITE-READY. Estate tiles, a11oy, killinchu handoff. | **Keep.** Canonical public HUD. |
-| `SZLHOLDINGS/immune-lattice` | Channel B. This repo's `python/` kernel (stdlib HTTP, port 7860). | **Keep the URL.** Same receipts, same SENTRA/YAWAR/HUKLLA. |
+| `SZLHOLDINGS/immune` | Channel A. TypeScript HUD + kernel; v2 governed writes require verified external authority and durable state. | **Keep.** Canonical public HUD. |
+| `SZLHOLDINGS/immune-lattice` | Channel B. Privileged-control read-only Python kernel; catalog, verification, and historical receipts remain usable. Refused cycles may persist HUKLLA evidence. | **Keep the URL.** No independent action authority is claimed. |
 
 This Grok Build COP (`src/lib/immune` TypeScript ↔ `python/immune` Python) is the kernel both channels must follow. Lattice is not a second product.
 
@@ -63,7 +68,7 @@ This Grok Build COP (`src/lib/immune` TypeScript ↔ `python/immune` Python) is 
 ```
 python/
   immune/          canonical · sentra · huklla · persist · runtime · mesh · second_brain · frontier · organs · server
-  tests/           unittest — boot WRITE-READY, cycle seal, DEADMAN, 575-handle brain, silhouette, MESH 3-of-4
+  tests/           unittest — fail-closed boot, refused writes, NEXUS verification, brain, silhouette, MESH
   space/           HF hologram HUD
 ```
 
@@ -77,8 +82,9 @@ PYTHONPATH=python python3 -m unittest discover -s python/tests -v
 
 ## What it demonstrates
 
-IMMUNE sits between an AI agent's *intent* and its *execution* and proves, cryptographically,
-that the governance actually happened:
+IMMUNE checks an agent's intent before admitted execution and retains hash-linked
+evidence. Current runtime and external authority must be verified separately;
+source code or a historical receipt alone does not prove present enforcement.
 
 | Layer | Codename | What it does |
 |---|---|---|
@@ -92,8 +98,10 @@ AI-agent action.
 
 ## Lattice COP (RANGE / GHOST / WRAITH / ECHO / MESH / GRAPH)
 
-Additive command surface on the live Space. Palantir object model, Anduril effector
-tasking, CIA-style OSINT attribution — independently implemented under Doctrine v11.
+Additive command surface in the public HUD. Its modeled object and effector
+concepts are independently implemented under Doctrine v11. In an external-v2
+deployment, write availability is governed by `/readyz` and the current
+authority lease; the observed pre-v2 runtime is not that witness.
 
 | Tab | What it does | Honesty bound |
 |---|---|---|
@@ -104,16 +112,21 @@ tasking, CIA-style OSINT attribution — independently implemented under Doctrin
 | **MESH** | Four-organ fusion: IMMUNE, a11oy, killinchu, Khipu-1.5B. 3-of-4 BFT silhouette. | Quorum is MODELED until a live BFT observation is wired. |
 | **GRAPH** | Typed object graph: campaigns, organs, receipts, CVEs, named relations. | Nothing is a blended green blob. |
 
-Ops go through `POST /api/immune/cycle` (SENTRA → optional YAWAR receipt → HUKLLA).
-The public Hugging Face Space boots a **labeled demo operator**
-(`IMMUNE_DEMO_OPERATOR=1` in the demo image): process-local Ed25519 signs genesis
-`SET_MODE PASS` and refreshes evidence so `/readyz` is `write_ready: true`.
-The demo keypair is persisted under `IMMUNE_DATA_DIR/demo-operator.json` so a
-process restart reuses the same trust root and receipt chain.
-That key is **not an ATO**. Production deployments omit the flag, require
-`IMMUNE_ACTION_PUBLIC_KEY`, and stay fail-closed `READ_ONLY` until a matching
-signed envelope is applied. Home remains the sole `useGetImmuneState()`
-authority query; ThreeScene and the controls scroll region are unchanged.
+When `/readyz` reports `write_ready: true`, governed operations go through
+`POST /api/immune/cycle` (SENTRA → optional YAWAR receipt → HUKLLA).
+Otherwise the write path fails closed.
+The external-v2 runtime image contains **no action-authority private key** and
+never signs its own `PASS`. A configured canonical-main artifact contains only
+public trust material: `IMMUNE_ACTION_PUBLIC_KEY`, the trust epoch, matching
+Ed25519 possession proof, and the declared durable-volume binding. It never
+contains the action signing key and starts with writes disabled (`READ_ONLY`
+when runtime/read evidence is valid; otherwise `NOT_READY`). A separate manual owner
+workflow may submit one short-admission, source-bound `immune.action.v2`
+envelope after it proves protected main, the live source revision, runtime
+integrity, audience, and public-key ID all agree. Home independently consumes
+`/api/immune/state` and `/readyz`; governed-cycle controls require a fresh
+exact binding across both responses. ThreeScene and the controls scroll region
+remain authority-projection consumers.
 
 
 ## API
@@ -122,8 +135,8 @@ authority query; ThreeScene and the controls scroll region are unchanged.
 |---|---|
 | `GET /readyz` | Exact source/build/runtime hash binding plus ledger integrity; reports runtime/read readiness separately from signed-authority/write readiness |
 | `GET /api/immune/state` | Authoritative `VERIFIED / FAILED / UNAVAILABLE / STALE` state, signed-action receipt head, mode, tripwire, and YAWAR chain head |
-| `POST /api/immune/state` | Verify and atomically apply an `immune.action.v1` Ed25519 envelope; unsigned controls are rejected |
-| `POST /api/immune/cycle` | Run one governed cycle: SENTRA inspect → (if accepted) append receipt → HUKLLA evaluate |
+| `POST /api/immune/state` | Verify and atomically apply a strict `immune.action.v2` Ed25519 envelope; v1 and unsigned controls are rejected |
+| `POST /api/immune/cycle` | While whole-system `write_ready: true`, run one governed cycle: SENTRA inspect → (if accepted) append receipt → HUKLLA evaluate; otherwise HTTP 503 |
 | `POST /api/immune/reset` | Apply a signed `RESET` envelope through the same authority path |
 | `GET /api/immune/ledger/latest` | Last 25 SHA-256 receipts |
 | `GET /api/immune/ledger/verify` | Recompute the whole chain from disk; `ok: true` on a clean chain |
@@ -135,29 +148,104 @@ authority query; ThreeScene and the controls scroll region are unchanged.
 ### Signed advisory authority
 
 Privileged advisory controls are disabled unless `IMMUNE_ACTION_PUBLIC_KEY` is
-canonical base64 for the trusted raw 32-byte Ed25519 public key. Clients submit
-a strict, short-lived `immune.action.v1` envelope with a unique `requestId`; the
-signature covers the canonical envelope without its `signature` field.
+canonical base64 for the trusted raw 32-byte Ed25519 public key and the exact
+public trust epoch, possession proof, and durable-volume binding are qualified.
+A public key alone does not establish an operational signer. Clients submit
+a strict `immune.action.v2` envelope with a unique `requestId`; the signature
+covers the canonical envelope without its `signature` field. The exact
+audience is `hf-space:SZLHOLDINGS/immune`, and the exact source is
+`szl-holdings/immune` plus the deployed lowercase 40-hex Git revision.
+`trustEpoch`, a persisted random `authorityInstanceId`,
+`expectedRevision`, and `expectedReceiptHash` are also signed. The server
+compares that head binding under the SQLite write lock, so an older valid
+`PASS` cannot arrive after and override a newer `DEADMAN`.
+`expiresAt` is a command-admission deadline capped at five minutes.
+`validUntil` is a separately signed state lease: `PASS` and `RESET` are
+capped at 15 minutes, while fail-closed modes are capped at 24 hours. The
+server rechecks both deadlines after acquiring the write lock. The signed
+`actor` is a claim by the key holder, not a second identity attestation.
 
-Accepted actions and resulting state are committed together to
-`data/immune/authority.sqlite` in WAL/FULL mode. Receipts are append-only,
-request IDs remain single-use across restarts, and a missing trust root, read
-failure, stale receipt, or chain mismatch can never render green. The public UI
-holds no operator private key unless `IMMUNE_DEMO_OPERATOR=1` or
-`IMMUNE_ACTION_PRIVATE_KEY` is set on the server. With those flags the process
-signs genesis `SET_MODE PASS` and auto-refreshes so evidence stays `VERIFIED`.
-The demo operator is labeled `authority.demoOperator` and is not a production
-ATO. Without them the UI accepts an already-signed envelope and is otherwise
-read-only. `IMMUNE_EVIDENCE_MAX_AGE_MS` may override the default
-15-minute freshness window; stale state remains observable but cannot authorize
-a governed cycle.
+Accepted actions and resulting state are committed together under the keyed
+database `/data/immune/authority-v2-<keyId>-<trustEpoch>.sqlite` in WAL/FULL mode.
+The same database persists its random `authorityInstanceId`; losing or
+replacing the database changes that instance ID and invalidates captured
+envelopes. Production refuses to initialize action authority unless `/data`
+is exactly one independently observed, writable provider bucket volume. The v1
+database, if present, is inactive audit evidence and is never admitted into the
+v2 authority epoch. Receipts are append-only, request IDs are single-use, and a
+missing trust root, source drift, read failure, stale lease, CAS mismatch, or
+chain mismatch can never render green. Exact receipt lookup by request ID and
+envelope digest lets the owner workflow reconcile an applied action even if
+the POST response is lost.
+
+The deployed public pin is not a mutable development default. The build embeds an
+exact `immune-action-trust.json` artifact containing the public key, public
+`trustEpoch`, declared durable-storage binding, and an Ed25519 possession
+proof over the repository/Space binding. That immutable artifact is the public
+evidence that an owner-controlled matching signer existed at release time; a
+placeholder pin or an unrelated private key cannot satisfy it.
+
+The current canonical publisher preserves the bounded existing-Space contract:
+it does not create Spaces, change visibility or settings, write Space variables,
+or perform unbounded deletion. Its publication-boundary receipt records that
+bounded operation; it is not a v2 authority activation or release attestation.
+The required exact deployment-revision binding (`IMMUNE_EXPECTED_HF_REVISION`
+and `HF_SPACE_REVISION`) must be independently provisioned and qualified under
+a separate authorized activation procedure. This repair does not write those
+values. The runtime trusts neither an undocumented `SPACE_REVISION` fallback
+nor a deployment revision recovered from an older authority envelope.
+
+Local source/tests/build, canonical publication, and v2 activation are separate
+gates. This local repair does not claim deployment or current operational
+authority. The canonical publisher's source checks and boundary receipt remain
+unchanged; they do not substitute for the stronger activation contract. V2
+activation remains **BLOCKED** until a separate qualification establishes an
+exact-source release attestation, matching owner-held signer/public proof,
+independently observed writable `/data` volume, and restart-persistent state.
+Before signing or submitting an action, the owner workflow must require
+terminal successful hosted CI and qualified canonical deployment evidence at
+the same protected-main SHA, then re-verify immutable Hub artifacts, public key
+ID and `trustEpoch`, live source/runtime binding, durable volume, and the exact
+authority receipt head. It re-reads protected `main` again before POST.
+`IMMUNE_ACTION_SIGNING_PKCS8_B64` is exposed only to that final signing step
+and is never sent to Hugging Face.
+
+If the POST response is lost or ambiguous, the workflow reads the receipt back
+by both `requestId` and envelope digest. A matching receipt is success without
+resending; an absent or contradictory receipt is a terminal fail-closed result,
+not permission to replay the action.
 
 `/readyz` remains explicit while that trust root is absent: verified immutable
 runtime bytes and a clean receipt ledger may be `read_ready: true`, but the
 contract stays `status: READ_ONLY`, `ready: false`, `authority_ready: false`,
 and `write_ready: false` with blocker `ACTION_TRUST_ROOT_UNCONFIGURED`.
-The public demo image sets `IMMUNE_DEMO_OPERATOR=1` so the live Space is
-`status: READY` / `write_ready: true` after genesis.
+With a public pin but no current external action, the blocker is
+`ACTION_AUTHORITY_UNAVAILABLE` or `ACTION_AUTHORITY_STALE`. Only an exact
+current-source, externally signed `PASS` lease plus independently verified
+durable YAWAR/HUKLLA storage can make the Space
+`status: READY` / `write_ready: true`.
+
+Hugging Face ephemeral storage does not establish global replay durability or
+restart persistence. Production action authority remains unavailable, and
+`PASS` cannot be submitted, until exactly one writable bucket volume is
+provider-observed at `/data`. A release/source attestation is separate from
+action authority; an action signature does not turn
+`cryptographic_release_receipt` green.
+
+Production evidence appends target `/data/immune/evidence`, never the image-local
+seed. Before activation, the owner must preserve and migrate the exact existing
+`ledger.jsonl` and `huklla_evidence.jsonl` bytes into that persistent directory,
+verify the chain, and witness those same receipts after container replacement.
+This change does not copy, reset, overwrite, or declare a new genesis for a live
+chain. Missing/ephemeral evidence storage is explicitly
+`RECEIPT_LEDGER_DURABILITY_UNVERIFIED`; an empty chain remains blocked. Action
+SQLite persistence alone is insufficient evidence of whole-system durability.
+
+The bounded publisher has no automatic rollback or settings-write path. A
+failed or ambiguous publication is a terminal failure/uncertainty, not authority
+activation. No failure may restore in-Space action self-signing. Any future
+recovery requires its own exact-source review and authorization; this repair
+does not grant one or mint a successful v2 release attestation.
 
 The frontier evaluator consumes the shared
 `@szl-holdings/contracts/decision-genome` schema from Platform. It does not
@@ -181,7 +269,7 @@ data/immune/         The REAL seeded receipt/evidence chain (ledger.jsonl, hukll
 LEDGER_FIELD_KEYS.md Frozen ledger field-key decision (why `sentra` stays an internal hash-input key)
 ```
 
-## Build & deploy (the live Hugging Face Space)
+## Build and canonical publication
 
 After `pnpm install --frozen-lockfile`, run `pnpm run build`. The historical
 `frontend/deploy/build-standalone.sh` command delegates to the same
@@ -194,11 +282,13 @@ cross-platform Node builder. It:
 `frontend/deploy/Dockerfile` (Node 24 Alpine, non-root UID 1000, port 7860) copies that
 `dist/` and runs `node immune-server.js`. See `frontend/deploy/README.md` for the exact commands.
 
-> **Provenance note.** This repository is now independently installable,
-> typecheckable, buildable, and smoke-testable. The deploy workflow always
-> rebuilds from the exact merged GitHub revision, replaces the Space runtime
-> whitelist, and verifies `/.well-known/szl-source.json` plus the live ledger
-> before it reports success. Shared Decision Genome concepts retain their
+> **Provenance note.** Installation, typecheck, build, and smoke tests establish
+> local software evidence only. Canonical publication rebuilds from the exact
+> merged GitHub revision and preserves the bounded publisher guards. Its
+> publication-boundary receipt does not establish v2 authority, persistent
+> restart safety, or current write readiness. Those require independently
+> witnessed immutable Hub bytes, source binding, ledger and durable-state
+> verification, and the external activation contract above. Shared Decision Genome concepts retain their
 > canonical Platform origin; the Apache-2.0 schema is mirrored locally so the
 > runtime no longer depends on a private workspace link. `/readyz` binds the
 > exact source and build revisions to the deployment-manifest digest, canonical

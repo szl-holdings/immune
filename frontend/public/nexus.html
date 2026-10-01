@@ -18,6 +18,7 @@
     button,input,select{font:inherit}
     button{min-height:44px;border:1px solid var(--line);background:#0a110e;color:var(--ink);padding:.65rem .8rem;cursor:pointer}
     button:hover,button:focus-visible{border-color:var(--phosphor);outline:none}
+    button:disabled{opacity:.55;cursor:not-allowed}.status{white-space:pre-wrap;overflow-wrap:anywhere}
     button[aria-pressed="true"]{background:var(--phosphor);color:#041006;border-color:var(--phosphor)}
     .skip{position:absolute;left:-9999px}.skip:focus{left:1rem;top:1rem;z-index:20;background:#fff;color:#000;padding:.75rem}
     .shell{max-width:1280px;margin:auto;padding:clamp(1rem,3vw,2rem)}
@@ -81,7 +82,7 @@
         <label class="control"><span>Chaos</span><input id="chaos" type="range" min="0" max="1" step="0.01" value="0.45"><output id="chaosOut">0.45</output></label>
         <label class="control"><span>Drive</span><input id="drive" type="range" min="0" max="1" step="0.01" value="0.92"><output id="driveOut">0.92</output></label>
         <div class="actions">
-          <button id="run" type="button">Execute + receipt</button>
+          <button id="run" type="button" disabled aria-describedby="status">Execute + receipt</button>
           <button id="verify" type="button">Replay verify</button>
         </div>
       </section>
@@ -95,11 +96,12 @@
     Source lineage: <a href="https://github.com/szl-holdings/nexus">szl-holdings/nexus</a> → IMMUNE internal execution plane. The standalone NEXUS repository remains the source/provenance lab until parity, deployment, restart persistence, and retirement receipts are complete. <a href="/">Return to IMMUNE</a>.
   </footer>
 </main>
-<script>
+<script type="module">
+import { canExecute, matchingReadiness } from './nexus-readiness.js';
 (() => {
   const PROGRAMS=[['lorenz','LRNZ'],['harmonic','HARM'],['vanderpol','VDP'],['duffing','DFFG'],['lotka','LTKA'],['nemo','NEMO']];
   const MODES=['IC','OP','HALT','REP'];
-  const state={program:'lorenz',mode:'OP',last:null,hash:null,requestId:null,lastInput:null};
+  const state={program:'lorenz',mode:'OP',last:null,hash:null,requestId:null,lastInput:null,writeReady:false,observedAt:0,busy:false};
   const $=id=>document.getElementById(id);
   const buttons=(root,items,current,onPick)=>{
     items.forEach(([id,label])=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.id=id;b.setAttribute('aria-pressed',String(id===current));b.onclick=()=>{[...root.children].forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.id===id)));onPick(id)};root.appendChild(b)})
@@ -121,8 +123,26 @@
   async function post(path,body){
     const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},body:JSON.stringify(body)});let j;try{j=await r.json()}catch{j={error:'NON_JSON_RESPONSE'}}if(!r.ok)throw Object.assign(new Error(j.detail||j.error||`HTTP ${r.status}`),{body:j,status:r.status});return j
   }
-  async function loadStatus(){try{const r=await fetch('/api/immune/nexus/status',{headers:{accept:'application/json','cache-control':'no-cache'}});const j=await r.json();$('status').innerHTML=`<span class="${j.state==='EXECUTABLE'?'ok':'warn'}">${j.state||'UNKNOWN'}</span><br>source ${String(j.source?.revision||'UNAVAILABLE').slice(0,12)}<br>write-ready ${j.immuneReadiness?.write_ready===true?'YES':'NO'}<br>effectors DISABLED`; }catch(e){$('status').innerHTML=`<span class="bad">UNAVAILABLE</span><br>${escapeHtml(e.message)}`}}
-  function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+  function updateRun(){ $('run').disabled=!canExecute(state,Date.now(),!document.hidden,navigator.onLine); }
+  let statusGeneration=0;
+  async function loadStatus(){
+    const generation=++statusGeneration;
+    state.writeReady=false;updateRun();
+    try{
+      const get=path=>fetch(path,{headers:{accept:'application/json'},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(5000)});
+      const [rr,nr]=await Promise.all([get('/readyz'),get('/api/immune/nexus/status')]);
+      const [ready,nexus]=await Promise.all([rr.json(),nr.json()]);
+      if(generation!==statusGeneration)return false;
+      state.writeReady=rr.ok&&nr.ok&&matchingReadiness(ready,nexus);
+      state.observedAt=Date.now();
+      $('status').className=`status ${state.writeReady?'ok':'warn'}`;
+      $('status').textContent=`${state.writeReady?'EXECUTABLE':'READ_ONLY'}\nsource ${String(ready.source?.revision||'UNAVAILABLE').slice(0,12)}\nwrite-ready ${state.writeReady?'YES':'NO'}\neffectors DISABLED${state.writeReady?'':'\n'+(ready.blockers?.join(', ')||'Readiness binding unavailable')}`;
+    }catch(e){
+      if(generation!==statusGeneration)return false;
+      state.writeReady=false;$('status').className='status bad';$('status').textContent=`UNAVAILABLE\n${e.message}`;
+    }
+    updateRun();return canExecute(state,Date.now(),!document.hidden,navigator.onLine);
+  }
   function clearCanvas(){const c=$('scope'),x=c.getContext('2d');x.fillStyle='#010302';x.fillRect(0,0,c.width,c.height);x.fillStyle='#8ca99a';x.font='22px ui-monospace';x.fillText('Awaiting governed NEXUS execution',32,50)}
   function draw(result){
     const c=$('scope'),x=c.getContext('2d'),w=c.width,h=c.height;x.fillStyle='rgba(1,3,2,.92)';x.fillRect(0,0,w,h);
@@ -130,9 +150,14 @@
     for(let r=0;r<rows;r++)for(let q=0;q<cols;q++){const I=Math.min(1,Number(field[r][q]||0)/2.4);if(I<.04)continue;x.fillStyle=`rgba(114,255,152,${.025+I*.16})`;x.fillRect(q*cw,r*rh,cw+.5,rh+.5)}
     const trail=result.trail||[];if(trail.length){const xs=trail.map(p=>p[0]),ys=trail.map(p=>p[1]),minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys),sx=(w-100)/(maxX-minX||1),sy=(h-100)/(maxY-minY||1);x.strokeStyle='#72ff98';x.lineWidth=2;x.beginPath();trail.forEach((p,i)=>{const px=50+(p[0]-minX)*sx,py=h-50-(p[1]-minY)*sy;i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();const p=trail.at(-1),px=50+(p[0]-minX)*sx,py=h-50-(p[1]-minY)*sy;x.fillStyle='#ffc45b';x.beginPath();x.arc(px,py,6,0,Math.PI*2);x.fill()}
   }
-  $('run').onclick=async()=>{const b=$('run');b.disabled=true;$('evidence').textContent='SENTRA admission → deterministic simulation → YAWAR receipt → HUKLLA evidence…';try{const req=payload(true);state.requestId=req.requestId;state.lastInput=Object.fromEntries(Object.entries(req).filter(([k])=>!['actor','requestId'].includes(k)));const j=await post('/api/immune/nexus/run',req);state.last=j.result.finalState;state.hash=j.result.outputHash;draw(j.result);$('hashRead').textContent=state.hash.slice(0,16)+'…';const lam=j.result.formulas?.lambda;$('lambdaRead').textContent=lam?.value==null?'UNAVAILABLE':`${Number(lam.value).toFixed(4)} · ${lam.status}`;$('receiptRead').textContent=j.governed?.receipt?.hash?.slice(0,16)+'…'||'UNAVAILABLE';$('evidence').textContent=JSON.stringify({requestId:j.requestId,replayed:j.replayed,execution:j.result.execution,source:j.result.source,outputHash:j.result.outputHash,invariants:j.result.invariants,receipt:j.governed?.receipt,huklla:j.governed?.huklla},null,2)}catch(e){$('evidence').textContent=JSON.stringify(e.body||{error:e.message},null,2);$('receiptRead').textContent='REFUSED'}finally{b.disabled=false;loadStatus()}};
+  $('run').onclick=async()=>{if(state.busy)return;const b=$('run');b.disabled=true;if(!await loadStatus()){$('evidence').textContent='Execution refused: fresh whole-system readiness is required.';return}state.busy=true;updateRun();$('evidence').textContent='SENTRA admission → deterministic simulation → YAWAR receipt → HUKLLA evidence…';try{const req=payload(true);state.requestId=req.requestId;state.lastInput=Object.fromEntries(Object.entries(req).filter(([k])=>!['actor','requestId'].includes(k)));const j=await post('/api/immune/nexus/run',req);state.last=j.result.finalState;state.hash=j.result.outputHash;draw(j.result);$('hashRead').textContent=state.hash.slice(0,16)+'…';const lam=j.result.formulas?.lambda;$('lambdaRead').textContent=lam?.value==null?'UNAVAILABLE':`${Number(lam.value).toFixed(4)} · ${lam.status}`;$('receiptRead').textContent=j.governed?.receipt?.hash?j.governed.receipt.hash.slice(0,16)+'…':'UNAVAILABLE';$('evidence').textContent=JSON.stringify({requestId:j.requestId,replayed:j.replayed,execution:j.result.execution,source:j.result.source,outputHash:j.result.outputHash,invariants:j.result.invariants,receipt:j.governed?.receipt,huklla:j.governed?.huklla},null,2)}catch(e){$('evidence').textContent=JSON.stringify(e.body||{error:e.message},null,2);$('receiptRead').textContent='REFUSED'}finally{state.busy=false;await loadStatus()}};
   $('verify').onclick=async()=>{if(!state.hash){$('evidence').textContent='Execute a run before replay verification.';return}const b=$('verify');b.disabled=true;try{const req={...(state.lastInput||payload(false)),expectedOutputHash:state.hash};const j=await post('/api/immune/nexus/verify',req);$('evidence').textContent=JSON.stringify(j,null,2);$('hashRead').textContent=(j.verified?'VERIFIED ':'FAILED ')+j.observedOutputHash.slice(0,12)}catch(e){$('evidence').textContent=JSON.stringify(e.body||{error:e.message},null,2)}finally{b.disabled=false}};
-  sync();clearCanvas();loadStatus();
+  function invalidate(){++statusGeneration;state.writeReady=false;state.observedAt=0;updateRun();}
+  window.addEventListener('offline',invalidate);
+  window.addEventListener('online',()=>loadStatus());
+  document.addEventListener('visibilitychange',()=>{invalidate();if(!document.hidden)loadStatus()});
+  setInterval(()=>{updateRun();if(!document.hidden&&!state.busy)loadStatus()},5000);
+  sync();clearCanvas();updateRun();loadStatus();
 })();
 </script>
 </body>

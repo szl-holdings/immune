@@ -20,7 +20,11 @@ type DeployManifest = {
     run_attempt: string | null;
     ref: string | null;
   };
-  destination: string | null;
+  destination: {
+    repo_id: string;
+    repo_type: "space";
+    mode: string;
+  };
   artifacts: Record<string, string>;
   mutable_paths?: string[];
   claims: {
@@ -196,6 +200,11 @@ function readManifest(): ManifestResult {
     typeof value.source.repository !== "string" ||
     !REVISION_PATTERN.test(String(value.source.revision)) ||
     !isRecord(value.workflow) ||
+    !isRecord(value.destination) ||
+    value.destination.repo_id !== "SZLHOLDINGS/immune" ||
+    value.destination.repo_type !== "space" ||
+    typeof value.destination.mode !== "string" ||
+    value.destination.mode.length === 0 ||
     !isRecord(value.artifacts) ||
     Object.keys(value.artifacts).length === 0 ||
     !isRecord(value.claims) ||
@@ -457,7 +466,7 @@ export function getSourceAttestation(): SourceAttestation {
     process.env.IMMUNE_EXPECTED_HF_REVISION,
   );
   const observedRevision = normalizeRevision(
-    process.env.HF_SPACE_REVISION ?? process.env.SPACE_REVISION,
+    process.env.HF_SPACE_REVISION,
   );
   const revisionMatch =
     expectedRevision !== null &&
@@ -486,7 +495,7 @@ export function getSourceAttestation(): SourceAttestation {
     source_repository: manifest?.source.repository ?? null,
     source_revision: manifest?.source.revision ?? null,
     source_ref: manifest?.source.ref ?? null,
-    destination: manifest?.destination ?? null,
+    destination: manifest?.destination.repo_id ?? null,
     workflow: manifest?.workflow ?? null,
     manifest_schema: manifest?.schema ?? null,
     artifact_integrity: integrity,
@@ -518,7 +527,10 @@ export function getSourceAttestation(): SourceAttestation {
     },
     deployment: {
       hf_space:
-        process.env.SPACE_ID ?? process.env.HF_SPACE ?? manifest?.destination ?? null,
+        process.env.SPACE_ID ??
+        process.env.HF_SPACE ??
+        manifest?.destination.repo_id ??
+        null,
       hf_revision: expectedRevision ?? observedRevision,
     },
   };

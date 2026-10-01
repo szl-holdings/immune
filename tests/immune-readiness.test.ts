@@ -22,13 +22,49 @@ import {
 
 const REVISION = "a".repeat(40);
 const DIGEST = "b".repeat(64);
+const DEPLOYMENT_REVISION = "c".repeat(40);
+
+function observedLedgerDurability(): NonNullable<ReadinessInputs["ledgerDurability"]> {
+  return {
+    required: true,
+    verified: true,
+    path: "/data/immune/evidence",
+    mount_path: "/data",
+    reason: "existing evidence files observed writable and fsync-capable; restart proof remains separate",
+  };
+}
+
+function authorityMetadata(enabled: boolean, durabilityVerified = enabled) {
+  return {
+    enabled,
+    version: "immune.action.v2" as const,
+    keyId: enabled ? "0123456789abcdef" : null,
+    trustEpoch: enabled ? "1".repeat(32) : null,
+    instanceId: enabled ? "2".repeat(32) : null,
+    audience: "hf-space:SZLHOLDINGS/immune" as const,
+    source: {
+      repository: "szl-holdings/immune" as const,
+      revision: REVISION,
+    },
+    deployment: {
+      space: "SZLHOLDINGS/immune" as const,
+      revision: DEPLOYMENT_REVISION,
+    },
+    durability: {
+      required: true,
+      verified: durabilityVerified,
+      path: "/data/immune",
+    },
+    externalOperator: true as const,
+  };
+}
 
 function inputs(): ReadinessInputs {
   return {
     source: {
       schema: "szl.source-attestation/v2",
-      state: "REVISION_UNAVAILABLE",
-      alignment: "REVISION_UNAVAILABLE",
+      state: "OBSERVED_RUNTIME_HASH_MATCH",
+      alignment: "OBSERVED_RUNTIME_HASH_MATCH",
       source_repository: "szl-holdings/immune",
       source_revision: REVISION,
       source_ref: "refs/heads/main",
@@ -36,24 +72,27 @@ function inputs(): ReadinessInputs {
       workflow: null,
       manifest_schema: "szl.hf-deploy-manifest/v2",
       artifact_integrity: { status: "MATCH", checked: 7, failures: [] },
-      expected_huggingface_revision: null,
-      observed_huggingface_revision: null,
+      expected_huggingface_revision: DEPLOYMENT_REVISION,
+      observed_huggingface_revision: DEPLOYMENT_REVISION,
       claims: {
         whole_repository_parity: false,
         runtime_whitelist_hash_match: true,
-        huggingface_revision_match: false,
+        huggingface_revision_match: true,
         github_actions_provenance_verified: false,
         cryptographic_release_receipt: false,
       },
       relation: "declared-github-source-with-runtime-hash-match",
       limits: [],
-      alignment_state: "REVISION_UNAVAILABLE",
+      alignment_state: "OBSERVED_RUNTIME_HASH_MATCH",
       source: {
         repository: "szl-holdings/immune",
         commit: REVISION,
         ref: "refs/heads/main",
       },
-      deployment: { hf_space: "SZLHOLDINGS/immune", hf_revision: null },
+      deployment: {
+        hf_space: "SZLHOLDINGS/immune",
+        hf_revision: DEPLOYMENT_REVISION,
+      },
     },
     build: {
       schema: "szl.build-info/v2",
@@ -85,6 +124,7 @@ function inputs(): ReadinessInputs {
       public_index_sha256: DIGEST,
     },
     ledger: { ok: true, count: 3, issues: [], firstBadSeq: null },
+    ledgerDurability: observedLedgerDurability(),
     authority: {
       mode: "SENTRA_REJECT",
       tripwire: null,
@@ -97,7 +137,7 @@ function inputs(): ReadinessInputs {
       validUntil: null,
       authorityReceiptCount: 0,
       authorityReceiptHash: null,
-      authority: { enabled: false, version: "immune.action.v1", keyId: null },
+      authority: authorityMetadata(false),
     },
   };
 }
@@ -111,6 +151,12 @@ test("verified runtime remains honestly read-only without an action trust root",
   assert.equal(readiness.authority_ready, false);
   assert.equal(readiness.write_ready, false);
   assert.deepEqual(readiness.blockers, ["ACTION_TRUST_ROOT_UNCONFIGURED"]);
+  assert.deepEqual(readiness.authority.durability, {
+    required: true,
+    verified: false,
+    path: "/data/immune",
+  });
+  assert.equal(readinessHttpResult(dependencies()).statusCode, 503);
   assert.equal(readiness.source.revision, REVISION);
   assert.equal(readiness.source.build_revision, REVISION);
   assert.equal(readiness.build.deployment_manifest_sha256, DIGEST);
@@ -129,6 +175,21 @@ test("source drift and receipt corruption independently fail runtime readiness",
   assert.equal(readiness.status, "NOT_READY");
   assert.equal(readiness.runtime_ready, false);
   assert.ok(readiness.blockers.includes("SOURCE_BUILD_BINDING_UNVERIFIED"));
+
+  const missingDeployment = inputs();
+  missingDeployment.source.state = "REVISION_UNAVAILABLE";
+  missingDeployment.source.alignment = "REVISION_UNAVAILABLE";
+  missingDeployment.source.alignment_state = "REVISION_UNAVAILABLE";
+  missingDeployment.source.expected_huggingface_revision = null;
+  missingDeployment.source.observed_huggingface_revision = null;
+  missingDeployment.source.claims.huggingface_revision_match = false;
+  missingDeployment.source.deployment.hf_revision = null;
+  readiness = buildReadinessContract(missingDeployment);
+  assert.equal(readiness.status, "NOT_READY");
+  assert.equal(readiness.runtime_ready, false);
+  assert.ok(
+    readiness.blockers.includes("DEPLOYMENT_REVISION_BINDING_UNVERIFIED"),
+  );
 
   const corrupt = inputs();
   corrupt.ledger = {
@@ -158,13 +219,13 @@ test("source drift and receipt corruption independently fail runtime readiness",
   assert.ok(readiness.blockers.includes("RUNTIME_ARTIFACT_INTEGRITY_UNVERIFIED"));
 });
 
-function dependencies(): ReadinessDependencies {
-  const base = inputs();
+function dependencies(base = inputs()): ReadinessDependencies {
   return {
     sourceAttestation: () => base.source,
     buildInfo: () => base.build,
     runtimeHashBinding: () => base.runtime,
     verifyLedger: () => base.ledger,
+    ledgerDurability: () => base.ledgerDurability!,
     getState: () => base.authority,
   };
 }
@@ -200,7 +261,7 @@ test("every readiness dependency failure returns stable NOT_READY JSON and HTTP 
   }
 });
 
-test("full READY requires both verified runtime and verified signed authority", () => {
+function writeReadyInputs(): ReadinessInputs {
   const ready = inputs();
   ready.authority = {
     ...ready.authority,
@@ -213,18 +274,241 @@ test("full READY requires both verified runtime and verified signed authority", 
     revision: 1,
     authorityReceiptCount: 1,
     authorityReceiptHash: DIGEST,
-    authority: {
-      enabled: true,
-      version: "immune.action.v1",
-      keyId: "0123456789abcdef",
-    },
+    authority: authorityMetadata(true),
   };
+  return ready;
+}
+
+test("full READY requires verified runtime, signed authority, and independently observed evidence durability", () => {
+  const ready = writeReadyInputs();
   const readiness = buildReadinessContract(ready);
   assert.equal(readiness.status, "READY");
   assert.equal(readiness.ready, true);
   assert.equal(readiness.authority_ready, true);
   assert.equal(readiness.write_ready, true);
   assert.deepEqual(readiness.blockers, []);
+  assert.deepEqual(readiness.authority.durability, {
+    required: true,
+    verified: true,
+    path: "/data/immune",
+  });
+  assert.equal(readinessHttpResult(dependencies(ready)).statusCode, 200);
+  assert.deepEqual(readiness.ledger.durability, observedLedgerDurability());
+});
+
+// These deliberately contradictory observations exercise the evaluator boundary;
+// they are not claims that the current live producers emit malformed snapshots.
+type ReadinessContradiction = {
+  name: string;
+  mutate: (candidate: ReadinessInputs) => void;
+  runtimeRemainsReady?: boolean;
+};
+
+function replaceObservation(target: object, field: string, value: unknown): void {
+  Object.assign(target, { [field]: value });
+}
+
+const readinessContradictions: ReadinessContradiction[] = [
+  { name: "MATCH with artifact failures", mutate: c => { c.source.artifact_integrity.failures = ["public/index.html: digest mismatch"]; } },
+  { name: "MATCH without artifact failures observation", mutate: c => { replaceObservation(c.source.artifact_integrity, "failures", undefined); } },
+  { name: "MATCH with non-array failures", mutate: c => { replaceObservation(c.source.artifact_integrity, "failures", ""); } },
+  { name: "MATCH with zero checked artifacts", mutate: c => { c.source.artifact_integrity.checked = 0; } },
+  { name: "MATCH with fractional checked artifacts", mutate: c => { c.source.artifact_integrity.checked = 0.5; } },
+  { name: "MATCH with infinite checked artifacts", mutate: c => { c.source.artifact_integrity.checked = Infinity; } },
+  { name: "MATCH with mismatched checked artifacts", mutate: c => { c.source.artifact_integrity.checked = 6; } },
+  { name: "MATCH with unverified build state", mutate: c => { c.build.state = "UNVERIFIED"; } },
+  { name: "MATCH with unverified nested build state", mutate: c => { c.build.build.state = "UNVERIFIED"; } },
+  { name: "MATCH with zero build artifacts", mutate: c => { c.build.artifact_count = 0; } },
+  { name: "MATCH with unsafe build artifact count", mutate: c => { c.build.artifact_count = Number.MAX_SAFE_INTEGER + 1; } },
+  { name: "MATCH with nested build count mismatch", mutate: c => { c.build.build.artifact_count = 6; } },
+  { name: "MATCH with nested build hash mismatch", mutate: c => { c.build.build.runtime_hash_match = false; } },
+  { name: "available runtime with mismatched state", mutate: c => { c.runtime.state = "MISMATCH"; } },
+  { name: "truthy non-boolean runtime availability", mutate: c => { replaceObservation(c.runtime, "available", "true"); } },
+  { name: "truthy non-boolean source hash match", mutate: c => { replaceObservation(c.source.claims, "runtime_whitelist_hash_match", "true"); } },
+  { name: "truthy non-boolean build hash match", mutate: c => { replaceObservation(c.build, "runtime_hash_match", 1); } },
+  { name: "array-coerced runtime hash", mutate: c => { replaceObservation(c.runtime, "immune_server_sha256", [DIGEST]); } },
+  { name: "ledger ok with a bad sequence", mutate: c => { c.ledger.firstBadSeq = 2; } },
+  { name: "ledger ok with verification issues", mutate: c => { c.ledger.issues = [{ seq: 2, kind: "bad_hash", detail: "digest mismatch" }]; } },
+  { name: "ledger ok without issues observation", mutate: c => { replaceObservation(c.ledger, "issues", undefined); } },
+  { name: "ledger ok with non-array issues", mutate: c => { replaceObservation(c.ledger, "issues", ""); } },
+  { name: "ledger ok without first bad sequence observation", mutate: c => { replaceObservation(c.ledger, "firstBadSeq", undefined); } },
+  { name: "ledger ok with fractional count", mutate: c => { c.ledger.count = 0.5; } },
+  { name: "ledger ok with infinite count", mutate: c => { c.ledger.count = Infinity; } },
+  { name: "ledger ok with unsafe count", mutate: c => { c.ledger.count = Number.MAX_SAFE_INTEGER + 1; } },
+  { name: "ledger ok with string count", mutate: c => { replaceObservation(c.ledger, "count", "3"); } },
+  { name: "truthy non-boolean ledger ok", mutate: c => { replaceObservation(c.ledger, "ok", 1); } },
+  { name: "authority without key id", mutate: c => { c.authority.authority.keyId = null; }, runtimeRemainsReady: true },
+  { name: "authority with malformed key id", mutate: c => { c.authority.authority.keyId = "0123456789abcdeG"; }, runtimeRemainsReady: true },
+  { name: "authority with array-coerced key id", mutate: c => { replaceObservation(c.authority.authority, "keyId", ["0123456789abcdef"]); }, runtimeRemainsReady: true },
+  { name: "authority without receipts", mutate: c => { c.authority.authorityReceiptCount = 0; }, runtimeRemainsReady: true },
+  { name: "authority with fractional receipt count", mutate: c => { c.authority.authorityReceiptCount = 0.5; }, runtimeRemainsReady: true },
+  { name: "authority with infinite receipt count", mutate: c => { c.authority.authorityReceiptCount = Infinity; }, runtimeRemainsReady: true },
+  { name: "authority with unsafe receipt count", mutate: c => { c.authority.authorityReceiptCount = Number.MAX_SAFE_INTEGER + 1; }, runtimeRemainsReady: true },
+  { name: "authority with string receipt count", mutate: c => { replaceObservation(c.authority, "authorityReceiptCount", "1"); }, runtimeRemainsReady: true },
+  { name: "authority without receipt hash", mutate: c => { c.authority.authorityReceiptHash = null; }, runtimeRemainsReady: true },
+  { name: "authority with malformed receipt hash", mutate: c => { c.authority.authorityReceiptHash = "b".repeat(63); }, runtimeRemainsReady: true },
+  { name: "authority with array-coerced receipt hash", mutate: c => { replaceObservation(c.authority, "authorityReceiptHash", [DIGEST]); }, runtimeRemainsReady: true },
+  { name: "authority with missing durability path", mutate: c => { replaceObservation(c.authority.authority.durability, "path", null); }, runtimeRemainsReady: true },
+  { name: "authority with ephemeral durability path", mutate: c => { c.authority.authority.durability.path = "/app/data/immune"; }, runtimeRemainsReady: true },
+  { name: "authority with aliased durability path", mutate: c => { c.authority.authority.durability.path = "/data/immune/../immune"; }, runtimeRemainsReady: true },
+  { name: "authority PASS with a tripwire", mutate: c => { c.authority.tripwire = "T01"; }, runtimeRemainsReady: true },
+  { name: "authority PASS without tripwire observation", mutate: c => { replaceObservation(c.authority, "tripwire", undefined); }, runtimeRemainsReady: true },
+  { name: "authority PASS without deadman observation", mutate: c => { replaceObservation(c.authority, "deadman", undefined); }, runtimeRemainsReady: true },
+  { name: "authority PASS with numeric deadman flag", mutate: c => { replaceObservation(c.authority, "deadman", 0); }, runtimeRemainsReady: true },
+  { name: "truthy non-boolean authority enabled", mutate: c => { replaceObservation(c.authority.authority, "enabled", "true"); }, runtimeRemainsReady: true },
+];
+
+for (const { name, mutate, runtimeRemainsReady = false } of readinessContradictions) {
+  test(`readiness rejects inconsistent ${name}`, () => {
+    const candidate = writeReadyInputs();
+    mutate(candidate);
+    const result = buildReadinessContract(candidate);
+    assert.equal(result.ready, false, name);
+    assert.equal(result.write_ready, false, name);
+    assert.equal(result.runtime_ready, runtimeRemainsReady, name);
+    assert.equal(result.read_ready, runtimeRemainsReady, name);
+    assert.equal(result.status, runtimeRemainsReady ? "READ_ONLY" : "NOT_READY", name);
+    assert.ok(result.blockers.length > 0, `${name}: explicit blocker is required`);
+    assert.equal(readinessHttpResult(dependencies(candidate)).statusCode, 503, name);
+  });
+}
+
+function assertDurabilityBlocksOnlyWrites(readiness: ReturnType<typeof buildReadinessContract>, label: string): void {
+  assert.equal(readiness.status, "READ_ONLY", label);
+  assert.equal(readiness.ready, false, label);
+  assert.equal(readiness.write_ready, false, label);
+  assert.equal(readiness.runtime_ready, true, label);
+  assert.equal(readiness.read_ready, true, label);
+  assert.equal(readiness.authority_ready, true, label);
+  assert.equal(readiness.ledger.ok, true, label);
+  assert.equal(readiness.ledger.count, 3, label);
+  assert.equal(readiness.source.revision, REVISION, label);
+  assert.equal(readiness.runtime.immune_server_sha256, DIGEST, label);
+  assert.deepEqual(readiness.blockers, ["RECEIPT_LEDGER_DURABILITY_UNVERIFIED"], label);
+}
+
+test("omitted evidence durability input or callback cannot inherit authority storage readiness", () => {
+  const candidate = writeReadyInputs();
+  delete candidate.ledgerDurability;
+  assertDurabilityBlocksOnlyWrites(buildReadinessContract(candidate), "missing input");
+
+  const missingObserver = dependencies(writeReadyInputs());
+  delete missingObserver.ledgerDurability;
+  const observed = readinessStatus(missingObserver);
+  assertDurabilityBlocksOnlyWrites(observed, "missing observer");
+  assert.equal(observed.ledger.durability.verified, false);
+  assert.equal(readinessHttpResult(missingObserver).statusCode, 503);
+});
+
+test("false and wrong-path evidence durability observations preserve read proof but deny writes", () => {
+  for (const [name, observation] of [
+    ["not verified", { ...observedLedgerDurability(), verified: false }],
+    ["ephemeral path", { ...observedLedgerDurability(), path: "/app/data/immune" }],
+    ["authority-only path", { ...observedLedgerDurability(), path: "/data/immune" }],
+    ["trailing slash", { ...observedLedgerDurability(), path: "/data/immune/evidence/" }],
+    ["noncanonical path", { ...observedLedgerDurability(), path: "/data/immune/../immune/evidence" }],
+  ] as const) {
+    const candidate = writeReadyInputs();
+    candidate.ledgerDurability = observation;
+    const result = buildReadinessContract(candidate);
+    assertDurabilityBlocksOnlyWrites(result, name);
+    assert.deepEqual(result.ledger.durability, observation, name);
+    const http = readinessHttpResult(dependencies(candidate));
+    assert.equal(http.statusCode, 503, name);
+    assert.deepEqual(http.body, result, name);
+  }
+});
+
+test("malformed evidence durability observations normalize unavailable without erasing independent proofs", () => {
+  const valid = observedLedgerDurability();
+  const cases: Array<[string, unknown]> = [
+    ["undefined", undefined], ["null", null], ["false", false],
+    ["true", true], ["numeric", 1], ["string", "verified"],
+    ["array", []], ["empty object", {}],
+    ["required false", { ...valid, required: false }],
+    ["required string", { ...valid, required: "true" }],
+    ["verified string", { ...valid, verified: "true" }],
+    ["verified number", { ...valid, verified: 1 }],
+    ["path empty", { ...valid, path: "" }],
+    ["path missing", { required: true, verified: true, mount_path: "/data", reason: "observed" }],
+    ["path not a string", { ...valid, path: ["/data/immune/evidence"] }],
+    ["mount missing", { required: true, verified: true, path: valid.path, reason: "observed" }],
+    ["mount wrong", { ...valid, mount_path: "/app" }],
+    ["mount trailing slash", { ...valid, mount_path: "/data/" }],
+    ["mount not a string", { ...valid, mount_path: ["/data"] }],
+    ["reason missing", { required: true, verified: true, path: valid.path, mount_path: "/data" }],
+    ["reason empty", { ...valid, reason: "" }],
+    ["reason not a string", { ...valid, reason: true }],
+    ["unexpected field", { ...valid, restart_verified: true }],
+  ];
+  for (const [name, observation] of cases) {
+    const candidate = writeReadyInputs();
+    candidate.ledgerDurability = observation as ReadinessInputs["ledgerDurability"];
+    const direct = buildReadinessContract(candidate);
+    assertDurabilityBlocksOnlyWrites(direct, name);
+    assert.equal(direct.ledger.durability.required, true, name);
+    assert.equal(direct.ledger.durability.verified, false, name);
+    assert.equal(direct.ledger.durability.path, "/data/immune/evidence", name);
+    assert.equal(direct.ledger.durability.mount_path, "/data", name);
+    assert.equal(typeof direct.ledger.durability.reason, "string", name);
+    assert.ok(direct.ledger.durability.reason.length > 0, name);
+    const http = readinessHttpResult(dependencies(candidate));
+    assert.equal(http.statusCode, 503, name);
+    assert.deepEqual(http.body, direct, name);
+  }
+});
+
+test("throwing evidence durability observer cannot erase verified runtime or grant write readiness", () => {
+  const candidate = dependencies(writeReadyInputs());
+  let observations = 0;
+  candidate.ledgerDurability = () => {
+    observations += 1;
+    throw new Error("volume observation unavailable");
+  };
+  const readiness = readinessStatus(candidate);
+  assertDurabilityBlocksOnlyWrites(readiness, "throwing observer");
+  assert.equal(readiness.ledger.durability.verified, false);
+  const http = readinessHttpResult(candidate);
+  assert.equal(http.statusCode, 503);
+  assert.deepEqual(http.body, readiness);
+  assert.equal(observations, 2);
+});
+
+test("configured authority without verified required durability is read-only and HTTP 503", () => {
+  for (const durability of [
+    { required: false, verified: true, path: "/data/immune" },
+    { required: true, verified: false, path: "/data/immune" },
+  ]) {
+    const candidate = inputs();
+    candidate.authority = {
+      ...candidate.authority,
+      mode: "PASS",
+      evidenceState: "VERIFIED",
+      reason: "signed action and receipt chain verified",
+      validUntil: "2026-08-01T19:00:00.000Z",
+      updatedAt: "2026-08-01T18:59:00.000Z",
+      requestId: "durability-authority-0001",
+      revision: 1,
+      authorityReceiptCount: 1,
+      authorityReceiptHash: DIGEST,
+      authority: {
+        ...authorityMetadata(true),
+        durability,
+      },
+    };
+    const readiness = buildReadinessContract(candidate);
+    assert.equal(readiness.status, "READ_ONLY");
+    assert.equal(readiness.ready, false);
+    assert.equal(readiness.runtime_ready, true);
+    assert.equal(readiness.read_ready, true);
+    assert.equal(readiness.authority_ready, false);
+    assert.equal(readiness.write_ready, false);
+    assert.ok(
+      readiness.blockers.includes("ACTION_AUTHORITY_DURABILITY_UNVERIFIED"),
+    );
+    assert.deepEqual(readiness.authority.durability, durability);
+    assert.equal(readinessHttpResult(dependencies(candidate)).statusCode, 503);
+  }
 });
 
 test("agent status is LIVE only when inference and full server write readiness pass", () => {
@@ -240,11 +524,7 @@ test("agent status is LIVE only when inference and full server write readiness p
     revision: 1,
     authorityReceiptCount: 1,
     authorityReceiptHash: DIGEST,
-    authority: {
-      enabled: true,
-      version: "immune.action.v1",
-      keyId: "0123456789abcdef",
-    },
+    authority: authorityMetadata(true),
   };
   blocked.runtime.state = "MISMATCH";
   blocked.runtime.available = false;
@@ -304,11 +584,7 @@ test("verified reject and deadman authority never become write-ready", () => {
       revision: 2,
       authorityReceiptCount: 2,
       authorityReceiptHash: DIGEST,
-      authority: {
-        enabled: true,
-        version: "immune.action.v1",
-        keyId: "0123456789abcdef",
-      },
+      authority: authorityMetadata(true),
     };
     const readiness = buildReadinessContract(guarded);
     assert.equal(readiness.status, "READ_ONLY", mode);
@@ -364,7 +640,7 @@ test("runtime binding hashes the executed bundle and selected static tree", {
         ref: "refs/heads/main",
       },
       workflow: { repository: null, run_id: null, run_attempt: null, ref: null },
-      destination: "SZLHOLDINGS/immune",
+      destination: { repo_id: "SZLHOLDINGS/immune", repo_type: "space", mode: "merge-main" },
       artifacts,
       claims: {
         github_actions_provenance_verified: false,

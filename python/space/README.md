@@ -12,7 +12,7 @@ license: apache-2.0
 
 # IMMUNE lattice (Channel B)
 
-Python kernel for IMMUNE. Same doctrine as Channel A (`SZLHOLDINGS/immune`):
+Read-only Python compatibility channel for IMMUNE. Same doctrine as Channel A (`SZLHOLDINGS/immune`):
 SENTRA admission, YAWAR SHA-256 receipts, HUKLLA tripwires, MESH 3-of-4, NEMO R1-R5,
 NEXUS counterfactual dynamics.
 
@@ -24,8 +24,22 @@ NEXUS counterfactual dynamics.
 Do not delete this Space. Status is CONNECTING / REACHABLE / UNAVAILABLE. Never fabricate LIVE or PASS.
 Lambda = Conjecture 1 (not a theorem). Energy is UNAVAILABLE unless a meter is actually read.
 
-Contract: `GET /api/immune/state` and `GET /api/immune/dashboard`.
-The Hub proxy intercepts `/readyz` on some runtimes; a 502 HTML there is not kernel death.
+Read contract: `GET /api/immune/state` and `GET /api/immune/dashboard`.
+`GET /healthz` reports process liveness, not action authority. `GET /readyz`
+returns 503 while authority or whole-system readiness is unavailable; a proxy
+failure or a non-JSON response must also leave governed controls disabled.
+
+Channel B does not possess a privileged action-signing key, seal genesis PASS,
+or renew action authority. Mode and reset requests return
+`EXTERNAL_ACTION_REQUIRED`; refused cycles may append local HUKLLA denial
+evidence, but cannot seal governed YAWAR receipts. Receipt signing is a separate
+local compatibility capability and must not be presented as action authority.
+
+The NEXUS engine and cross-language parity vectors remain available. Static UI,
+status, catalog, and deterministic replay verification are read-only uses;
+`POST /api/immune/nexus/run` requires fresh whole-system write readiness and
+returns 503 before computation on Channel B. External v2 actions belong to the
+canonical TypeScript runtime, not this process.
 
 ## Lorenz OP parity
 

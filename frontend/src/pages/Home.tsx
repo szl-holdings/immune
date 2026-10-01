@@ -1,9 +1,15 @@
 import { useEffect, useState } from "react";
-import { useGetImmuneState } from "@/lib/immune-api";
 import {
+  useGetImmuneReadiness,
+  useGetImmuneState,
+} from "@/lib/immune-api";
+import {
+  authorityVerificationLabel,
   deriveAuthorityView,
+  deriveWholeSystemReadinessView,
   firstPaintSystemStatus,
   initialAuthorityTransportState,
+  READINESS_MAX_AGE_MS,
   transitionAuthorityTransportState,
 } from "@/lib/authority-view";
 import { ControlsPanel } from "@/components/ControlsPanel";
@@ -25,6 +31,7 @@ export default function Home() {
   }, []);
 
   const stateQuery = useGetImmuneState();
+  const readinessQuery = useGetImmuneReadiness();
   const [authorityClock, setAuthorityClock] = useState(() => Date.now());
   const [transport, setTransport] = useState(initialAuthorityTransportState);
 
@@ -37,7 +44,10 @@ export default function Home() {
       setTransport((current) =>
         transitionAuthorityTransportState(current, now, visible, online),
       );
-      if (visible && online) void stateQuery.refetch();
+      if (visible && online) {
+        void stateQuery.refetch();
+        void readinessQuery.refetch();
+      }
     };
     document.addEventListener("visibilitychange", updateTransport);
     window.addEventListener("online", updateTransport);
@@ -48,7 +58,7 @@ export default function Home() {
       window.removeEventListener("online", updateTransport);
       window.removeEventListener("offline", updateTransport);
     };
-  }, [stateQuery.refetch]);
+  }, [readinessQuery.refetch, stateQuery.refetch]);
 
   useEffect(() => {
     const validUntilMs = Date.parse(stateQuery.data?.tripwireState?.validUntil ?? "");
@@ -58,8 +68,22 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [stateQuery.data?.tripwireState?.validUntil]);
 
+  useEffect(() => {
+    if (!readinessQuery.dataUpdatedAt) return;
+    const delay = Math.max(
+      0,
+      Math.min(
+        readinessQuery.dataUpdatedAt + READINESS_MAX_AGE_MS - Date.now() + 1,
+        2_147_483_647,
+      ),
+    );
+    const timer = window.setTimeout(() => setAuthorityClock(Date.now()), delay);
+    return () => window.clearTimeout(timer);
+  }, [readinessQuery.dataUpdatedAt]);
+
+  const observationClock = Math.max(authorityClock, Date.now());
   const authority = deriveAuthorityView(stateQuery.data, stateQuery.error, {
-    nowMs: authorityClock,
+    nowMs: observationClock,
     visible: transport.visible,
     online: transport.online,
     observedAtMs: stateQuery.dataUpdatedAt,
@@ -67,6 +91,35 @@ export default function Home() {
   });
   const { mode, deadman, evidenceState } = authority;
   const systemStatus = firstPaintSystemStatus(stateQuery.data, stateQuery.error, authority);
+  const authorityLabel = authorityVerificationLabel(
+    authority,
+    systemStatus === "CONNECTING",
+  );
+  const authorityLabelColor =
+    evidenceState !== "VERIFIED"
+      ? "text-warning"
+      : deadman
+        ? "text-destructive"
+        : mode === "PASS"
+          ? "text-primary"
+          : "text-warning";
+  const systemReadiness = deriveWholeSystemReadinessView(
+    readinessQuery.data,
+    stateQuery.data,
+    authority,
+    readinessQuery.error,
+    {
+      nowMs: observationClock,
+      observedAtMs: readinessQuery.dataUpdatedAt,
+      visible: transport.visible,
+      online: transport.online,
+    },
+  );
+  const readinessLabelColor = systemReadiness.writeReady
+    ? "text-primary"
+    : systemReadiness.state === "INVALID"
+      ? "text-destructive"
+      : "text-warning";
 
   const getStatusColor = () => {
     if (evidenceState === "FAILED") return "text-destructive shadow-destructive border-destructive/50";
@@ -138,7 +191,7 @@ export default function Home() {
 
           <div className="flex flex-col items-end gap-1 font-mono text-[10px] sm:text-xs uppercase tracking-widest">
             <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">System Status</span>
+              <span className="text-muted-foreground">Authority State</span>
               <span
                 className={`px-2 py-1 bg-black/50 border ${getStatusColor()} backdrop-blur`}
                 role="status"
@@ -148,9 +201,20 @@ export default function Home() {
               </span>
             </div>
             <div className="flex items-center gap-2 mt-2">
-              <Activity className={`w-3 h-3 ${evidenceState === "VERIFIED" ? "text-primary" : "text-warning"}`} />
-              <span className={evidenceState === "VERIFIED" ? "text-primary/70" : "text-warning"}>
-                {evidenceState === "VERIFIED" ? "Write-ready authority" : "Connecting"}
+              <Activity className={`w-3 h-3 ${authorityLabelColor}`} />
+              <span className={authorityLabelColor}>
+                {authorityLabel}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-muted-foreground">Whole System</span>
+              <span
+                className={readinessLabelColor}
+                data-testid="whole-system-readiness"
+                role="status"
+                aria-live="polite"
+              >
+                {systemReadiness.label}
               </span>
             </div>
           </div>
@@ -173,7 +237,10 @@ export default function Home() {
               tabIndex={0}
             >
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/50 to-transparent" />
-              <ControlsPanel authority={authority} />
+              <ControlsPanel
+                authority={authority}
+                systemReadiness={systemReadiness}
+              />
             </div>
           </motion.div>
 
@@ -219,7 +286,7 @@ export default function Home() {
         </motion.div>
       </section>
 
-      <LatticeCop authority={authority} />
+      <LatticeCop authority={authority} writeReady={systemReadiness.writeReady} />
 
       {/* ===================== VALUE + PROOF BOUNDARY ===================== */}
       <section className="relative z-20 border-y border-primary/10 bg-black/70" aria-labelledby="proof-boundary-title">
@@ -293,7 +360,7 @@ export default function Home() {
           {/* Marquee: a REAL governed agent on SZL's own inference */}
           <AgentConsole />
 
-          <InferConsole />
+          <InferConsole writeReady={systemReadiness.writeReady} />
 
           {/* The real math — verbatim from the canonical szl-holdings kernels */}
           <FoundationsPanel />

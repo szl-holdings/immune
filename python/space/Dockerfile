@@ -12,5 +12,5 @@ COPY nexus.html ./nexus.html
 COPY server.py ./server.py
 EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/api/immune/state', timeout=4)"
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/healthz', timeout=4)"
 CMD ["python", "-u", "server.py"]

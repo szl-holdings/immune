@@ -5,10 +5,14 @@ name: Converge NEXUS and Bench
 # Its push paths included the IMMUNE card (frontend/deploy/README.md), so a
 # card edit fired a deletion.
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Run only after a separately authorized v2 operator activation
+        required: true
+        type: string
 
 permissions:
-  actions: write
   contents: read
 
 # Per-asset write lock (plan D3); a deletion is never cancelled midway.
@@ -25,6 +29,10 @@ jobs:
       HF_HOME: /tmp/hf-home
       HF_HUB_DISABLE_TELEMETRY: "1"
     steps:
+      - name: Require separate convergence authorization
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: test "$CONFIRMATION" = "CONVERGE NEXUS AFTER V2 ACTIVATION"
       - name: Harden runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
@@ -46,16 +54,37 @@ jobs:
           test -n "${HF_TOKEN:-}" || { echo "::error::HF_TOKEN absent"; exit 2; }
           echo "::add-mask::$HF_TOKEN"
 
-      - name: Dispatch exact-current IMMUNE Space deployment
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
+      - name: Require existing external-v2 authority before provider changes
         run: |
-          set -euo pipefail
-          gh workflow run deploy-hf-space.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref "$GITHUB_REF_NAME"
-          echo "Dispatched Deploy IMMUNE Spaces for $GITHUB_SHA"
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const base = 'https://szlholdings-immune.hf.space';
+          const read = async (path) => {
+            const response = await fetch(base + path, {redirect: 'error', signal: AbortSignal.timeout(20000)});
+            assert.equal(response.status, 200, 'External v2 activation is required before convergence');
+            return response.json();
+          };
+          const ready = await read('/readyz');
+          const state = await read('/api/immune/state');
+          assert.equal(ready.status, 'READY');
+          for (const key of ['ready', 'write_ready', 'runtime_ready', 'authority_ready']) assert.equal(ready[key], true);
+          assert.deepEqual(ready.blockers, []);
+          assert.equal(ready.source.revision, process.env.GITHUB_SHA);
+          assert.equal(ready.source.alignment_state, 'OBSERVED_RUNTIME_HASH_MATCH');
+          assert.equal(state.authority.version, 'immune.action.v2');
+          assert.equal(state.authority.externalOperator, true);
+          assert.equal(state.authority.source.revision, process.env.GITHUB_SHA);
+          assert.equal(state.evidenceState, 'VERIFIED');
+          assert.equal(state.mode, 'PASS');
+          assert.equal(state.deadman, false);
+          assert.ok(Date.parse(state.validUntil) > Date.now());
+          assert.equal(ready.authority.version, 'immune.action.v2');
+          assert.equal(ready.authority.key_id, state.authority.keyId);
+          assert.equal(ready.authority.receipt_hash, state.authorityReceiptHash);
+          assert.deepEqual(ready.authority.deployment, state.authority.deployment);
+          assert.equal(ready.authority.durability.verified, true);
+          console.log('Current external-v2 activation observed; existing convergence checks remain required.');
+          NODE
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0

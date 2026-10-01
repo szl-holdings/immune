@@ -194,9 +194,13 @@ function compactReceiptPayload(
 
 router.get("/status", (_req: Request, res: Response) => {
   res.setHeader("Cache-Control", "no-store");
+  const immuneReadiness = readinessStatus();
+  const engine = nexusStatus();
   res.json({
-    ...nexusStatus(),
-    immuneReadiness: readinessStatus(),
+    ...engine,
+    engineState: engine.state,
+    state: immuneReadiness.write_ready ? "EXECUTABLE" : "READ_ONLY",
+    immuneReadiness,
   });
 });
 

@@ -1,0 +1,12 @@
+# Canonical repository text bytes are LF on every platform. This keeps signed
+# commits, workflow YAML, manifests, and source hashes stable on Windows.
+* text=auto eol=lf
+
+*.png -text
+*.jpg -text
+*.jpeg -text
+*.gif -text
+*.webp -text
+*.woff -text
+*.woff2 -text
+*.ico -text

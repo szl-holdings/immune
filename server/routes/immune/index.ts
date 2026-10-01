@@ -8,6 +8,7 @@ const RunImmuneCycleBody = z.object({
 import {
   AuthorityError,
   applySignedAction,
+  getAuthorityReceipt,
   getState,
   publicAuthoritySnapshot,
 } from "./state";
@@ -26,6 +27,31 @@ import inferRouter from "./infer";
 import nexusRouter from "./nexus";
 
 const router: IRouter = Router();
+const ReceiptLookupSchema = z.object({
+  requestId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/),
+  envelopeDigest: z.string().regex(/^[a-f0-9]{64}$/),
+}).strict();
+
+router.get("/state/receipts/:requestId", (req: Request, res: Response) => {
+  const parsed = ReceiptLookupSchema.safeParse({
+    requestId: req.params.requestId,
+    envelopeDigest: req.query.envelopeDigest,
+  });
+  if (!parsed.success) {
+    res.status(400).json({ error: "INVALID_RECEIPT_LOOKUP" });
+    return;
+  }
+  try {
+    const receipt = getAuthorityReceipt(parsed.data.requestId, parsed.data.envelopeDigest);
+    if (!receipt) {
+      res.status(404).json({ error: "RECEIPT_NOT_FOUND" });
+      return;
+    }
+    res.json({ receipt });
+  } catch {
+    res.status(503).json({ error: "AUTHORITY_UNAVAILABLE" });
+  }
+});
 
 router.get("/state", (_req: Request, res: Response) => {
   const s = getState();
