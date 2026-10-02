@@ -97,6 +97,26 @@ class KernelTests(unittest.TestCase):
         self.assertEqual(rt.snapshot()["mode"], "SENTRA_REJECT")
         self.assertEqual(rt.ledger_count(), 0)
         self.assertTrue(rt.verify_ledger()["ok"])
+        self.assertIn("RECEIPT_LEDGER_EMPTY", ready["blockers"])
+        self.assertNotIn("RECEIPT_LEDGER_INTEGRITY_FAILED", ready["blockers"])
+
+    def test_corrupt_persisted_ledger_is_not_reported_as_empty(self) -> None:
+        from immune.runtime import ImmuneRuntime
+
+        bundle_path = Path(self._tmp.name) / "runtime.json"
+        for body in ('{"ledger":', '{"ledger": {}, "evidence": []}'):
+            with self.subTest(body=body):
+                bundle_path.write_text(body, encoding="utf-8")
+                runtime = ImmuneRuntime()
+                runtime.boot()
+                report = runtime.verify_ledger()
+                ready = runtime.readiness()
+                self.assertFalse(report["ok"])
+                self.assertEqual(report["issues"][0]["kind"], "load_failure")
+                self.assertIn("RECEIPT_LEDGER_INTEGRITY_FAILED", ready["blockers"])
+                self.assertNotIn("RECEIPT_LEDGER_EMPTY", ready["blockers"])
+                self.assertFalse(ready["runtime_ready"])
+                self.assertFalse(ready["write_ready"])
 
     def test_cycle_and_local_mode_controls_fail_closed(self) -> None:
         from immune.runtime import get_runtime
@@ -133,8 +153,56 @@ class KernelTests(unittest.TestCase):
         self.assertFalse(ready["authority"]["demo_operator"])
         self.assertTrue(ready["authority"]["external_operator"])
         self.assertIsNone(ready["authority"]["key_id"])
+        self.assertIn("RECEIPT_LEDGER_EMPTY", ready["blockers"])
+        self.assertNotIn("RECEIPT_LEDGER_INTEGRITY_FAILED", ready["blockers"])
         if runtime.key_id is not None:
             self.assertNotIn(runtime.key_id, json.dumps(ready))
+
+    def test_malformed_persisted_bundles_are_integrity_failures(self) -> None:
+        import immune.runtime as runtime_mod
+
+        path = Path(self._tmp.name) / "runtime.json"
+        for raw in (
+            b'{"ledger":',
+            b'null',
+            b'[]',
+            b'{"ledger":{},"evidence":[]}',
+            b'{"ledger":null,"evidence":[]}',
+            b'{"ledger":[null],"evidence":[]}',
+            b'{"ledger":[{}],"evidence":[]}',
+            b'{}',
+        ):
+            with self.subTest(persisted_bytes=raw):
+                path.write_bytes(raw)
+                runtime_mod._RUNTIME = None
+                health_code, health = self._http_json("/healthz")
+                ready_code, ready = self._http_json("/readyz")
+                self.assertEqual(health_code, 200)
+                self.assertTrue(health["ok"])
+                self.assertEqual(ready_code, 503)
+                self.assertFalse(ready["ledger"]["ok"])
+                self.assertFalse(ready["runtime_ready"])
+                self.assertFalse(ready["write_ready"])
+                self.assertFalse(ready["authority"]["enabled"])
+                self.assertIn("RECEIPT_LEDGER_INTEGRITY_FAILED", ready["blockers"])
+                self.assertNotIn("RECEIPT_LEDGER_EMPTY", ready["blockers"])
+                with self.assertRaisesRegex(RuntimeError, "RUNTIME_BUNDLE_RESTORE_FAILED"):
+                    runtime_mod.get_runtime().run_cycle("immune:live-operator", "observe lattice heartbeat")
+                self.assertEqual(path.read_bytes(), raw)
+
+    def test_valid_persisted_empty_ledger_retains_bootstrap_diagnostic(self) -> None:
+        import immune.runtime as runtime_mod
+
+        path = Path(self._tmp.name) / "runtime.json"
+        path.write_text('{"ledger":[],"evidence":[]}', encoding="utf-8")
+        runtime_mod._RUNTIME = None
+        code, ready = self._http_json("/readyz")
+        self.assertEqual(code, 503)
+        self.assertTrue(ready["ledger"]["ok"])
+        self.assertEqual(ready["ledger"]["count"], 0)
+        self.assertIn("RECEIPT_LEDGER_EMPTY", ready["blockers"])
+        self.assertNotIn("RECEIPT_LEDGER_INTEGRITY_FAILED", ready["blockers"])
+        self.assertFalse(ready["write_ready"])
 
     def test_http_readiness_requires_authority_and_ledger_integrity(self) -> None:
         from immune.runtime import get_runtime
@@ -155,6 +223,8 @@ class KernelTests(unittest.TestCase):
         self.assertFalse(failed["runtime_ready"])
         self.assertFalse(failed["write_ready"])
         self.assertFalse(failed["ledger"]["ok"])
+        self.assertIn("RECEIPT_LEDGER_INTEGRITY_FAILED", failed["blockers"])
+        self.assertNotIn("RECEIPT_LEDGER_EMPTY", failed["blockers"])
 
     def test_http_contradictory_ready_flag_cannot_bypass_authority(self) -> None:
         class ContradictoryRuntime:

@@ -9,7 +9,7 @@ from typing import Any
 
 from .canonical import canonical_bytes, sha256_hex
 from .huklla import evaluate_tripwires
-from .persist import load_bundle, load_receipt_key, save_bundle
+from .persist import BundleLoadError, load_bundle, load_receipt_key, save_bundle
 from .sentra import sentra_inspect
 
 ACTION_ENVELOPE_VERSION = "immune.action.v2"
@@ -38,6 +38,7 @@ class ImmuneRuntime:
         }
         self.authority_receipts: list[dict[str, Any]] = []
         self.ledger: list[dict[str, Any]] = []
+        self.ledger_restore_error: str | None = None
         self.evidence: list[dict[str, Any]] = []
         self.booted = False
 
@@ -47,6 +48,8 @@ class ImmuneRuntime:
         return base64.b64encode(self.private_key.sign(blob)).decode("ascii")
 
     def _persist(self) -> None:
+        if self.ledger_restore_error is not None:
+            raise RuntimeError("RUNTIME_BUNDLE_RESTORE_FAILED")
         save_bundle(
             {
                 "keyId": self.key_id,
@@ -62,13 +65,24 @@ class ImmuneRuntime:
         if self.booted:
             return
         self.booted = True
-        restored = load_bundle()
+        try:
+            restored = load_bundle()
+        except BundleLoadError:
+            self.ledger_restore_error = "bundle_load_failed"
+            return
         if isinstance(restored, dict):
             # Historical public receipts remain readable across signer changes.
             # Never restore the legacy privileged state or authority receipts.
             ledger = restored.get("ledger")
             evidence = restored.get("evidence")
-            self.ledger = ledger if isinstance(ledger, list) else []
+            receipt_fields = {"seq", "ts", "prevHash", "hash", "payload"}
+            if not isinstance(ledger, list) or any(
+                not isinstance(entry, dict) or not receipt_fields.issubset(entry)
+                for entry in ledger
+            ):
+                self.ledger_restore_error = "ledger_shape_invalid"
+                return
+            self.ledger = ledger
             self.evidence = evidence if isinstance(evidence, list) else []
 
     def maybe_refresh(self) -> None:
@@ -118,8 +132,10 @@ class ImmuneRuntime:
             and not auth["deadman"]
         )
         blockers: list[str] = []
-        if not runtime_ready:
+        if not ledger["ok"]:
             blockers.append("RECEIPT_LEDGER_INTEGRITY_FAILED")
+        elif ledger["count"] == 0:
+            blockers.append("RECEIPT_LEDGER_EMPTY")
         if auth["evidenceState"] != "VERIFIED":
             blockers.append(f"ACTION_AUTHORITY_{auth['evidenceState']}")
         if auth["deadman"]:
@@ -171,6 +187,14 @@ class ImmuneRuntime:
         return receipt
 
     def verify_ledger(self) -> dict[str, Any]:
+        if self.ledger_restore_error is not None:
+            return {
+                "ok": False,
+                "count": len(self.ledger),
+                "issues": [{"seq": None, "kind": "load_failure", "reason": self.ledger_restore_error,
+                            "detail": "persisted receipt ledger could not be restored"}],
+                "firstBadSeq": None,
+            }
         issues: list[dict[str, Any]] = []
         prev_hash = "GENESIS"
         for i, entry in enumerate(self.ledger):

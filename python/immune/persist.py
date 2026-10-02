@@ -57,14 +57,25 @@ def load_receipt_key() -> dict[str, Any]:
         return absent
 
 
+class BundleLoadError(RuntimeError):
+    """Persisted state exists but cannot be loaded; never bootstrap over it."""
+
+
 def load_bundle() -> dict[str, Any] | None:
     try:
         path = data_dir() / "runtime.json"
-        if not path.exists():
-            return None
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
         return None
+    except (OSError, UnicodeError):
+        raise BundleLoadError("RUNTIME_BUNDLE_LOAD_FAILED") from None
+    try:
+        restored = json.loads(raw)
+    except (ValueError, RecursionError):
+        raise BundleLoadError("RUNTIME_BUNDLE_LOAD_FAILED") from None
+    if not isinstance(restored, dict):
+        raise BundleLoadError("RUNTIME_BUNDLE_SHAPE_INVALID")
+    return restored
 
 
 def save_bundle(bundle: dict[str, Any]) -> None:
