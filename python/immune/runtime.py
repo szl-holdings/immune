@@ -50,6 +50,8 @@ class ImmuneRuntime:
     def _persist(self) -> None:
         if self.ledger_restore_error is not None:
             raise RuntimeError("RUNTIME_BUNDLE_RESTORE_FAILED")
+        if not self.verify_ledger()["ok"]:
+            raise RuntimeError("RUNTIME_LEDGER_INTEGRITY_FAILED")
         save_bundle(
             {
                 "keyId": self.key_id,
