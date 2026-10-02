@@ -26,6 +26,33 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _valid_evidence(records: Any) -> bool:
+    if not isinstance(records, list):
+        return False
+    for record in records:
+        if (
+            not isinstance(record, dict)
+            or type(record.get("ts")) is not str
+            or type(record.get("cycleSeq")) is not int
+            or not 0 <= record["cycleSeq"] <= 2**53 - 1
+            or not isinstance(record.get("fired"), list)
+        ):
+            return False
+        for item in record["fired"]:
+            if (
+                not isinstance(item, dict)
+                or any(type(item.get(key)) is not str for key in ("id", "name", "severity"))
+                or type(item.get("fired")) is not bool
+                or ("detail" in item and type(item["detail"]) is not str)
+            ):
+                return False
+        try:
+            canonical_bytes(record)
+        except (ValueError, TypeError, RecursionError):
+            return False
+    return True
+
+
 class ImmuneRuntime:
     def __init__(self) -> None:
         keys = load_receipt_key()
@@ -88,8 +115,11 @@ class ImmuneRuntime:
             ):
                 self.ledger_restore_error = "ledger_shape_invalid"
                 return
+            if not _valid_evidence(evidence):
+                self.ledger_restore_error = "evidence_shape_invalid"
+                return
             self.ledger = ledger
-            self.evidence = evidence if isinstance(evidence, list) else []
+            self.evidence = evidence
 
     def maybe_refresh(self) -> None:
         self.boot()
@@ -205,18 +235,41 @@ class ImmuneRuntime:
         prev_hash = "GENESIS"
         for i, entry in enumerate(self.ledger):
             expected = i + 1
-            if entry.get("seq") != expected:
+            observed_seq = entry.get("seq")
+            issue_seq = observed_seq if type(observed_seq) is int else expected
+            if (
+                type(observed_seq) is not int
+                or not 1 <= observed_seq <= 2**53 - 1
+                or observed_seq != expected
+            ):
                 issues.append(
                     {
-                        "seq": entry.get("seq"),
+                        "seq": issue_seq,
                         "kind": "bad_sequence",
                         "detail": f"expected {expected}",
                     }
                 )
+            stored_hash = entry.get("hash")
+            if (
+                type(entry.get("ts")) is not str
+                or type(entry.get("prevHash")) is not str
+                or type(stored_hash) is not str
+                or type(entry.get("payload")) is not dict
+            ):
+                issues.append(
+                    {
+                        "seq": issue_seq,
+                        "kind": "bad_payload",
+                        "detail": "receipt fields have invalid types",
+                    }
+                )
+                if type(stored_hash) is str:
+                    prev_hash = stored_hash
+                continue
             if entry.get("prevHash") != prev_hash:
                 issues.append(
                     {
-                        "seq": entry.get("seq"),
+                        "seq": issue_seq,
                         "kind": "bad_prev",
                         "detail": f"expected {str(prev_hash)[:12]}",
                     }
@@ -235,22 +288,22 @@ class ImmuneRuntime:
             except (ValueError, TypeError, RecursionError):
                 issues.append(
                     {
-                        "seq": entry.get("seq"),
+                        "seq": issue_seq,
                         "kind": "bad_payload",
                         "detail": "receipt cannot be canonicalized",
                     }
                 )
-                prev_hash = entry.get("hash") or prev_hash
+                prev_hash = stored_hash
                 continue
-            if recomputed != entry.get("hash"):
+            if recomputed != stored_hash:
                 issues.append(
                     {
-                        "seq": entry.get("seq"),
+                        "seq": issue_seq,
                         "kind": "bad_hash",
-                        "detail": f"stored {str(entry.get('hash'))[:12]} recomputed {recomputed[:12]}",
+                        "detail": f"stored {stored_hash[:12]} recomputed {recomputed[:12]}",
                     }
                 )
-            prev_hash = entry.get("hash") or prev_hash
+            prev_hash = stored_hash
         return {
             "ok": len(issues) == 0,
             "count": len(self.ledger),

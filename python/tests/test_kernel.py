@@ -301,6 +301,92 @@ class KernelTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(), raw)
         self.assertEqual(runtime_mod.get_runtime().evidence_latest(), [])
 
+    def test_self_hashed_receipts_with_wrong_field_types_fail_integrity(self) -> None:
+        import immune.runtime as runtime_mod
+        from immune.canonical import hash_canonical
+
+        path = Path(self._tmp.name) / "runtime.json"
+        for field, value in (
+            ("seq", True),
+            ("ts", True),
+            ("ts", None),
+            ("payload", None),
+            ("payload", []),
+        ):
+            with self.subTest(field=field, value=value):
+                receipt = {
+                    "seq": 1,
+                    "ts": "2026-10-02T00:00:00Z",
+                    "prevHash": "GENESIS",
+                    "payload": {"synthetic": True},
+                }
+                receipt[field] = value
+                receipt["hash"] = hash_canonical(receipt)[0]
+                raw = json.dumps({"ledger": [receipt], "evidence": []}).encode()
+                path.write_bytes(raw)
+                runtime_mod._RUNTIME = None
+                ready_code, ready = self._http_json("/readyz")
+                self.assertEqual(ready_code, 503)
+                self.assertFalse(ready["ledger"]["ok"])
+                self.assertFalse(ready["runtime_ready"])
+                self.assertIn("RECEIPT_LEDGER_INTEGRITY_FAILED", ready["blockers"])
+                cycle_code, cycle = self._http_json(
+                    "/api/immune/cycle", method="POST",
+                    body={"actor": "immune:test", "intent": "observe synthetic ledger"},
+                )
+                self.assertEqual(cycle_code, 503)
+                self.assertEqual(cycle["error"], "RUNTIME_LEDGER_INTEGRITY_FAILED")
+                self.assertEqual(path.read_bytes(), raw)
+                self.assertEqual(runtime_mod.get_runtime().evidence_latest(), [])
+
+    def test_malformed_persisted_evidence_is_preserved_and_unavailable(self) -> None:
+        import immune.runtime as runtime_mod
+
+        path = Path(self._tmp.name) / "runtime.json"
+        for raw in (
+            b'{"ledger":[],"evidence":{}}',
+            b'{"ledger":[],"evidence":null}',
+            b'{"ledger":[],"evidence":[null]}',
+            b'{"ledger":[],"evidence":[NaN]}',
+            b'{"ledger":[],"evidence":[{"ts":null,"cycleSeq":0,"fired":[]}]}',
+            b'{"ledger":[],"evidence":[{"ts":"2026-10-02T00:00:00Z",'
+            b'"cycleSeq":0,"fired":[null]}]}',
+            b'{"ledger":[]}',
+        ):
+            with self.subTest(raw=raw):
+                path.write_bytes(raw)
+                runtime_mod._RUNTIME = None
+                code, body = self._http_json(
+                    "/api/immune/cycle", method="POST",
+                    body={"actor": "immune:test", "intent": "observe synthetic ledger"},
+                )
+                self.assertEqual(code, 503)
+                self.assertEqual(body["error"], "RUNTIME_BUNDLE_RESTORE_FAILED")
+                self.assertEqual(path.read_bytes(), raw)
+                runtime = runtime_mod.get_runtime()
+                self.assertEqual(runtime.evidence_latest(), [])
+                self.assertEqual(runtime.verify_ledger()["issues"][0]["kind"], "load_failure")
+
+    def test_valid_refused_cycle_evidence_survives_reopen(self) -> None:
+        import immune.runtime as runtime_mod
+
+        code, cycle = self._http_json(
+            "/api/immune/cycle", method="POST",
+            body={"actor": "immune:test", "intent": "observe synthetic ledger"},
+        )
+        self.assertEqual(code, 200)
+        self.assertFalse(cycle["pass"])
+        self.assertIsNone(cycle["receipt"])
+        path = Path(self._tmp.name) / "runtime.json"
+        raw = path.read_bytes()
+        runtime_mod._RUNTIME = None
+        ready_code, ready = self._http_json("/readyz")
+        self.assertEqual(ready_code, 503)
+        self.assertTrue(ready["ledger"]["ok"])
+        self.assertIn("RECEIPT_LEDGER_EMPTY", ready["blockers"])
+        self.assertEqual(len(runtime_mod.get_runtime().evidence_latest()), 1)
+        self.assertEqual(path.read_bytes(), raw)
+
     def test_duplicate_json_keys_in_persisted_bundle_fail_closed(self) -> None:
         import immune.runtime as runtime_mod
 
