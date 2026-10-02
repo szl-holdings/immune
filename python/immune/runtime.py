@@ -9,7 +9,7 @@ from typing import Any
 
 from .canonical import canonical_bytes, sha256_hex
 from .huklla import evaluate_tripwires
-from .persist import load_bundle, load_receipt_key, save_bundle
+from .persist import BundleLoadError, load_bundle, load_receipt_key, save_bundle
 from .sentra import sentra_inspect
 
 ACTION_ENVELOPE_VERSION = "immune.action.v2"
@@ -39,6 +39,7 @@ class ImmuneRuntime:
         self.authority_receipts: list[dict[str, Any]] = []
         self.ledger: list[dict[str, Any]] = []
         self.evidence: list[dict[str, Any]] = []
+        self.ledger_load_failed = False
         self.booted = False
 
     def _sign(self, blob: bytes) -> str:
@@ -62,13 +63,20 @@ class ImmuneRuntime:
         if self.booted:
             return
         self.booted = True
-        restored = load_bundle()
+        try:
+            restored = load_bundle()
+        except BundleLoadError:
+            self.ledger_load_failed = True
+            return
         if isinstance(restored, dict):
             # Historical public receipts remain readable across signer changes.
             # Never restore the legacy privileged state or authority receipts.
             ledger = restored.get("ledger")
             evidence = restored.get("evidence")
-            self.ledger = ledger if isinstance(ledger, list) else []
+            if not isinstance(ledger, list):
+                self.ledger_load_failed = True
+                return
+            self.ledger = ledger
             self.evidence = evidence if isinstance(evidence, list) else []
 
     def maybe_refresh(self) -> None:
@@ -173,6 +181,19 @@ class ImmuneRuntime:
         return receipt
 
     def verify_ledger(self) -> dict[str, Any]:
+        if self.ledger_load_failed:
+            return {
+                "ok": False,
+                "count": 0,
+                "issues": [
+                    {
+                        "seq": None,
+                        "kind": "load_failure",
+                        "detail": "persisted receipt ledger is unreadable or malformed",
+                    }
+                ],
+                "firstBadSeq": None,
+            }
         issues: list[dict[str, Any]] = []
         prev_hash = "GENESIS"
         for i, entry in enumerate(self.ledger):
