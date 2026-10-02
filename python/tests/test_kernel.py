@@ -204,6 +204,32 @@ class KernelTests(unittest.TestCase):
         self.assertNotIn("RECEIPT_LEDGER_INTEGRITY_FAILED", ready["blockers"])
         self.assertFalse(ready["write_ready"])
 
+    def test_hash_corrupt_persisted_ledger_survives_refused_cycle(self) -> None:
+        import immune.runtime as runtime_mod
+
+        path = Path(self._tmp.name) / "runtime.json"
+        raw = (
+            b'{"ledger":[{"seq":1,"ts":"2026-10-02T00:00:00Z",'
+            b'"prevHash":"GENESIS","hash":"' + b"0" * 64
+            + b'","payload":{"synthetic":true}}],"evidence":[]}'
+        )
+        path.write_bytes(raw)
+        runtime_mod._RUNTIME = None
+
+        code, ready = self._http_json("/readyz")
+        self.assertEqual(code, 503)
+        self.assertFalse(ready["ledger"]["ok"])
+        self.assertEqual(ready["ledger"]["issues"][0]["kind"], "bad_hash")
+        self.assertIn("RECEIPT_LEDGER_INTEGRITY_FAILED", ready["blockers"])
+        self.assertIn("ACTION_AUTHORITY_UNAVAILABLE", ready["blockers"])
+        self.assertFalse(ready["write_ready"])
+
+        runtime = runtime_mod.get_runtime()
+        with self.assertRaisesRegex(RuntimeError, "RUNTIME_LEDGER_INTEGRITY_FAILED"):
+            runtime.run_cycle("immune:live-operator", "observe lattice heartbeat")
+        self.assertEqual(path.read_bytes(), raw)
+        self.assertEqual(runtime.ledger_count(), 1)
+
     def test_http_readiness_requires_authority_and_ledger_integrity(self) -> None:
         from immune.runtime import get_runtime
 
