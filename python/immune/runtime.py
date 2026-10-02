@@ -26,18 +26,22 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _valid_evidence(records: Any) -> bool:
+def _valid_evidence(records: Any, ledger_count: int) -> bool:
     if not isinstance(records, list):
         return False
+    previous_seq = 0
     for record in records:
         if (
             not isinstance(record, dict)
             or type(record.get("ts")) is not str
             or type(record.get("cycleSeq")) is not int
             or not 0 <= record["cycleSeq"] <= 2**53 - 1
+            or record["cycleSeq"] > ledger_count
+            or record["cycleSeq"] < previous_seq
             or not isinstance(record.get("fired"), list)
         ):
             return False
+        previous_seq = record["cycleSeq"]
         for item in record["fired"]:
             if (
                 not isinstance(item, dict)
@@ -115,7 +119,7 @@ class ImmuneRuntime:
             ):
                 self.ledger_restore_error = "ledger_shape_invalid"
                 return
-            if not _valid_evidence(evidence):
+            if not _valid_evidence(evidence, len(ledger)):
                 self.ledger_restore_error = "evidence_shape_invalid"
                 return
             self.ledger = ledger

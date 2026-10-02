@@ -76,8 +76,8 @@ cycle cannot be persisted.
 Python cycle endpoints return HTTP 503 on restored-ledger integrity failure
 before recording HUKLLA evidence in memory. Noncanonical receipt fields fail
 ledger verification, and persisted JSON with duplicate keys fails closed as an
-unreadable bundle. Missing or malformed persisted HUKLLA evidence is likewise
-retained for repair rather than silently replaced by an empty list.
+unreadable bundle. Missing, malformed, or impossible-sequence persisted HUKLLA
+evidence is likewise retained for repair rather than silently replaced.
 
 ```
 python/

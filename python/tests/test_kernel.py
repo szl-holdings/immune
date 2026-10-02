@@ -387,6 +387,59 @@ class KernelTests(unittest.TestCase):
         self.assertEqual(len(runtime_mod.get_runtime().evidence_latest()), 1)
         self.assertEqual(path.read_bytes(), raw)
 
+    def test_impossible_or_decreasing_evidence_sequence_preserves_bundle(self) -> None:
+        import immune.runtime as runtime_mod
+        from immune.canonical import hash_canonical
+
+        receipt = {
+            "seq": 1,
+            "ts": "2026-10-02T00:00:00Z",
+            "prevHash": "GENESIS",
+            "payload": {"synthetic": True},
+        }
+        receipt["hash"] = hash_canonical(receipt)[0]
+        evidence = {"ts": "2026-10-02T00:00:01Z", "cycleSeq": 0, "fired": []}
+        bundles = (
+            {"ledger": [], "evidence": [{**evidence, "cycleSeq": 42}]},
+            {"ledger": [receipt], "evidence": [
+                {**evidence, "cycleSeq": 1}, evidence,
+            ]},
+        )
+        path = Path(self._tmp.name) / "runtime.json"
+        for bundle in bundles:
+            with self.subTest(bundle=bundle):
+                raw = json.dumps(bundle).encode()
+                path.write_bytes(raw)
+                runtime_mod._RUNTIME = None
+                code, body = self._http_json(
+                    "/api/immune/cycle", method="POST",
+                    body={"actor": "immune:test", "intent": "observe synthetic ledger"},
+                )
+                self.assertEqual(code, 503)
+                self.assertEqual(body["error"], "RUNTIME_BUNDLE_RESTORE_FAILED")
+                self.assertEqual(path.read_bytes(), raw)
+                self.assertEqual(runtime_mod.get_runtime().evidence_latest(), [])
+
+    def test_repeated_refused_evidence_sequence_zero_survives_reopen(self) -> None:
+        import immune.runtime as runtime_mod
+
+        for _ in range(2):
+            code, cycle = self._http_json(
+                "/api/immune/cycle", method="POST",
+                body={"actor": "immune:test", "intent": "observe synthetic ledger"},
+            )
+            self.assertEqual(code, 200)
+            self.assertFalse(cycle["pass"])
+        path = Path(self._tmp.name) / "runtime.json"
+        raw = path.read_bytes()
+        runtime_mod._RUNTIME = None
+        ready_code, ready = self._http_json("/readyz")
+        self.assertEqual(ready_code, 503)
+        self.assertTrue(ready["ledger"]["ok"])
+        records = runtime_mod.get_runtime().evidence_latest()
+        self.assertEqual([item["cycleSeq"] for item in records], [0, 0])
+        self.assertEqual(path.read_bytes(), raw)
+
     def test_duplicate_json_keys_in_persisted_bundle_fail_closed(self) -> None:
         import immune.runtime as runtime_mod
 
