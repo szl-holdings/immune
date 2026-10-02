@@ -218,19 +218,30 @@ class ImmuneRuntime:
                     {
                         "seq": entry.get("seq"),
                         "kind": "bad_prev",
-                        "detail": f"expected {prev_hash[:12]}",
+                        "detail": f"expected {str(prev_hash)[:12]}",
                     }
                 )
-            recomputed = sha256_hex(
-                canonical_bytes(
+            try:
+                recomputed = sha256_hex(
+                    canonical_bytes(
+                        {
+                            "seq": entry["seq"],
+                            "ts": entry["ts"],
+                            "prevHash": entry["prevHash"],
+                            "payload": entry["payload"],
+                        }
+                    )
+                )
+            except (ValueError, TypeError, RecursionError):
+                issues.append(
                     {
-                        "seq": entry["seq"],
-                        "ts": entry["ts"],
-                        "prevHash": entry["prevHash"],
-                        "payload": entry["payload"],
+                        "seq": entry.get("seq"),
+                        "kind": "bad_payload",
+                        "detail": "receipt cannot be canonicalized",
                     }
                 )
-            )
+                prev_hash = entry.get("hash") or prev_hash
+                continue
             if recomputed != entry.get("hash"):
                 issues.append(
                     {

@@ -252,6 +252,55 @@ class KernelTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(), raw)
         self.assertEqual(runtime_mod.get_runtime().evidence_latest(), [])
 
+    def test_legacy_cycle_routes_return_503_for_corrupt_ledger(self) -> None:
+        import immune.runtime as runtime_mod
+
+        path = Path(self._tmp.name) / "runtime.json"
+        raw = (
+            b'{"ledger":[{"seq":1,"ts":"2026-10-02T00:00:00Z",'
+            b'"prevHash":"GENESIS","hash":"' + b"0" * 64
+            + b'","payload":{"synthetic":true}}],"evidence":[]}'
+        )
+        for route, request in (
+            ("/api/sentra", {"signal": "observe synthetic ledger"}),
+            ("/api/yawar", {"event": "observe synthetic ledger"}),
+            ("/api/bind", {"engine": "synthetic"}),
+            ("/api/canary", {"id": "synthetic"}),
+        ):
+            with self.subTest(route=route):
+                path.write_bytes(raw)
+                runtime_mod._RUNTIME = None
+                code, body = self._http_json(route, method="POST", body=request)
+                self.assertEqual(code, 503)
+                self.assertEqual(body["error"], "RUNTIME_LEDGER_INTEGRITY_FAILED")
+                self.assertFalse(body["write_ready"])
+                self.assertEqual(path.read_bytes(), raw)
+                self.assertEqual(runtime_mod.get_runtime().evidence_latest(), [])
+
+    def test_noncanonical_persisted_receipt_returns_503_without_mutation(self) -> None:
+        import immune.runtime as runtime_mod
+
+        path = Path(self._tmp.name) / "runtime.json"
+        raw = (
+            b'{"ledger":[{"seq":1,"ts":1.5,"prevHash":"GENESIS",'
+            b'"hash":"' + b"0" * 64 + b'","payload":{}}],"evidence":[]}'
+        )
+        path.write_bytes(raw)
+        runtime_mod._RUNTIME = None
+        code, body = self._http_json(
+            "/api/immune/cycle", method="POST",
+            body={"actor": "immune:test", "intent": "observe synthetic ledger"},
+        )
+        self.assertEqual(code, 503)
+        self.assertEqual(body["error"], "RUNTIME_LEDGER_INTEGRITY_FAILED")
+        self.assertFalse(body["write_ready"])
+        ready_code, ready = self._http_json("/readyz")
+        self.assertEqual(ready_code, 503)
+        self.assertEqual(ready["ledger"]["issues"][0]["kind"], "bad_payload")
+        self.assertIn("RECEIPT_LEDGER_INTEGRITY_FAILED", ready["blockers"])
+        self.assertEqual(path.read_bytes(), raw)
+        self.assertEqual(runtime_mod.get_runtime().evidence_latest(), [])
+
     def test_duplicate_json_keys_in_persisted_bundle_fail_closed(self) -> None:
         import immune.runtime as runtime_mod
 
