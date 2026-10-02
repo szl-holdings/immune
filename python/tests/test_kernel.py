@@ -100,6 +100,24 @@ class KernelTests(unittest.TestCase):
         self.assertIn("RECEIPT_LEDGER_EMPTY", ready["blockers"])
         self.assertNotIn("RECEIPT_LEDGER_INTEGRITY_FAILED", ready["blockers"])
 
+    def test_corrupt_persisted_ledger_is_not_reported_as_empty(self) -> None:
+        from immune.runtime import ImmuneRuntime
+
+        bundle_path = Path(self._tmp.name) / "runtime.json"
+        for body in ('{"ledger":', '{"ledger": {}, "evidence": []}'):
+            with self.subTest(body=body):
+                bundle_path.write_text(body, encoding="utf-8")
+                runtime = ImmuneRuntime()
+                runtime.boot()
+                report = runtime.verify_ledger()
+                ready = runtime.readiness()
+                self.assertFalse(report["ok"])
+                self.assertEqual(report["issues"][0]["kind"], "load_failure")
+                self.assertIn("RECEIPT_LEDGER_INTEGRITY_FAILED", ready["blockers"])
+                self.assertNotIn("RECEIPT_LEDGER_EMPTY", ready["blockers"])
+                self.assertFalse(ready["runtime_ready"])
+                self.assertFalse(ready["write_ready"])
+
     def test_cycle_and_local_mode_controls_fail_closed(self) -> None:
         from immune.runtime import get_runtime
 
