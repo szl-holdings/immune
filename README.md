@@ -73,6 +73,9 @@ Unreadable or malformed persisted runtime bundles also fail ledger integrity;
 they are retained for repair and cannot be overwritten by refused-cycle persistence.
 Hash-corrupt persisted ledgers likewise retain their exact bytes when a refused
 cycle cannot be persisted.
+The Python cycle endpoint returns HTTP 503 on restored-ledger integrity failure
+before recording HUKLLA evidence in memory; persisted JSON with duplicate keys
+also fails closed as an unreadable bundle.
 
 ```
 python/

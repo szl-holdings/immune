@@ -21,7 +21,7 @@ from .nexus import (
     verify_nexus_run,
 )
 from .organs import dashboard, local_organ_mesh
-from .runtime import get_runtime
+from .runtime import RuntimeIntegrityError, get_runtime
 from .second_brain import search_brain
 from .sentra import sentra_inspect
 
@@ -380,7 +380,12 @@ class Handler(BaseHTTPRequestHandler):
             actor = str(data.get("actor") or "immune:compatibility-client")
             intent = str(data.get("intent") or "")
             extra = data.get("agent") if isinstance(data.get("agent"), dict) else None
-            self._json(200, runtime.run_cycle(actor, intent, extra))
+            try:
+                result = runtime.run_cycle(actor, intent, extra)
+            except RuntimeIntegrityError as error:
+                self._json(503, {"error": str(error), "write_ready": False})
+                return
+            self._json(200, result)
             return
         if path in ("/api/immune/reset", "/api/immune/mode"):
             self._json(

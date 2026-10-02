@@ -230,6 +230,51 @@ class KernelTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(), raw)
         self.assertEqual(runtime.ledger_count(), 1)
 
+    def test_http_cycle_corrupt_ledger_returns_503_without_phantom_evidence(self) -> None:
+        import immune.runtime as runtime_mod
+
+        path = Path(self._tmp.name) / "runtime.json"
+        raw = (
+            b'{"ledger":[{"seq":1,"ts":"2026-10-02T00:00:00Z",'
+            b'"prevHash":"GENESIS","hash":"' + b"0" * 64
+            + b'","payload":{"synthetic":true}}],"evidence":[]}'
+        )
+        path.write_bytes(raw)
+        runtime_mod._RUNTIME = None
+
+        code, body = self._http_json(
+            "/api/immune/cycle", method="POST",
+            body={"actor": "immune:test", "intent": "observe synthetic ledger"},
+        )
+        self.assertEqual(code, 503)
+        self.assertEqual(body["error"], "RUNTIME_LEDGER_INTEGRITY_FAILED")
+        self.assertFalse(body["write_ready"])
+        self.assertEqual(path.read_bytes(), raw)
+        self.assertEqual(runtime_mod.get_runtime().evidence_latest(), [])
+
+    def test_duplicate_json_keys_in_persisted_bundle_fail_closed(self) -> None:
+        import immune.runtime as runtime_mod
+
+        path = Path(self._tmp.name) / "runtime.json"
+        for raw in (
+            b'{"ledger":{},"ledger":[],"evidence":[]}',
+            b'{"ledger":[],"evidence":[],"extra":{"key":1,"key":2}}',
+        ):
+            with self.subTest(raw=raw):
+                path.write_bytes(raw)
+                runtime_mod._RUNTIME = None
+                code, body = self._http_json(
+                    "/api/immune/cycle", method="POST",
+                    body={"actor": "immune:test", "intent": "observe synthetic ledger"},
+                )
+                self.assertEqual(code, 503)
+                self.assertEqual(body["error"], "RUNTIME_BUNDLE_RESTORE_FAILED")
+                self.assertFalse(body["write_ready"])
+                self.assertEqual(path.read_bytes(), raw)
+                runtime = runtime_mod.get_runtime()
+                self.assertEqual(runtime.evidence_latest(), [])
+                self.assertEqual(runtime.verify_ledger()["issues"][0]["kind"], "load_failure")
+
     def test_http_readiness_requires_authority_and_ledger_integrity(self) -> None:
         from immune.runtime import get_runtime
 

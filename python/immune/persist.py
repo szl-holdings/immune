@@ -61,6 +61,16 @@ class BundleLoadError(RuntimeError):
     """Persisted state exists but cannot be loaded; never bootstrap over it."""
 
 
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous persisted objects at every nesting level."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
 def load_bundle() -> dict[str, Any] | None:
     try:
         path = data_dir() / "runtime.json"
@@ -70,7 +80,7 @@ def load_bundle() -> dict[str, Any] | None:
     except (OSError, UnicodeError):
         raise BundleLoadError("RUNTIME_BUNDLE_LOAD_FAILED") from None
     try:
-        restored = json.loads(raw)
+        restored = json.loads(raw, object_pairs_hook=_unique_json_object)
     except (ValueError, RecursionError):
         raise BundleLoadError("RUNTIME_BUNDLE_LOAD_FAILED") from None
     if not isinstance(restored, dict):

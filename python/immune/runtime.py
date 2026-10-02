@@ -12,6 +12,10 @@ from .huklla import evaluate_tripwires
 from .persist import BundleLoadError, load_bundle, load_receipt_key, save_bundle
 from .sentra import sentra_inspect
 
+
+class RuntimeIntegrityError(RuntimeError):
+    """The persisted runtime cannot accept a cycle without losing evidence."""
+
 ACTION_ENVELOPE_VERSION = "immune.action.v2"
 
 _RUNTIME: ImmuneRuntime | None = None
@@ -49,9 +53,9 @@ class ImmuneRuntime:
 
     def _persist(self) -> None:
         if self.ledger_restore_error is not None:
-            raise RuntimeError("RUNTIME_BUNDLE_RESTORE_FAILED")
+            raise RuntimeIntegrityError("RUNTIME_BUNDLE_RESTORE_FAILED")
         if not self.verify_ledger()["ok"]:
-            raise RuntimeError("RUNTIME_LEDGER_INTEGRITY_FAILED")
+            raise RuntimeIntegrityError("RUNTIME_LEDGER_INTEGRITY_FAILED")
         save_bundle(
             {
                 "keyId": self.key_id,
@@ -259,6 +263,10 @@ class ImmuneRuntime:
         self, actor: str, intent: str, extra: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         self.maybe_refresh()
+        if self.ledger_restore_error is not None:
+            raise RuntimeIntegrityError("RUNTIME_BUNDLE_RESTORE_FAILED")
+        if not self.verify_ledger()["ok"]:
+            raise RuntimeIntegrityError("RUNTIME_LEDGER_INTEGRITY_FAILED")
         ready = self.readiness()
         auth = self.project()
         inspected: dict[str, Any] = {"actor": actor, "intent": intent}
