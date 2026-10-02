@@ -1,0 +1,230 @@
+{
+  "active_space_writers": 0,
+  "archives": [
+    {
+      "files": [
+        {
+          "bytes": 337,
+          "path": ".hf-space.json",
+          "sha256": "2567d7dc585600c955e04c2adca62807740e6be2dc8ba67671ad6b96a878ed99"
+        },
+        {
+          "bytes": 604,
+          "path": "Dockerfile",
+          "sha256": "0d27239863b0a974787c74a05ff6e9f5db8a2f2be6db6c3971fa216e5c3b95b4"
+        },
+        {
+          "bytes": 963,
+          "path": "README.md",
+          "sha256": "a6212745312408fddd094d4ebc45c9113baed74b9e3bbd1f3eca5db6b25df236"
+        },
+        {
+          "bytes": 11004,
+          "path": "a11oy_kernel.py",
+          "sha256": "be143acc1cbb52591a05b56da7b9ae362c315a65cd570087faba08966e339f85"
+        },
+        {
+          "bytes": 9679,
+          "path": "app.py",
+          "sha256": "6b3eba9abd0e4b4b08f55598144093cd6707df926d6a1480b88978139d2c5791"
+        },
+        {
+          "bytes": 19565,
+          "path": "cases.json",
+          "sha256": "78edfd47547ea0b63eab2e6494e8f123ae26f8525ae445cce16016eb7dc5cebc"
+        },
+        {
+          "bytes": 1396,
+          "path": "policy_bundle.json",
+          "sha256": "0b85093afcd8de9516cf84406a1df68db9993562e1d41445e77ecdc87228a65f"
+        },
+        {
+          "bytes": 40,
+          "path": "requirements.txt",
+          "sha256": "5c99d4e7f46ea338a01ca2dc3d5bd5a1b67892ed48549d846ce7d3b7ad8f1b64"
+        },
+        {
+          "bytes": 2798,
+          "path": "szl_space_brain.py",
+          "sha256": "7a92b94bfd7e3bdf65c4c3d6b36d4158c00dd6df4d60d81daacb94c26110652c"
+        },
+        {
+          "bytes": 4162,
+          "path": "vertical_manifest.json",
+          "sha256": "3ae810cffb1f29d8e021d0b7a71ea686b7e1ffe6663bfeded504a9f6624157df"
+        }
+      ],
+      "space_id": "SZLHOLDINGS/aegis-assurance"
+    },
+    {
+      "files": [
+        {
+          "bytes": 346,
+          "path": ".hf-space.json",
+          "sha256": "e03c3bd313c733a9bbadc02163f7e2b75c52fc918553a3886008bf44ab2aea94"
+        },
+        {
+          "bytes": 604,
+          "path": "Dockerfile",
+          "sha256": "0d27239863b0a974787c74a05ff6e9f5db8a2f2be6db6c3971fa216e5c3b95b4"
+        },
+        {
+          "bytes": 971,
+          "path": "README.md",
+          "sha256": "7efe81707d64481a54748f8dd274d554799d2b153bf6c56e9fb1ebe3e8b5240b"
+        },
+        {
+          "bytes": 11004,
+          "path": "a11oy_kernel.py",
+          "sha256": "be143acc1cbb52591a05b56da7b9ae362c315a65cd570087faba08966e339f85"
+        },
+        {
+          "bytes": 9679,
+          "path": "app.py",
+          "sha256": "6b3eba9abd0e4b4b08f55598144093cd6707df926d6a1480b88978139d2c5791"
+        },
+        {
+          "bytes": 29565,
+          "path": "cases.json",
+          "sha256": "83c49ca8fb3f37fc06bc92249a319b0713d696a7d18a490ec9b2067e8a36ba38"
+        },
+        {
+          "bytes": 1458,
+          "path": "policy_bundle.json",
+          "sha256": "89beb07f782846603412f47fa4958b00a35293376613ce99489067cb0eccb7a4"
+        },
+        {
+          "bytes": 40,
+          "path": "requirements.txt",
+          "sha256": "5c99d4e7f46ea338a01ca2dc3d5bd5a1b67892ed48549d846ce7d3b7ad8f1b64"
+        },
+        {
+          "bytes": 2798,
+          "path": "szl_space_brain.py",
+          "sha256": "7a92b94bfd7e3bdf65c4c3d6b36d4158c00dd6df4d60d81daacb94c26110652c"
+        },
+        {
+          "bytes": 4250,
+          "path": "vertical_manifest.json",
+          "sha256": "e1fa1158ecfaecd7d66f818d6c3ddf5d3caa313b5261e10c6360c38d79ce9648"
+        }
+      ],
+      "space_id": "SZLHOLDINGS/terra-assurance"
+    },
+    {
+      "files": [
+        {
+          "bytes": 345,
+          "path": ".hf-space.json",
+          "sha256": "3c19bfd22a3be3d11e47ddf255353812f378124b630598d9f8c3904b3ab86823"
+        },
+        {
+          "bytes": 604,
+          "path": "Dockerfile",
+          "sha256": "0d27239863b0a974787c74a05ff6e9f5db8a2f2be6db6c3971fa216e5c3b95b4"
+        },
+        {
+          "bytes": 980,
+          "path": "README.md",
+          "sha256": "29a4fbb774a6b0c918d9a18ff8fe764303cb9b332d0edf2fc291d1b5258f3854"
+        },
+        {
+          "bytes": 11004,
+          "path": "a11oy_kernel.py",
+          "sha256": "be143acc1cbb52591a05b56da7b9ae362c315a65cd570087faba08966e339f85"
+        },
+        {
+          "bytes": 9679,
+          "path": "app.py",
+          "sha256": "6b3eba9abd0e4b4b08f55598144093cd6707df926d6a1480b88978139d2c5791"
+        },
+        {
+          "bytes": 19424,
+          "path": "cases.json",
+          "sha256": "6d642f4f150e75960607be4990aee9bc60e3c39e1bf298b92405070aa8db76e0"
+        },
+        {
+          "bytes": 1471,
+          "path": "policy_bundle.json",
+          "sha256": "caae3aa03b766b7d029c1a0930a6613ab30e134fb61ffe1009d8f01f85085806"
+        },
+        {
+          "bytes": 40,
+          "path": "requirements.txt",
+          "sha256": "5c99d4e7f46ea338a01ca2dc3d5bd5a1b67892ed48549d846ce7d3b7ad8f1b64"
+        },
+        {
+          "bytes": 2798,
+          "path": "szl_space_brain.py",
+          "sha256": "7a92b94bfd7e3bdf65c4c3d6b36d4158c00dd6df4d60d81daacb94c26110652c"
+        },
+        {
+          "bytes": 4463,
+          "path": "vertical_manifest.json",
+          "sha256": "4e32e6eff2f461c6e99b762efa2daebd01da308fe21fdeea0704bf5236f2b4f9"
+        }
+      ],
+      "space_id": "SZLHOLDINGS/puriq-markets"
+    },
+    {
+      "files": [
+        {
+          "bytes": 344,
+          "path": ".hf-space.json",
+          "sha256": "f581ee0dfadd11d2ccdab96d8b735db0bac72e111f57ff8a39aa799871d89f4d"
+        },
+        {
+          "bytes": 604,
+          "path": "Dockerfile",
+          "sha256": "0d27239863b0a974787c74a05ff6e9f5db8a2f2be6db6c3971fa216e5c3b95b4"
+        },
+        {
+          "bytes": 986,
+          "path": "README.md",
+          "sha256": "32e196f8ef2d81add478868b1ddafdc31cb929e3b178d78e29a269aa55e1abd7"
+        },
+        {
+          "bytes": 11004,
+          "path": "a11oy_kernel.py",
+          "sha256": "be143acc1cbb52591a05b56da7b9ae362c315a65cd570087faba08966e339f85"
+        },
+        {
+          "bytes": 9679,
+          "path": "app.py",
+          "sha256": "6b3eba9abd0e4b4b08f55598144093cd6707df926d6a1480b88978139d2c5791"
+        },
+        {
+          "bytes": 19728,
+          "path": "cases.json",
+          "sha256": "992cfc00d1f108c58f7476e063a8f0b7a1b7e17ae1fbbfb7bba8e928aeee584d"
+        },
+        {
+          "bytes": 1435,
+          "path": "policy_bundle.json",
+          "sha256": "955aad6e53d317a76d7c1c4506f5993738f8ca92342c14f1ee766423e317950f"
+        },
+        {
+          "bytes": 40,
+          "path": "requirements.txt",
+          "sha256": "5c99d4e7f46ea338a01ca2dc3d5bd5a1b67892ed48549d846ce7d3b7ad8f1b64"
+        },
+        {
+          "bytes": 2798,
+          "path": "szl_space_brain.py",
+          "sha256": "7a92b94bfd7e3bdf65c4c3d6b36d4158c00dd6df4d60d81daacb94c26110652c"
+        },
+        {
+          "bytes": 4186,
+          "path": "vertical_manifest.json",
+          "sha256": "80da70b62986daeee619b468f4bb1e5786eaec178733d5a6637a1eee731a378a"
+        }
+      ],
+      "space_id": "SZLHOLDINGS/counsel-assurance"
+    }
+  ],
+  "provider_deletion_claimed": false,
+  "provider_mutations": 0,
+  "schema": "szl.packet8-source-archive/v1",
+  "source_sha": "04ac8001a5a54c7a10b046a28dd2aba0a91874b0",
+  "state": "WRITER_RETIRED"
+}
