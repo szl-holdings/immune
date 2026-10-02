@@ -65,6 +65,13 @@ This Grok Build COP (`src/lib/immune` TypeScript ↔ `python/immune` Python) is 
 
 ## Python kernel
 
+Channel B readiness reports `RECEIPT_LEDGER_EMPTY` for an empty ledger whose
+integrity check passes, and `RECEIPT_LEDGER_INTEGRITY_FAILED` for a corrupt ledger.
+Both conditions keep `/readyz` at HTTP 503; external action authority is still
+required before governed writes can become ready.
+Unreadable or malformed persisted runtime bundles also fail ledger integrity;
+they are retained for repair and cannot be overwritten by refused-cycle persistence.
+
 ```
 python/
   immune/          canonical · sentra · huklla · persist · runtime · mesh · second_brain · frontier · organs · server
