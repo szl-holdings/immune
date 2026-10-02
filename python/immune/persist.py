@@ -57,14 +57,21 @@ def load_receipt_key() -> dict[str, Any]:
         return absent
 
 
+class BundleLoadError(RuntimeError):
+    """Persisted runtime state exists but cannot be trusted."""
+
+
 def load_bundle() -> dict[str, Any] | None:
-    try:
-        path = data_dir() / "runtime.json"
-        if not path.exists():
-            return None
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    path = data_dir() / "runtime.json"
+    if not path.exists():
         return None
+    try:
+        bundle = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise BundleLoadError("persisted runtime bundle is unreadable or malformed") from exc
+    if not isinstance(bundle, dict):
+        raise BundleLoadError("persisted runtime bundle must be a JSON object")
+    return bundle
 
 
 def save_bundle(bundle: dict[str, Any]) -> None:
