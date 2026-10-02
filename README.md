@@ -71,6 +71,8 @@ Both conditions keep `/readyz` at HTTP 503; external action authority is still
 required before governed writes can become ready.
 Unreadable or malformed persisted runtime bundles also fail ledger integrity;
 they are retained for repair and cannot be overwritten by refused-cycle persistence.
+Hash-corrupt persisted ledgers likewise retain their exact bytes when a refused
+cycle cannot be persisted.
 
 ```
 python/
