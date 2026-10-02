@@ -97,6 +97,8 @@ class KernelTests(unittest.TestCase):
         self.assertEqual(rt.snapshot()["mode"], "SENTRA_REJECT")
         self.assertEqual(rt.ledger_count(), 0)
         self.assertTrue(rt.verify_ledger()["ok"])
+        self.assertIn("RECEIPT_LEDGER_EMPTY", ready["blockers"])
+        self.assertNotIn("RECEIPT_LEDGER_INTEGRITY_FAILED", ready["blockers"])
 
     def test_cycle_and_local_mode_controls_fail_closed(self) -> None:
         from immune.runtime import get_runtime
@@ -133,6 +135,8 @@ class KernelTests(unittest.TestCase):
         self.assertFalse(ready["authority"]["demo_operator"])
         self.assertTrue(ready["authority"]["external_operator"])
         self.assertIsNone(ready["authority"]["key_id"])
+        self.assertIn("RECEIPT_LEDGER_EMPTY", ready["blockers"])
+        self.assertNotIn("RECEIPT_LEDGER_INTEGRITY_FAILED", ready["blockers"])
         if runtime.key_id is not None:
             self.assertNotIn(runtime.key_id, json.dumps(ready))
 
@@ -155,6 +159,8 @@ class KernelTests(unittest.TestCase):
         self.assertFalse(failed["runtime_ready"])
         self.assertFalse(failed["write_ready"])
         self.assertFalse(failed["ledger"]["ok"])
+        self.assertIn("RECEIPT_LEDGER_INTEGRITY_FAILED", failed["blockers"])
+        self.assertNotIn("RECEIPT_LEDGER_EMPTY", failed["blockers"])
 
     def test_http_contradictory_ready_flag_cannot_bypass_authority(self) -> None:
         class ContradictoryRuntime:

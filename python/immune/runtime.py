@@ -118,8 +118,10 @@ class ImmuneRuntime:
             and not auth["deadman"]
         )
         blockers: list[str] = []
-        if not runtime_ready:
+        if not ledger["ok"]:
             blockers.append("RECEIPT_LEDGER_INTEGRITY_FAILED")
+        elif ledger["count"] == 0:
+            blockers.append("RECEIPT_LEDGER_EMPTY")
         if auth["evidenceState"] != "VERIFIED":
             blockers.append(f"ACTION_AUTHORITY_{auth['evidenceState']}")
         if auth["deadman"]:
