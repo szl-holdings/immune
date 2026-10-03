@@ -19,6 +19,7 @@ commit) fails the run. The outcome is written to a receipt either way.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -48,6 +49,10 @@ Fetch = Callable[[str], tuple[int, bytes]]
 class AttestationError(RuntimeError):
     """A sanitized failure code plus bounded detail; never provider secrets."""
 
+    def __init__(self, message: str, *, observations: list[dict[str, Any]] | None = None):
+        super().__init__(message)
+        self.observations = observations
+
 
 def space_host(space: str) -> str:
     if space not in OWNED_SPACES:
@@ -64,7 +69,35 @@ def http_get(url: str, timeout: float = 30.0) -> tuple[int, bytes]:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.status, response.read(MAX_BODY_BYTES + 1)
     except urllib.error.HTTPError as error:
-        return error.code, b""
+        try:
+            return error.code, error.read(MAX_BODY_BYTES + 1)
+        finally:
+            error.close()
+
+
+def readiness_diagnostic(body: bytes) -> dict[str, Any] | None:
+    """Keep declared readiness fields, never an arbitrary response body."""
+    if len(body) > MAX_BODY_BYTES:
+        return None
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeError, ValueError):
+        return None
+    if not isinstance(payload, dict) or payload.get("schema") != "szl.immune-readiness/v1":
+        return None
+    result: dict[str, Any] = {"schema": payload["schema"]}
+    if payload.get("status") in ("READY", "READ_ONLY", "NOT_READY"):
+        result["status"] = payload["status"]
+    for key in ("ready", "runtime_ready", "read_ready", "authority_ready", "write_ready"):
+        if type(payload.get(key)) is bool:
+            result[key] = payload[key]
+    blockers = payload.get("blockers")
+    if isinstance(blockers, list) and len(blockers) <= 32 and all(
+        isinstance(code, str) and re.fullmatch(r"[A-Z0-9_]{1,80}", code)
+        for code in blockers
+    ):
+        result["blockers"] = blockers
+    return result
 
 
 def load_publication(path: Path, space: str) -> dict[str, str]:
@@ -163,14 +196,25 @@ def smoke(
         status, body = 0, b""
         for attempt in range(attempts):
             status, body = fetch(host + path)
-            if status == 200 and body:
+            if status == 200 and body and len(body) <= MAX_BODY_BYTES:
                 break
             if attempt + 1 < attempts:
                 sleep(pause)
-        results.append({"path": path, "status": status, "bytes": len(body)})
-        if status != 200 or not body:
+        observation: dict[str, Any] = {
+            "path": path,
+            "status": status,
+            "bytes": len(body),
+            "body_sha256": hashlib.sha256(body).hexdigest(),
+        }
+        if path == "/readyz":
+            diagnostic = readiness_diagnostic(body)
+            if diagnostic is not None:
+                observation["readiness"] = diagnostic
+        results.append(observation)
+        if status != 200 or not body or len(body) > MAX_BODY_BYTES:
             raise AttestationError(
-                f"SMOKE_FAILED: {path} HTTP {status} bytes={len(body)}"
+                f"SMOKE_FAILED: {path} HTTP {status} bytes={len(body)}",
+                observations=results,
             )
     return results
 
@@ -205,6 +249,8 @@ def main(argv: list[str] | None = None) -> int:
         code = 0
     except AttestationError as error:
         report.update(state="NOT_VERIFIED", error=str(error)[:1000])
+        if error.observations is not None:
+            report["smoke"] = error.observations
         print(f"::error::{args.space}: {str(error)[:1000]}")
         code = 1
     report["observed_at"] = datetime.now(timezone.utc).isoformat()
