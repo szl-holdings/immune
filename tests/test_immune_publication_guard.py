@@ -305,6 +305,91 @@ class BoundaryTests(FixtureMixin, unittest.TestCase):
         self.assertEqual(report['deleted_owned_paths'],['immune/retired.py'])
         self.assertIn('nexus.html',report['preserved_unowned_paths'])
 
+    def test_lattice_declaration_is_generated_from_frozen_bytes_in_one_commit(self):
+        self.api.space=B; self.api.info.id=B
+        uploads=self.bundle(B)
+        path=self.root/'python/immune/runtime.py'
+        path.write_bytes(b'runtime source\n')
+        uploads['immune/runtime.py']='python/immune/runtime.py'
+        report=self.publish(space=B,uploads=uploads)
+        self.assertEqual(len(self.api.commits),1)
+        added={op.path_in_repo:op.path_or_fileobj for op in self.api.commits[0]['operations'] if isinstance(op,Add)}
+        stamp=added[guard.SOURCE_STAMP]
+        claim=json.loads(stamp)
+        self.assertEqual(claim['schema'],guard.SOURCE_SCHEMA)
+        self.assertEqual(claim['repository'],guard.SOURCE_REPOSITORY)
+        self.assertEqual(claim['revision'],SOURCE)
+        self.assertEqual(claim['files']['immune/runtime.py'],hashlib.sha256(b'runtime source\n').hexdigest())
+        self.assertEqual(set(claim['files']),set(added)-{'Dockerfile','README.md',guard.SOURCE_STAMP})
+        self.assertEqual(report['upload_sha256'][guard.SOURCE_STAMP],hashlib.sha256(stamp).hexdigest())
+
+    def test_lattice_rejects_caller_supplied_source_declaration(self):
+        self.api.space=B; self.api.info.id=B
+        uploads=self.bundle(B)
+        uploads[guard.SOURCE_STAMP]='python/immune/_source_identity.json'
+        self.blocked('SOURCE_STAMP_NOT_PUBLISHER_GENERATED',space=B,uploads=uploads)
+
+    def test_junction_upload_is_rejected_before_external_read(self):
+        self.api.space=B; self.api.info.id=B
+        uploads=self.bundle(B)
+        outside=self.root/'outside'
+        outside.mkdir()
+        canary=outside/'canary.py'
+        canary.write_bytes(b'external source canary')
+        link=self.root/'python/immune/junction'
+        if os.name=='nt':
+            created=subprocess.run(['cmd.exe','/c','mklink','/J',str(link),str(outside)],
+                                   capture_output=True,text=True)
+            if created.returncode:
+                self.skipTest('NTFS junction creation unavailable')
+        else:
+            link.symlink_to(outside,target_is_directory=True)
+        uploads['immune/junction/canary.py']='python/immune/junction/canary.py'
+        original_open=Path.open
+        def guarded_open(path,*args,**kwargs):
+            if path.resolve()==canary.resolve():
+                self.fail('publisher opened escaped canary')
+            return original_open(path,*args,**kwargs)
+        try:
+            with patch.object(Path,'open',guarded_open):
+                self.blocked('LOCAL_SYMLINK',space=B,uploads=uploads)
+        finally:
+            if os.name=='nt':
+                link.rmdir()
+            else:
+                link.unlink()
+
+    def test_real_flattened_lattice_bundle_validates_publisher_stamp(self):
+        checkout=Path(__file__).resolve().parents[1]
+        uploads={
+            'Dockerfile':'python/space/Dockerfile',
+            'requirements.txt':'python/requirements.txt',
+            'README.md':'python/space/README.md',
+            'server.py':'python/space/run.py',
+            'index.html':'python/space/index.html',
+            'nexus.html':'python/space/nexus.html',
+        }
+        for path in (checkout/'python/immune').rglob('*'):
+            if path.is_file() and path.suffix!='.pyc' and '__pycache__' not in path.parts:
+                relative=path.relative_to(checkout).as_posix()
+                uploads['immune/'+path.relative_to(checkout/'python/immune').as_posix()]=relative
+        frozen=guard.prepare_uploads(B,uploads,checkout,SOURCE)
+        flat=self.root/'flattened'
+        for name,data in frozen.items():
+            if name not in {'Dockerfile','README.md'}:
+                target=flat/name
+                target.parent.mkdir(parents=True,exist_ok=True)
+                target.write_bytes(data)
+        sys.path.insert(0,str(checkout/'python'))
+        try:
+            from immune.source_identity import bundled_source
+            claim=bundled_source(flat)
+        finally:
+            sys.path.remove(str(checkout/'python'))
+        self.assertEqual(claim['evidence_class'],'DECLARED')
+        self.assertEqual(claim['revision'],SOURCE)
+        self.assertEqual(claim['manifest_sha256'],hashlib.sha256(frozen[guard.SOURCE_STAMP]).hexdigest())
+
     def test_commit_error_stays_unknown_no_retry(self):
         self.api.write_error=TimeoutError('Authorization: secret URL')
         with self.assertRaisesRegex(guard.PublicationBoundaryError,'UNKNOWN_AFTER_ATTEMPT'):
@@ -384,6 +469,60 @@ class SourceReadbackTests(unittest.TestCase):
     def test_git_failure_sanitizes_error(self):
         with self.assertRaisesRegex(guard.PublicationBoundaryError,'SOURCE_READBACK_UNAVAILABLE'):
             self.check(error=subprocess.CalledProcessError(1,['git'],stderr='hidden-provider-details'))
+
+    def test_declared_source_bytes_must_match_exact_revision(self):
+        uploads={'immune/server.py':'python/immune/server.py'}
+        frozen={'immune/server.py':b'expected at revision'}
+        responses=[SimpleNamespace(stdout=SOURCE),
+                   SimpleNamespace(stdout=SOURCE+'\trefs/heads/main'),
+                   SimpleNamespace(stdout=b'expected at revision')]
+        env={'GITHUB_REF':'refs/heads/main','GITHUB_REPOSITORY':'szl-holdings/immune'}
+        with patch.dict(os.environ,env,clear=True), patch.object(guard.subprocess,'run',side_effect=responses) as run:
+            guard.require_main_source(SOURCE,Path('.'),uploads,frozen)
+        self.assertEqual(run.call_count,3)
+        self.assertEqual(run.call_args.args[0][:3],['git','cat-file','blob'])
+        responses[-1]=SimpleNamespace(stdout=b'dirty checkout bytes')
+        with patch.dict(os.environ,env,clear=True), patch.object(guard.subprocess,'run',side_effect=responses):
+            with self.assertRaisesRegex(guard.PublicationBoundaryError,'SOURCE_BYTES_NOT_AT_REVISION'):
+                guard.require_main_source(SOURCE,Path('.'),uploads,frozen)
+
+    def test_git_replacement_ref_cannot_change_exact_source_bytes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repo=Path(temp)
+            def git(*args):
+                return subprocess.run(['git',*args],cwd=repo,check=True,
+                                      capture_output=True,text=True).stdout.strip()
+            git('init','-q')
+            source=repo/'python/immune/server.py'
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b'original committed source')
+            git('add','python/immune/server.py')
+            git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid',
+                '-c','commit.gpgsign=false','commit','-qm','original')
+            original=git('rev-parse','HEAD')
+            source.write_bytes(b'replacement source')
+            git('add','python/immune/server.py')
+            git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid',
+                '-c','commit.gpgsign=false','commit','-qm','replacement')
+            replacement=git('rev-parse','HEAD')
+            git('checkout','-q','--detach',original)
+            git('replace',original,replacement)
+            unguarded_env=dict(os.environ)
+            unguarded_env.pop('GIT_NO_REPLACE_OBJECTS',None)
+            replaced=subprocess.run(['git','cat-file','blob',f'{original}:python/immune/server.py'],
+                                    cwd=repo,check=True,capture_output=True,env=unguarded_env).stdout
+            self.assertEqual(replaced,b'replacement source')
+            real_run=subprocess.run
+            def local_readback(command,*args,**kwargs):
+                if command[:2]==['git','ls-remote']:
+                    return SimpleNamespace(stdout=original+'\trefs/heads/main')
+                return real_run(command,*args,**kwargs)
+            env={'GITHUB_REF':'refs/heads/main','GITHUB_REPOSITORY':'szl-holdings/immune'}
+            uploads={'immune/server.py':'python/immune/server.py'}
+            with patch.dict(os.environ,env),patch.object(guard.subprocess,'run',side_effect=local_readback):
+                guard.require_main_source(original,repo,uploads,{'immune/server.py':b'original committed source'})
+                with self.assertRaisesRegex(guard.PublicationBoundaryError,'SOURCE_BYTES_NOT_AT_REVISION'):
+                    guard.require_main_source(original,repo,uploads,{'immune/server.py':b'replacement source'})
 
 
 def inline_publishers(path):
