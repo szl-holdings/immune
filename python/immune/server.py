@@ -21,7 +21,7 @@ from .nexus import (
     verify_nexus_run,
 )
 from .organs import dashboard, local_organ_mesh
-from .runtime import get_runtime
+from .runtime import RuntimeIntegrityError, get_runtime
 from .second_brain import search_brain
 from .sentra import sentra_inspect
 
@@ -144,6 +144,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def _json(self, code: int, payload: object) -> None:
         self._send(code, _json_bytes(payload), "application/json")
+
+    def _run_cycle(
+        self, runtime, actor: str, intent: str, extra: dict | None = None
+    ) -> dict | None:
+        try:
+            return runtime.run_cycle(actor, intent, extra)
+        except RuntimeIntegrityError as error:
+            self._json(503, {"error": str(error), "write_ready": False})
+            return None
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(204)
@@ -380,7 +389,10 @@ class Handler(BaseHTTPRequestHandler):
             actor = str(data.get("actor") or "immune:compatibility-client")
             intent = str(data.get("intent") or "")
             extra = data.get("agent") if isinstance(data.get("agent"), dict) else None
-            self._json(200, runtime.run_cycle(actor, intent, extra))
+            result = self._run_cycle(runtime, actor, intent, extra)
+            if result is None:
+                return
+            self._json(200, result)
             return
         if path in ("/api/immune/reset", "/api/immune/mode"):
             self._json(
@@ -543,7 +555,9 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
             receipt_payload = _compact_nexus_receipt(request_id, result)
-            governed = runtime.run_cycle(actor, intent, {"nexus": receipt_payload})
+            governed = self._run_cycle(runtime, actor, intent, {"nexus": receipt_payload})
+            if governed is None:
+                return
             if not governed["pass"] or not governed["receipt"]:
                 self._json(
                     409,
@@ -575,10 +589,13 @@ class Handler(BaseHTTPRequestHandler):
                 },
                 runtime.snapshot()["mode"],
             )
-            cycle = runtime.run_cycle(
+            cycle = self._run_cycle(
+                runtime,
                 "immune:compatibility-client",
                 str(data.get("signal") or data.get("intent") or "sentra-admit"),
             )
+            if cycle is None:
+                return
             self._json(
                 200,
                 {
@@ -591,9 +608,12 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
         if path == "/api/yawar":
-            cycle = runtime.run_cycle(
+            cycle = self._run_cycle(
+                runtime,
                 "immune:compatibility-client", str(data.get("event") or "yawar-append")
             )
+            if cycle is None:
+                return
             self._json(
                 200,
                 {
@@ -606,7 +626,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ("/api/bind", "/api/canary"):
             label = str(data.get("engine") or data.get("id") or path.rsplit("/", 1)[-1])
-            cycle = runtime.run_cycle("immune:compatibility-client", f"{path} {label}")
+            cycle = self._run_cycle(runtime, "immune:compatibility-client", f"{path} {label}")
+            if cycle is None:
+                return
             self._json(
                 200,
                 {
