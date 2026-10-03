@@ -1,7 +1,10 @@
+import io
 import json
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts import attest_hf_space_runtime as attest
 
@@ -153,6 +156,60 @@ class SmokeTests(unittest.TestCase):
         with self.assertRaisesRegex(attest.AttestationError, "UNSUPPORTED_SPACE"):
             attest.space_host("SZLHOLDINGS/other")
 
+    def test_failed_readiness_retains_blockers_without_accepting_503(self):
+        body = json.dumps({
+            "schema": "szl.immune-readiness/v1",
+            "status": "NOT_READY",
+            "ready": False,
+            "runtime_ready": False,
+            "read_ready": False,
+            "authority_ready": False,
+            "write_ready": False,
+            "blockers": ["RECEIPT_LEDGER_EMPTY", "ACTION_AUTHORITY_UNAVAILABLE"],
+            "operator_token": "must-never-enter-the-receipt",
+        }).encode()
+        with self.assertRaises(attest.AttestationError) as caught:
+            attest.smoke(
+                SPACE, ["/healthz", "/readyz"],
+                fetch=Sequence((200, b"ok"), (503, body)),
+                attempts=1, sleep=lambda _: None,
+            )
+        rows = caught.exception.observations
+        self.assertEqual([row["status"] for row in rows], [200, 503])
+        self.assertEqual(rows[-1]["bytes"], len(body))
+        self.assertEqual(rows[-1]["readiness"]["blockers"], [
+            "RECEIPT_LEDGER_EMPTY", "ACTION_AUTHORITY_UNAVAILABLE",
+        ])
+        self.assertNotIn("must-never-enter-the-receipt", json.dumps(rows))
+        self.assertNotIn("operator_token", json.dumps(rows))
+
+    def test_oversized_success_response_is_not_accepted(self):
+        with self.assertRaises(attest.AttestationError) as caught:
+            attest.smoke(
+                SPACE, ["/healthz"], attempts=1,
+                fetch=Sequence((200, b"x" * (attest.MAX_BODY_BYTES + 1))),
+                sleep=lambda _: None,
+            )
+        self.assertEqual(caught.exception.observations[0]["status"], 200)
+
+    def test_invalid_readiness_fields_are_not_copied(self):
+        diagnostic = attest.readiness_diagnostic(json.dumps({
+            "schema": "szl.immune-readiness/v1", "status": "SECRET_TOKEN",
+            "ready": 1, "blockers": ["ACTION_AUTHORITY_UNAVAILABLE", "secret value"],
+        }).encode())
+        self.assertEqual(diagnostic, {"schema": "szl.immune-readiness/v1"})
+
+
+class HttpFailureTests(unittest.TestCase):
+    def test_http_error_body_is_bounded_and_response_is_closed(self):
+        stream = io.BytesIO(b"x" * (attest.MAX_BODY_BYTES + 10))
+        error = urllib.error.HTTPError("https://example.invalid/readyz", 503, "not ready", {}, stream)
+        with patch.object(attest.urllib.request, "urlopen", side_effect=error):
+            status, body = attest.http_get("https://example.invalid/readyz")
+        self.assertEqual(status, 503)
+        self.assertEqual(len(body), attest.MAX_BODY_BYTES + 1)
+        self.assertTrue(stream.closed)
+
 
 class PublicationReceiptTests(unittest.TestCase):
     def write(self, **fields):
@@ -191,6 +248,27 @@ class PublicationReceiptTests(unittest.TestCase):
             attest.AttestationError, "PUBLICATION_RECEIPT_UNAVAILABLE"
         ):
             attest.load_publication(Path("does/not/exist.json"), SPACE)
+
+    def test_main_writes_failed_smoke_evidence_and_keeps_failure_exit(self):
+        publication = self.write()
+        receipt = publication.parent / "live.json"
+        observations = [{"path": "/readyz", "status": 503, "bytes": 42,
+                         "readiness": {"schema": "szl.immune-readiness/v1",
+                                       "status": "NOT_READY", "write_ready": False,
+                                       "blockers": ["ACTION_AUTHORITY_UNAVAILABLE"]}}]
+        failure = attest.AttestationError("SMOKE_FAILED: /readyz HTTP 503 bytes=42", observations=observations)
+        with (
+            patch.object(attest, "wait_running", return_value={"stage": "RUNNING", "repo_sha": HUB, "runtime_sha": HUB}),
+            patch.object(attest, "smoke", side_effect=failure),
+            patch("builtins.print"),
+        ):
+            code = attest.main(["--space", SPACE, "--publication-receipt", str(publication),
+                                "--receipt", str(receipt), "--smoke-path", "/readyz"])
+        saved = json.loads(receipt.read_text(encoding="utf-8"))
+        self.assertEqual(code, 1)
+        self.assertEqual(saved["state"], "NOT_VERIFIED")
+        self.assertFalse(saved["live_verified"])
+        self.assertEqual(saved["smoke"], observations)
 
 
 class WorkflowWiringTests(unittest.TestCase):
