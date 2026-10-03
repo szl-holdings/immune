@@ -11,6 +11,11 @@ A publication is LIVE_VERIFIED only when all of these hold:
   head and the running build (``runtime.sha``), with stage RUNNING;
 * every smoke path on the Space host answers exact HTTP 200 with a body.
 
+The optional blocked-readiness witness is a narrower source-live observation:
+ordinary smoke paths still require HTTP 200, while /readyz must return a
+source-bound, fail-closed HTTP 503 contract. That outcome never grants action
+readiness or produces an external-authority release receipt.
+
 A terminal build or runtime stage at the published commit, a paused or
 quota-blocked Space, or a timeout (which includes a head superseded by another
 commit) fails the run. The outcome is written to a receipt either way.
@@ -41,7 +46,18 @@ OWNED_SPACES = frozenset({"SZLHOLDINGS/immune", "SZLHOLDINGS/immune-lattice"})
 TERMINAL_STAGES = frozenset({"BUILD_ERROR", "CONFIG_ERROR", "RUNTIME_ERROR"})
 SHA = re.compile(r"[0-9a-f]{40}")
 MAX_BODY_BYTES = 2_000_000
+MAX_READINESS_BYTES = 65_536
 USER_AGENT = "szl-immune-live-attestation/1"
+CHANNEL_A_BLOCKERS = frozenset({
+    "DEPLOYMENT_REVISION_BINDING_UNVERIFIED",
+    "ACTION_AUTHORITY_READ_ONLY",
+    "ACTION_AUTHORITY_UNAVAILABLE",
+    "ACTION_AUTHORITY_DURABILITY_UNVERIFIED",
+    "RECEIPT_LEDGER_DURABILITY_UNVERIFIED",
+})
+CHANNEL_B_BLOCKERS = frozenset({
+    "RECEIPT_LEDGER_EMPTY", "ACTION_AUTHORITY_UNAVAILABLE",
+})
 
 Fetch = Callable[[str], tuple[int, bytes]]
 
@@ -97,6 +113,15 @@ def readiness_diagnostic(body: bytes) -> dict[str, Any] | None:
         for code in blockers
     ):
         result["blockers"] = blockers
+    return result
+
+
+def unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
     return result
 
 
@@ -219,6 +244,111 @@ def smoke(
     return results
 
 
+def blocked_readiness(
+    space: str,
+    expected_source: str,
+    *,
+    fetch: Fetch = http_get,
+) -> dict[str, Any]:
+    """Observe only a known 503 readiness contract at the exact running source.
+
+    This does not satisfy action readiness, evidence durability, or authority
+    qualification. Unknown blockers and contradictory green fields fail closed.
+    """
+    if not SHA.fullmatch(expected_source):
+        raise AttestationError("INVALID_EXPECTED_SOURCE")
+    try:
+        status, body = fetch(space_host(space) + "/readyz")
+    except (OSError, TimeoutError, urllib.error.URLError):
+        raise AttestationError("BLOCKED_READINESS_FETCH_FAILED") from None
+    observation: dict[str, Any] = {
+        "path": "/readyz",
+        "status": status,
+        "bytes": len(body),
+        "body_sha256": hashlib.sha256(body).hexdigest(),
+    }
+
+    def refuse(code: str) -> None:
+        raise AttestationError(code, observations=[observation])
+
+    if status != 503 or not body or len(body) > MAX_READINESS_BYTES:
+        refuse("BLOCKED_READINESS_HTTP_OR_SIZE_INVALID")
+    try:
+        payload = json.loads(body.decode("utf-8"), object_pairs_hook=unique_json_object)
+    except (UnicodeError, ValueError):
+        refuse("BLOCKED_READINESS_JSON_INVALID")
+    if not isinstance(payload, dict) or payload.get("schema") != "szl.immune-readiness/v1":
+        refuse("BLOCKED_READINESS_SCHEMA_INVALID")
+    if (
+        payload.get("status") not in ("READ_ONLY", "NOT_READY")
+        or any(payload.get(key) is not False for key in
+               ("ready", "authority_ready", "write_ready"))
+        or ("ok" in payload and payload["ok"] is not False)
+        or payload.get("live_operator") is True
+        or payload.get("demo_operator") is True
+    ):
+        refuse("BLOCKED_READINESS_STATE_INVALID")
+    read_ready = payload.get("status") == "READ_ONLY"
+    if payload.get("runtime_ready") is not read_ready or payload.get("read_ready") is not read_ready:
+        refuse("BLOCKED_READINESS_READ_STATE_INVALID")
+    source = payload.get("source")
+    if (
+        not isinstance(source, dict)
+        or source.get("repository") != "szl-holdings/immune"
+        or source.get("revision") != expected_source
+    ):
+        refuse("BLOCKED_READINESS_SOURCE_INVALID")
+    blockers = payload.get("blockers")
+    allowed = CHANNEL_A_BLOCKERS if space == "SZLHOLDINGS/immune" else CHANNEL_B_BLOCKERS
+    if (
+        not isinstance(blockers, list)
+        or not 1 <= len(blockers) <= len(allowed)
+        or any(type(code) is not str or code not in allowed for code in blockers)
+        or len(set(blockers)) != len(blockers)
+    ):
+        refuse("BLOCKED_READINESS_BLOCKERS_INVALID")
+    if space == "SZLHOLDINGS/immune":
+        build = payload.get("build")
+        runtime = payload.get("runtime")
+        integrity = runtime.get("artifact_integrity") if isinstance(runtime, dict) else None
+        if (
+            source.get("build_revision") != expected_source
+            or source.get("manifest_schema") != "szl.hf-deploy-manifest/v2"
+            or not isinstance(build, dict)
+            or build.get("state") != "OBSERVED_HASH_MATCH"
+            or not isinstance(integrity, dict)
+            or integrity.get("status") != "MATCH"
+        ):
+            refuse("BLOCKED_READINESS_BUILD_INVALID")
+        if read_ready:
+            if source.get("alignment_state") != "OBSERVED_RUNTIME_HASH_MATCH" or "DEPLOYMENT_REVISION_BINDING_UNVERIFIED" in blockers:
+                refuse("BLOCKED_READINESS_ALIGNMENT_INVALID")
+        elif (
+            source.get("alignment_state") != "REVISION_UNAVAILABLE"
+            or "DEPLOYMENT_REVISION_BINDING_UNVERIFIED" not in blockers
+        ):
+            refuse("BLOCKED_READINESS_ALIGNMENT_INVALID")
+    else:
+        if source.get("channel") != "python" or "ACTION_AUTHORITY_UNAVAILABLE" not in blockers:
+            refuse("BLOCKED_READINESS_CHANNEL_INVALID")
+        if not read_ready and "RECEIPT_LEDGER_EMPTY" not in blockers:
+            refuse("BLOCKED_READINESS_LEDGER_INVALID")
+        if read_ready and "RECEIPT_LEDGER_EMPTY" in blockers:
+            refuse("BLOCKED_READINESS_LEDGER_INVALID")
+    observation["readiness"] = {
+        "schema": "szl.immune-readiness/v1",
+        "status": payload["status"],
+        "source_revision": expected_source,
+        "ready": False,
+        "runtime_ready": read_ready,
+        "read_ready": read_ready,
+        "authority_ready": False,
+        "write_ready": False,
+        "blockers": blockers,
+    }
+    return observation
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--space", required=True, choices=sorted(OWNED_SPACES))
@@ -227,15 +357,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=float, default=1200.0)
     parser.add_argument("--poll", type=float, default=15.0)
     parser.add_argument("--smoke-path", action="append", default=[], dest="smoke_paths")
+    parser.add_argument("--blocked-readiness", action="store_true")
     args = parser.parse_args(argv)
     if not args.smoke_paths:
         parser.error("at least one --smoke-path is required")
+    if args.blocked_readiness and "/readyz" in args.smoke_paths:
+        parser.error("/readyz must use only --blocked-readiness")
 
     report: dict[str, Any] = {
         "schema": "szl.immune.live-attestation/v1",
         "space": args.space,
         "auth": "none (public Hub API and Space host)",
         "live_verified": False,
+        "source_live_verified": False,
+        "action_ready": False,
     }
     args.receipt.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -245,12 +380,26 @@ def main(argv: list[str] | None = None) -> int:
             args.space, published["hub_commit"], timeout=args.timeout, poll=args.poll
         )
         report["smoke"] = smoke(args.space, args.smoke_paths)
-        report.update(state="LIVE_VERIFIED", live_verified=True)
+        if args.blocked_readiness:
+            report["blocked_readiness"] = blocked_readiness(
+                args.space, published["source_revision"]
+            )
+            report.update(
+                state="SOURCE_LIVE_READINESS_BLOCKED",
+                source_live_verified=True,
+                live_verified=False,
+                action_ready=False,
+            )
+        else:
+            report.update(state="LIVE_VERIFIED", live_verified=True)
         code = 0
     except AttestationError as error:
         report.update(state="NOT_VERIFIED", error=str(error)[:1000])
         if error.observations is not None:
-            report["smoke"] = error.observations
+            if args.blocked_readiness and "smoke" in report:
+                report["blocked_readiness"] = error.observations[0]
+            else:
+                report["smoke"] = error.observations
         print(f"::error::{args.space}: {str(error)[:1000]}")
         code = 1
     report["observed_at"] = datetime.now(timezone.utc).isoformat()
