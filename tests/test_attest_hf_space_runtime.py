@@ -200,6 +200,111 @@ class SmokeTests(unittest.TestCase):
         self.assertEqual(diagnostic, {"schema": "szl.immune-readiness/v1"})
 
 
+class BlockedReadinessTests(unittest.TestCase):
+    def body(self, space=SPACE, **changes):
+        source = {"repository": "szl-holdings/immune", "revision": SOURCE}
+        if space == SPACE:
+            source["channel"] = "python"
+            blockers = ["RECEIPT_LEDGER_EMPTY", "ACTION_AUTHORITY_UNAVAILABLE"]
+        else:
+            source.update({"build_revision": SOURCE,
+                           "manifest_schema": "szl.hf-deploy-manifest/v2",
+                           "alignment_state": "REVISION_UNAVAILABLE"})
+            blockers = ["DEPLOYMENT_REVISION_BINDING_UNVERIFIED",
+                        "ACTION_AUTHORITY_READ_ONLY",
+                        "RECEIPT_LEDGER_DURABILITY_UNVERIFIED"]
+        payload = {"schema": "szl.immune-readiness/v1", "status": "NOT_READY",
+                   "ready": False, "runtime_ready": False, "read_ready": False,
+                   "authority_ready": False, "write_ready": False,
+                   "source": source, "blockers": blockers, "ok": False}
+        if space != SPACE:
+            payload.update(build={"state": "OBSERVED_HASH_MATCH"},
+                           runtime={"artifact_integrity": {"status": "MATCH"}})
+        payload.update(changes)
+        return json.dumps(payload).encode()
+
+    def test_channel_b_exact_source_blocked_readiness_is_observed_not_authorized(self):
+        body = self.body(operator_token="never-copy-me")
+        result = attest.blocked_readiness(SPACE, SOURCE, fetch=Sequence((503, body)))
+        self.assertEqual(result["status"], 503)
+        self.assertEqual(result["readiness"]["blockers"],
+                         ["RECEIPT_LEDGER_EMPTY", "ACTION_AUTHORITY_UNAVAILABLE"])
+        self.assertEqual(result["readiness"]["source_revision"], SOURCE)
+        self.assertNotIn("operator_token", json.dumps(result))
+        self.assertNotIn("never-copy-me", json.dumps(result))
+
+    def test_channel_a_read_only_and_revision_unavailable_are_distinct(self):
+        channel_a = "SZLHOLDINGS/immune"
+        blocked = attest.blocked_readiness(channel_a, SOURCE,
+                                           fetch=Sequence((503, self.body(channel_a))))
+        self.assertEqual(blocked["readiness"]["status"], "NOT_READY")
+        read_only = self.body(
+            channel_a, status="READ_ONLY", runtime_ready=True, read_ready=True,
+            source={"repository": "szl-holdings/immune", "revision": SOURCE,
+                    "build_revision": SOURCE,
+                    "manifest_schema": "szl.hf-deploy-manifest/v2",
+                    "alignment_state": "OBSERVED_RUNTIME_HASH_MATCH"},
+            blockers=["ACTION_AUTHORITY_READ_ONLY",
+                      "RECEIPT_LEDGER_DURABILITY_UNVERIFIED"])
+        observed = attest.blocked_readiness(channel_a, SOURCE,
+                                            fetch=Sequence((503, read_only)))
+        self.assertEqual(observed["readiness"]["status"], "READ_ONLY")
+
+    def test_bad_status_schema_source_fields_and_boolean_contradictions_fail(self):
+        cases = [
+            (200, self.body()),
+            (502, self.body()),
+            (503, b"not json"),
+            (503, self.body(schema="other")),
+            (503, self.body(status="READY")),
+            (503, self.body(ready=True)),
+            (503, self.body(write_ready=True)),
+            (503, self.body(authority_ready=True)),
+            (503, self.body(ok=True)),
+            (503, self.body(runtime_ready=True)),
+            (503, self.body(source={"repository": "szl-holdings/immune",
+                                    "revision": OLD, "channel": "python"})),
+            (503, self.body(source={"repository": "szl-holdings/immune",
+                                    "revision": SOURCE, "channel": "typescript"})),
+            (503, self.body(blockers=["RECEIPT_LEDGER_INTEGRITY_FAILED",
+                                          "ACTION_AUTHORITY_UNAVAILABLE"])),
+            (503, self.body(blockers=[])),
+            (503, self.body() + b" " * attest.MAX_READINESS_BYTES),
+            (503, self.body().replace(b'"ready": false',
+                                       b'"ready": true, "ready": false')),
+        ]
+        for status, body in cases:
+            with self.subTest(status=status, body=body[:30]), \
+                    self.assertRaises(attest.AttestationError):
+                attest.blocked_readiness(SPACE, SOURCE,
+                                         fetch=Sequence((status, body)))
+
+    def test_channel_a_rejects_build_mismatch_and_lost_ledger(self):
+        channel_a = "SZLHOLDINGS/immune"
+        for body in (
+            self.body(channel_a, source={"repository": "szl-holdings/immune",
+                                         "revision": SOURCE, "build_revision": OLD,
+                                         "manifest_schema": "szl.hf-deploy-manifest/v2",
+                                         "alignment_state": "REVISION_UNAVAILABLE"}),
+            self.body(channel_a, blockers=["RECEIPT_LEDGER_EMPTY",
+                                           "ACTION_AUTHORITY_READ_ONLY"]),
+            self.body(channel_a, build=None),
+            self.body(channel_a, runtime={"artifact_integrity": None}),
+        ):
+            with self.assertRaises(attest.AttestationError):
+                attest.blocked_readiness(channel_a, SOURCE,
+                                         fetch=Sequence((503, body)))
+
+    def test_fetch_failure_is_sanitized(self):
+        def fail(_url):
+            raise urllib.error.URLError("private upstream detail")
+
+        with self.assertRaisesRegex(attest.AttestationError,
+                                    "BLOCKED_READINESS_FETCH_FAILED") as caught:
+            attest.blocked_readiness(SPACE, SOURCE, fetch=fail)
+        self.assertNotIn("private upstream detail", str(caught.exception))
+
+
 class HttpFailureTests(unittest.TestCase):
     def test_http_error_body_is_bounded_and_response_is_closed(self):
         stream = io.BytesIO(b"x" * (attest.MAX_BODY_BYTES + 10))
@@ -270,6 +375,52 @@ class PublicationReceiptTests(unittest.TestCase):
         self.assertFalse(saved["live_verified"])
         self.assertEqual(saved["smoke"], observations)
 
+    def test_main_records_blocked_source_live_without_live_or_action_qualification(self):
+        publication = self.write()
+        receipt = publication.parent / "source-live.json"
+        observation = {"path": "/readyz", "status": 503, "bytes": 1,
+                       "readiness": {"status": "NOT_READY", "source_revision": SOURCE}}
+        with (
+            patch.object(attest, "wait_running", return_value={"stage": "RUNNING", "repo_sha": HUB, "runtime_sha": HUB}),
+            patch.object(attest, "smoke", return_value=[{"path": "/healthz", "status": 200, "bytes": 2}]),
+            patch.object(attest, "blocked_readiness", return_value=observation),
+            patch("builtins.print"),
+        ):
+            code = attest.main(["--space", SPACE, "--publication-receipt", str(publication),
+                                "--receipt", str(receipt), "--smoke-path", "/healthz",
+                                "--blocked-readiness"])
+        saved = json.loads(receipt.read_text(encoding="utf-8"))
+        self.assertEqual(code, 0)
+        self.assertEqual(saved["state"], "SOURCE_LIVE_READINESS_BLOCKED")
+        self.assertTrue(saved["source_live_verified"])
+        self.assertFalse(saved["live_verified"])
+        self.assertFalse(saved["action_ready"])
+        self.assertEqual(saved["blocked_readiness"], observation)
+
+    def test_main_keeps_strict_smoke_proof_when_blocked_readiness_fails(self):
+        publication = self.write()
+        receipt = publication.parent / "blocked-readiness-failed.json"
+        smoke = [{"path": "/healthz", "status": 200, "bytes": 2}]
+        blocked = {"path": "/readyz", "status": 502, "bytes": 0}
+        with (
+            patch.object(attest, "wait_running", return_value={"stage": "RUNNING", "repo_sha": HUB, "runtime_sha": HUB}),
+            patch.object(attest, "smoke", return_value=smoke),
+            patch.object(attest, "blocked_readiness", side_effect=attest.AttestationError(
+                "BLOCKED_READINESS_HTTP_OR_SIZE_INVALID", observations=[blocked])),
+            patch("builtins.print"),
+        ):
+            code = attest.main(["--space", SPACE, "--publication-receipt", str(publication),
+                                "--receipt", str(receipt), "--smoke-path", "/healthz",
+                                "--blocked-readiness"])
+        saved = json.loads(receipt.read_text(encoding="utf-8"))
+        self.assertEqual(code, 1)
+        self.assertEqual(saved["state"], "NOT_VERIFIED")
+        self.assertEqual(saved["smoke"], smoke)
+        self.assertEqual(saved["blocked_readiness"], blocked)
+        self.assertFalse(saved["source_live_verified"])
+        self.assertFalse(saved["live_verified"])
+        self.assertFalse(saved["action_ready"])
+
 
 class WorkflowWiringTests(unittest.TestCase):
     def test_each_channel_attests_its_own_space_with_a_per_asset_lock(self):
@@ -294,6 +445,8 @@ class WorkflowWiringTests(unittest.TestCase):
         self.assertEqual(text.count("python3 -m scripts.attest_hf_space_runtime"), 2)
         for path in ("/healthz", "/health"):
             self.assertEqual(text.count(f"--smoke-path {path} "), 2)
+        self.assertEqual(text.count("--blocked-readiness"), 2)
+        self.assertNotIn("--smoke-path /readyz", text)
         self.assertIn("- scripts/attest_hf_space_runtime.py", text)
 
 
