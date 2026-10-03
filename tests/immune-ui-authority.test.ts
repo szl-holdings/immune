@@ -350,7 +350,7 @@ test("whole-system write readiness requires one fresh exact-bound ready contract
     state,
     authority,
     null,
-    { nowMs: OBSERVED_AT, observedAtMs: OBSERVED_AT },
+    { nowMs: OBSERVED_AT, observedAtMs: OBSERVED_AT, authorityObservedAtMs: OBSERVED_AT },
   );
   assert.equal(exact.state, "READY");
   assert.equal(exact.writeReady, true);
@@ -364,6 +364,7 @@ test("whole-system write readiness requires one fresh exact-bound ready contract
     {
       nowMs: OBSERVED_AT + READINESS_MAX_AGE_MS,
       observedAtMs: OBSERVED_AT,
+      authorityObservedAtMs: OBSERVED_AT,
     },
   );
   assert.equal(stale.state, "STALE");
@@ -374,10 +375,113 @@ test("whole-system write readiness requires one fresh exact-bound ready contract
     state,
     authority,
     new Error("readyz unavailable"),
-    { nowMs: OBSERVED_AT, observedAtMs: OBSERVED_AT },
+    { nowMs: OBSERVED_AT, observedAtMs: OBSERVED_AT, authorityObservedAtMs: OBSERVED_AT },
   );
   assert.equal(failedRefresh.state, "UNAVAILABLE");
   assert.equal(failedRefresh.writeReady, false);
+});
+
+test("resume requires successful authority and readiness observations after the transport boundary", () => {
+  const state = snapshot();
+  const offline = transitionAuthorityTransportState(
+    initialAuthorityTransportState(OBSERVED_AT, true, true),
+    OBSERVED_AT + 1_000,
+    true,
+    false,
+  );
+  const resumeTime = OBSERVED_AT + 3_000;
+  const resumed = transitionAuthorityTransportState(offline, resumeTime, true, true);
+  const authority = deriveAuthorityView(state, null, {
+    nowMs: resumeTime,
+    observedAtMs: OBSERVED_AT,
+    requiredObservationAfterMs: resumed.requiredObservationAfterMs,
+  });
+  assert.equal(authority.evidenceState, "VERIFIED");
+
+  for (const [name, authorityObservedAtMs, observedAtMs] of [
+    ["both observations cached", OBSERVED_AT, OBSERVED_AT],
+    ["only authority refreshed", resumeTime, OBSERVED_AT],
+    ["only readiness refreshed", OBSERVED_AT, resumeTime],
+  ] as const) {
+    const view = deriveWholeSystemReadinessView(readyz(), state, authority, null, {
+      nowMs: resumeTime,
+      authorityObservedAtMs,
+      observedAtMs,
+      visible: resumed.visible,
+      online: resumed.online,
+      requiredObservationAfterMs: resumed.requiredObservationAfterMs,
+    });
+    assert.equal(view.writeReady, false, name);
+    assert.equal(view.state, "CONNECTING", name);
+  }
+
+  const refreshed = deriveWholeSystemReadinessView(readyz(), state, authority, null, {
+    nowMs: resumeTime,
+    authorityObservedAtMs: resumeTime,
+    observedAtMs: resumeTime,
+    visible: resumed.visible,
+    online: resumed.online,
+    requiredObservationAfterMs: resumed.requiredObservationAfterMs,
+  });
+  assert.equal(refreshed.writeReady, true);
+  assert.equal(refreshed.state, "READY");
+});
+
+test("a failed authority refresh disables writes without erasing cached signed authority", () => {
+  const state = snapshot();
+  const authorityError = new Error("state refresh unavailable");
+  const authority = deriveAuthorityView(state, authorityError, { nowMs: OBSERVED_AT });
+  assert.equal(authority.evidenceState, "VERIFIED");
+
+  const view = deriveWholeSystemReadinessView(readyz(), state, authority, null, {
+    nowMs: OBSERVED_AT,
+    observedAtMs: OBSERVED_AT,
+    authorityObservedAtMs: OBSERVED_AT,
+    authorityQueryError: authorityError,
+  });
+  assert.equal(view.writeReady, false);
+  assert.equal(view.state, "UNAVAILABLE");
+});
+
+test("invalid authority observation times and resume boundaries cannot admit writes", () => {
+  const state = snapshot();
+  const authority = deriveAuthorityView(state, null, { nowMs: OBSERVED_AT });
+  for (const [name, overrides] of [
+    ["missing authority observation", { authorityObservedAtMs: undefined }],
+    ["zero authority observation", { authorityObservedAtMs: 0 }],
+    ["nonfinite authority observation", { authorityObservedAtMs: Number.NaN }],
+    ["infinite authority observation", { authorityObservedAtMs: Number.POSITIVE_INFINITY }],
+    ["future authority observation", { authorityObservedAtMs: OBSERVED_AT + 1_001 }],
+    ["negative resume boundary", { requiredObservationAfterMs: -1 }],
+    ["nonfinite resume boundary", { requiredObservationAfterMs: Number.NaN }],
+    ["infinite resume boundary", { requiredObservationAfterMs: Number.POSITIVE_INFINITY }],
+  ] as const) {
+    const view = deriveWholeSystemReadinessView(readyz(), state, authority, null, {
+      nowMs: OBSERVED_AT,
+      observedAtMs: OBSERVED_AT,
+      authorityObservedAtMs: OBSERVED_AT,
+      requiredObservationAfterMs: 0,
+      ...overrides,
+    });
+    assert.equal(view.writeReady, false, name);
+    assert.equal(view.state, "INVALID", name);
+  }
+});
+
+test("hidden and offline transport cannot admit writes even with fresh observations", () => {
+  const state = snapshot();
+  const authority = deriveAuthorityView(state, null, { nowMs: OBSERVED_AT });
+  for (const [visible, online] of [[false, true], [true, false], [false, false]]) {
+    const view = deriveWholeSystemReadinessView(readyz(), state, authority, null, {
+      nowMs: OBSERVED_AT,
+      observedAtMs: OBSERVED_AT,
+      authorityObservedAtMs: OBSERVED_AT,
+      visible,
+      online,
+    });
+    assert.equal(view.writeReady, false);
+    assert.equal(view.state, "UNAVAILABLE");
+  }
 });
 
 test("readyz false flags, integrity, durability, and binding mismatches disable writes", () => {
@@ -389,7 +493,7 @@ test("readyz false flags, integrity, durability, and binding mismatches disable 
       state,
       authority,
       null,
-      { nowMs: OBSERVED_AT, observedAtMs: OBSERVED_AT },
+      { nowMs: OBSERVED_AT, observedAtMs: OBSERVED_AT, authorityObservedAtMs: OBSERVED_AT },
     );
 
   for (const field of [
@@ -441,7 +545,7 @@ test("verified reject and deadman remain non-write-ready despite a contradictory
       state,
       authority,
       null,
-      { nowMs: OBSERVED_AT, observedAtMs: OBSERVED_AT },
+      { nowMs: OBSERVED_AT, observedAtMs: OBSERVED_AT, authorityObservedAtMs: OBSERVED_AT },
     );
     assert.equal(view.state, "INVALID", mode);
     assert.equal(view.writeReady, false, mode);
