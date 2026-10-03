@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -380,12 +381,10 @@ class BoundaryTests(FixtureMixin, unittest.TestCase):
                 target=flat/name
                 target.parent.mkdir(parents=True,exist_ok=True)
                 target.write_bytes(data)
-        sys.path.insert(0,str(checkout/'python'))
-        try:
-            from immune.source_identity import bundled_source
-            claim=bundled_source(flat)
-        finally:
-            sys.path.remove(str(checkout/'python'))
+        # The publisher qualification venv intentionally has no runtime deps.
+        # Execute the stdlib-only reader file without immune.__init__ imports.
+        bundled_source=runpy.run_path(str(checkout/'python/immune/source_identity.py'))['bundled_source']
+        claim=bundled_source(flat)
         self.assertEqual(claim['evidence_class'],'DECLARED')
         self.assertEqual(claim['revision'],SOURCE)
         self.assertEqual(claim['manifest_sha256'],hashlib.sha256(frozen[guard.SOURCE_STAMP]).hexdigest())
