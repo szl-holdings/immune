@@ -9,7 +9,7 @@ from typing import Any
 
 from .canonical import canonical_bytes, sha256_hex
 from .huklla import evaluate_tripwires
-from .persist import BundleLoadError, load_bundle, load_receipt_key, save_bundle
+from .persist import BundleLoadError, BundleSaveError, load_bundle, load_receipt_key, save_bundle
 from .sentra import sentra_inspect
 
 
@@ -76,32 +76,42 @@ class ImmuneRuntime:
         self.ledger_restore_error: str | None = None
         self.evidence: list[dict[str, Any]] = []
         self.booted = False
+        self._persist_lock = threading.RLock()
 
     def _sign(self, blob: bytes) -> str:
         if self.private_key is None:
             raise RuntimeError("RECEIPT_SIGNER_UNCONFIGURED")
         return base64.b64encode(self.private_key.sign(blob)).decode("ascii")
 
-    def _persist(self) -> None:
+    def _persist(
+        self, ledger: list[dict[str, Any]], evidence: list[dict[str, Any]]
+    ) -> None:
         if self.ledger_restore_error is not None:
             raise RuntimeIntegrityError("RUNTIME_BUNDLE_RESTORE_FAILED")
-        if not self.verify_ledger()["ok"]:
+        if not self.verify_ledger(ledger)["ok"]:
             raise RuntimeIntegrityError("RUNTIME_LEDGER_INTEGRITY_FAILED")
-        save_bundle(
-            {
-                "keyId": self.key_id,
-                "publicKeyB64": self.public_key_b64,
-                "state": self.state,
-                "authorityReceipts": self.authority_receipts,
-                "ledger": self.ledger,
-                "evidence": self.evidence,
-            }
-        )
+        try:
+            save_bundle(
+                {
+                    "keyId": self.key_id,
+                    "publicKeyB64": self.public_key_b64,
+                    "state": self.state,
+                    "authorityReceipts": self.authority_receipts,
+                    "ledger": ledger,
+                    "evidence": evidence,
+                }
+            )
+        except BundleSaveError:
+            raise RuntimeIntegrityError("RUNTIME_BUNDLE_PERSIST_FAILED") from None
 
     def boot(self) -> None:
-        if self.booted:
-            return
-        self.booted = True
+        with self._persist_lock:
+            if self.booted:
+                return
+            self._restore_bundle()
+            self.booted = True
+
+    def _restore_bundle(self) -> None:
         try:
             restored = load_bundle()
         except BundleLoadError:
@@ -200,6 +210,15 @@ class ImmuneRuntime:
         }
 
     def append_receipt(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with self._persist_lock:
+            self.maybe_refresh()
+            receipt = self._build_receipt(payload)
+            candidate_ledger = [*self.ledger, receipt]
+            self._persist(candidate_ledger, self.evidence)
+            self.ledger = candidate_ledger
+            return receipt
+
+    def _build_receipt(self, payload: dict[str, Any]) -> dict[str, Any]:
         seq = len(self.ledger) + 1
         prev_hash = self.ledger[-1]["hash"] if self.ledger else "GENESIS"
         ts = _now_iso()
@@ -222,22 +241,23 @@ class ImmuneRuntime:
                     "kid": self.key_id,
                 }
             )
-        self.ledger.append(receipt)
-        self._persist()
         return receipt
 
-    def verify_ledger(self) -> dict[str, Any]:
+    def verify_ledger(
+        self, ledger: list[dict[str, Any]] | None = None
+    ) -> dict[str, Any]:
+        ledger = self.ledger if ledger is None else ledger
         if self.ledger_restore_error is not None:
             return {
                 "ok": False,
-                "count": len(self.ledger),
+                "count": len(ledger),
                 "issues": [{"seq": None, "kind": "load_failure", "reason": self.ledger_restore_error,
                             "detail": "persisted receipt ledger could not be restored"}],
                 "firstBadSeq": None,
             }
         issues: list[dict[str, Any]] = []
         prev_hash = "GENESIS"
-        for i, entry in enumerate(self.ledger):
+        for i, entry in enumerate(ledger):
             expected = i + 1
             observed_seq = entry.get("seq")
             issue_seq = observed_seq if type(observed_seq) is int else expected
@@ -310,7 +330,7 @@ class ImmuneRuntime:
             prev_hash = stored_hash
         return {
             "ok": len(issues) == 0,
-            "count": len(self.ledger),
+            "count": len(ledger),
             "issues": issues,
             "firstBadSeq": issues[0]["seq"] if issues else None,
         }
@@ -328,6 +348,12 @@ class ImmuneRuntime:
         return self.ledger[-1]["hash"] if self.ledger else None
 
     def run_cycle(
+        self, actor: str, intent: str, extra: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        with self._persist_lock:
+            return self._run_cycle_locked(actor, intent, extra)
+
+    def _run_cycle_locked(
         self, actor: str, intent: str, extra: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         self.maybe_refresh()
@@ -368,7 +394,7 @@ class ImmuneRuntime:
                 "nexusOrgan": True,
             }
             payload_bytes = len(canonical_bytes({"payload": payload}))
-            receipt = self.append_receipt(payload)
+            receipt = self._build_receipt(payload)
             passed = True
         elif not ready["write_ready"] and sentra["accepted"] and not auth["deadman"]:
             sentra["accepted"] = False
@@ -384,10 +410,14 @@ class ImmuneRuntime:
                 "receiptWritten": receipt is not None,
             }
         )
-        self.evidence.append(
-            {"ts": _now_iso(), "cycleSeq": len(self.ledger), "fired": huklla}
-        )
-        self._persist()
+        candidate_ledger = [*self.ledger, receipt] if receipt is not None else self.ledger
+        candidate_evidence = [
+            *self.evidence,
+            {"ts": _now_iso(), "cycleSeq": len(candidate_ledger), "fired": huklla},
+        ]
+        self._persist(candidate_ledger, candidate_evidence)
+        self.ledger = candidate_ledger
+        self.evidence = candidate_evidence
         return {
             "pass": passed,
             "mode": auth["mode"],
