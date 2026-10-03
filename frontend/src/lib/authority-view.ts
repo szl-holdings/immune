@@ -279,7 +279,8 @@ function readinessView(
 
 /**
  * Bind one fresh /readyz observation to the independently retrieved authority
- * snapshot. No single server boolean can enable a write control.
+ * snapshot. Both successful observations must follow the latest transport
+ * resume before a cached signed authority can admit writes again.
  */
 export function deriveWholeSystemReadinessView(
   readiness: ImmuneReadiness | undefined,
@@ -289,15 +290,20 @@ export function deriveWholeSystemReadinessView(
   context: {
     nowMs?: number;
     observedAtMs?: number;
+    authorityObservedAtMs?: number;
+    authorityQueryError?: unknown;
+    requiredObservationAfterMs?: number;
     visible?: boolean;
     online?: boolean;
   } = {},
 ): WholeSystemReadinessView {
-  if (queryError) {
+  if (queryError || context.authorityQueryError) {
     return readinessView(
       "UNAVAILABLE",
       "UNAVAILABLE",
-      "whole-system readiness refresh failed",
+      context.authorityQueryError
+        ? "authoritative state refresh failed"
+        : "whole-system readiness refresh failed",
     );
   }
   if (!readiness) {
@@ -316,15 +322,22 @@ export function deriveWholeSystemReadinessView(
   }
   const nowMs = context.nowMs ?? Date.now();
   const observedAtMs = context.observedAtMs;
+  const authorityObservedAtMs = context.authorityObservedAtMs;
+  const requiredObservationAfterMs = context.requiredObservationAfterMs ?? 0;
   if (
     !Number.isFinite(observedAtMs) ||
     Number(observedAtMs) <= 0 ||
-    Number(observedAtMs) > nowMs + 1_000
+    Number(observedAtMs) > nowMs + 1_000 ||
+    !Number.isFinite(authorityObservedAtMs) ||
+    Number(authorityObservedAtMs) <= 0 ||
+    Number(authorityObservedAtMs) > nowMs + 1_000 ||
+    !Number.isFinite(requiredObservationAfterMs) ||
+    requiredObservationAfterMs < 0
   ) {
     return readinessView(
       "INVALID",
       "INVALID",
-      "whole-system readiness observation time is invalid",
+      "authority or readiness observation time is invalid",
     );
   }
   if (nowMs - Number(observedAtMs) >= READINESS_MAX_AGE_MS) {
@@ -332,6 +345,16 @@ export function deriveWholeSystemReadinessView(
       "STALE",
       "STALE",
       "whole-system readiness observation is stale",
+    );
+  }
+  if (
+    Number(observedAtMs) < requiredObservationAfterMs ||
+    Number(authorityObservedAtMs) < requiredObservationAfterMs
+  ) {
+    return readinessView(
+      "CONNECTING",
+      "CONNECTING",
+      "waiting for authority and readiness observations after transport resume",
     );
   }
 

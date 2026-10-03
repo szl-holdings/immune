@@ -111,6 +111,9 @@ export default function Home() {
     {
       nowMs: observationClock,
       observedAtMs: readinessQuery.dataUpdatedAt,
+      authorityObservedAtMs: stateQuery.dataUpdatedAt,
+      authorityQueryError: stateQuery.error,
+      requiredObservationAfterMs: transport.requiredObservationAfterMs,
       visible: transport.visible,
       online: transport.online,
     },
