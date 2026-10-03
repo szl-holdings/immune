@@ -211,7 +211,7 @@ test("production workflows preserve bounded publication and separate authority r
   const publisher = deploy.indexOf("result = publish_existing(");
   assert.ok(exactCi >= 0);
   assert.ok(publisher > exactCi);
-  const publicTrust = deploy.indexOf("const trust = actionTrustDocumentFromEnvironment()");
+  const publicTrust = deploy.indexOf("trust = actionTrustDocumentFromEnvironment()");
   const firstCredential = deploy.indexOf("HF_TOKEN: ${{ secrets.HF_TOKEN }}");
   assert.ok(publicTrust > exactCi && firstCredential > publicTrust);
   assert.match(deploy, /if \(!trust\.configured\) throw new Error/);

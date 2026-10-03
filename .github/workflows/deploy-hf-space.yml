@@ -67,8 +67,27 @@ jobs:
       - name: Require complete public action trust before publisher credentials
         run: |
           node --input-type=module <<'NODE'
+          import fs from 'node:fs';
           import { actionTrustDocumentFromEnvironment } from './server/action-trust.js';
-          const trust = actionTrustDocumentFromEnvironment();
+          const preflight = {
+            schema: 'szl.immune-publication-preflight/v1',
+            source_revision: process.env.GITHUB_SHA,
+            observed_at: new Date().toISOString(),
+            status: 'BLOCKED',
+            reason: 'PUBLIC_ACTION_TRUST_INVALID',
+            public_trust_configured: false,
+            publication_attempted: false,
+          };
+          let trust;
+          try {
+            trust = actionTrustDocumentFromEnvironment();
+            preflight.public_trust_configured = trust.configured;
+            preflight.status = trust.configured ? 'DECLARED' : 'BLOCKED';
+            preflight.reason = trust.configured ? 'PUBLIC_ACTION_TRUST_CONFIGURED' : 'PUBLIC_ACTION_TRUST_UNCONFIGURED';
+          } finally {
+            fs.mkdirSync('reports/publication-boundary', { recursive: true });
+            fs.writeFileSync('reports/publication-boundary/channel-a-preflight.json', JSON.stringify(preflight, null, 2) + '\n');
+          }
           if (!trust.configured) throw new Error('External v2 public trust is unconfigured; publication blocked');
           console.log(JSON.stringify({schema: trust.schema, keyId: trust.keyId, trustEpoch: trust.trustEpoch}));
           NODE
@@ -156,6 +175,7 @@ jobs:
         with:
           name: immune-publication-boundary-a-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
+            reports/publication-boundary/channel-a-preflight.json
             reports/publication-boundary/channel-a.json
             reports/publication-boundary/channel-a-live.json
           if-no-files-found: error

@@ -5,9 +5,13 @@ an actual provider. BASE or REPAIRED is selected as a local workflow path.
 """
 import contextlib
 import io
+import json
 import os
 from pathlib import Path
+import re
+import subprocess
 import sys
+import tempfile
 import textwrap
 import unittest
 from unittest.mock import patch
@@ -58,6 +62,77 @@ for channel in (0,1):
         def check(self,channel=channel,defect=defect):
             self.exercise(channel,defect)
         setattr(ActualBlockTests,f'test_channel_{channel}_{defect}',check)
+
+class PublicTrustDiagnosticTests(unittest.TestCase):
+    """Execute the actual trust gate with inert bytes, without publisher credentials."""
+
+    def exercise_trust(self, trust_environment):
+        workflow = WORKFLOW.read_text(encoding='utf-8')
+        match = re.search(r"node --input-type=module <<'NODE'\n(.*?)\n\s+NODE", workflow, re.S)
+        self.assertIsNotNone(match, 'actual public trust gate must remain present')
+        source = textwrap.dedent(match.group(1)).replace(
+            './server/action-trust.js', (ROOT/'server/action-trust.js').as_uri()
+        )
+        environment = {key: os.environ[key] for key in ('PATH', 'SystemRoot') if key in os.environ}
+        environment.update(GITHUB_SHA=fixtures.SOURCE, **trust_environment)
+        with tempfile.TemporaryDirectory() as scratch:
+            result = subprocess.run(['node', '--input-type=module'], input=source,
+                                    text=True, capture_output=True, cwd=scratch,
+                                    env=environment, timeout=15)
+            receipt = Path(scratch)/'reports/publication-boundary/channel-a-preflight.json'
+            self.assertTrue(receipt.is_file(), 'blocked public trust must retain a preflight report')
+            return result, json.loads(receipt.read_text(encoding='utf-8'))
+
+    def test_unconfigured_trust_fails_with_retained_report(self):
+        result, report = self.exercise_trust({})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(report['status'], 'BLOCKED')
+        self.assertEqual(report['reason'], 'PUBLIC_ACTION_TRUST_UNCONFIGURED')
+        self.assertEqual(report['source_revision'], fixtures.SOURCE)
+        self.assertFalse(report['publication_attempted'])
+        self.assertFalse(report['public_trust_configured'])
+
+    def test_invalid_public_trust_retains_sanitized_report(self):
+        inert_value = 'INERT_INVALID_PUBLIC_TRUST_FIXTURE'
+        result, report = self.exercise_trust({'IMMUNE_ACTION_PUBLIC_KEY': inert_value})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(report['status'], 'BLOCKED')
+        self.assertEqual(report['reason'], 'PUBLIC_ACTION_TRUST_INVALID')
+        self.assertFalse(report['publication_attempted'])
+        self.assertNotIn(inert_value, json.dumps(report))
+
+    def test_configured_trust_passes_without_claiming_publication(self):
+        fixture = """
+        import crypto from 'node:crypto';
+        import { actionTrustProofMessage } from 'TRUST_MODULE';
+        const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+        const raw = publicKey.export({type:'spki', format:'der'}).subarray(-32);
+        const publicKeyB64 = raw.toString('base64');
+        const keyId = crypto.createHash('sha256').update(raw).digest('hex').slice(0,16);
+        const epoch = 'a'.repeat(32);
+        const volume = 'fixture/immutable';
+        const proof = crypto.sign(null, actionTrustProofMessage(publicKeyB64, keyId, epoch, volume), privateKey).toString('base64');
+        console.log(JSON.stringify({IMMUNE_ACTION_PUBLIC_KEY:publicKeyB64, IMMUNE_ACTION_TRUST_EPOCH:epoch, IMMUNE_ACTION_TRUST_PROOF_B64:proof, IMMUNE_AUTHORITY_VOLUME_SOURCE:volume}));
+        """.replace('TRUST_MODULE', (ROOT/'server/action-trust.js').as_uri())
+        environment = {key: os.environ[key] for key in ('PATH', 'SystemRoot') if key in os.environ}
+        generated = subprocess.run(['node', '--input-type=module'], input=fixture,
+                                   text=True, capture_output=True, env=environment,
+                                   check=True, timeout=15)
+        result, report = self.exercise_trust(json.loads(generated.stdout))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(report['status'], 'DECLARED')
+        self.assertEqual(report['reason'], 'PUBLIC_ACTION_TRUST_CONFIGURED')
+        self.assertTrue(report['public_trust_configured'])
+        self.assertFalse(report['publication_attempted'])
+        self.assertNotIn('publicKeyB64', report)
+
+    def test_preflight_report_is_always_uploaded(self):
+        workflow = WORKFLOW.read_text(encoding='utf-8')
+        upload = workflow.split('- name: Retain Channel A publication boundary evidence', 1)[1].split('  channel-b:', 1)[0]
+        self.assertIn('if: always()', upload)
+        self.assertIn('reports/publication-boundary/channel-a-preflight.json', upload)
+        self.assertIn('if-no-files-found: error', upload)
+
 
 if __name__=='__main__':
     unittest.main(verbosity=2)
