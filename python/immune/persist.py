@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -20,14 +21,6 @@ from cryptography.hazmat.primitives.serialization import (
 
 def data_dir() -> Path:
     return Path(os.environ.get("IMMUNE_DATA_DIR") or Path.cwd() / "data" / "immune")
-
-
-def _try_write(path: Path, body: str) -> None:
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(body, encoding="utf-8")
-    except OSError:
-        pass
 
 
 def load_receipt_key() -> dict[str, Any]:
@@ -61,6 +54,10 @@ class BundleLoadError(RuntimeError):
     """Persisted state exists but cannot be loaded; never bootstrap over it."""
 
 
+class BundleSaveError(RuntimeError):
+    """The runtime bundle was not committed to persistent storage."""
+
+
 def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     """Reject ambiguous persisted objects at every nesting level."""
     result: dict[str, Any] = {}
@@ -89,4 +86,25 @@ def load_bundle() -> dict[str, Any] | None:
 
 
 def save_bundle(bundle: dict[str, Any]) -> None:
-    _try_write(data_dir() / "runtime.json", json.dumps(bundle))
+    path = data_dir() / "runtime.json"
+    pending: str | None = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", prefix=".runtime-", suffix=".tmp",
+            dir=path.parent, delete=False,
+        ) as stream:
+            pending = stream.name
+            stream.write(json.dumps(bundle))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(pending, path)
+        pending = None
+    except OSError:
+        raise BundleSaveError("RUNTIME_BUNDLE_PERSIST_FAILED") from None
+    finally:
+        if pending is not None:
+            try:
+                os.unlink(pending)
+            except OSError:
+                pass

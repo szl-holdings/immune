@@ -387,6 +387,151 @@ class KernelTests(unittest.TestCase):
         self.assertEqual(len(runtime_mod.get_runtime().evidence_latest()), 1)
         self.assertEqual(path.read_bytes(), raw)
 
+    def test_failed_bundle_replace_refuses_all_cycle_routes_without_phantom_evidence(self) -> None:
+        import immune.runtime as runtime_mod
+
+        runtime = runtime_mod.get_runtime()
+        runtime.run_cycle("immune:test", "establish durable baseline")
+        path = Path(self._tmp.name) / "runtime.json"
+        baseline = path.read_bytes()
+        self.assertEqual(len(runtime.evidence), 1)
+        for route in (
+            "/api/immune/cycle", "/api/sentra", "/api/yawar",
+            "/api/bind", "/api/canary",
+        ):
+            with self.subTest(route=route):
+                observed: list[tuple[int, int]] = []
+
+                def fail_replace(*_args: object) -> None:
+                    observed.append((len(runtime.evidence), runtime.ledger_count()))
+                    raise OSError("disk full")
+
+                with (
+                    patch("immune.persist.Path.write_text", side_effect=OSError("disk full")),
+                    patch("immune.persist.os.replace", side_effect=fail_replace),
+                ):
+                    code, body = self._http_json(
+                        route, method="POST",
+                        body={"actor": "immune:test", "intent": "observe synthetic ledger"},
+                    )
+                self.assertEqual(code, 503)
+                self.assertEqual(observed, [(1, 0)])
+                self.assertEqual(body, {"error": "RUNTIME_BUNDLE_PERSIST_FAILED", "write_ready": False})
+                self.assertEqual(runtime.evidence, json.loads(baseline)["evidence"])
+                self.assertEqual(path.read_bytes(), baseline)
+                self.assertEqual(sorted(p.name for p in path.parent.iterdir()), ["runtime.json"])
+        runtime_mod._RUNTIME = None
+        self.assertEqual(runtime_mod.get_runtime().evidence, json.loads(baseline)["evidence"])
+
+    def test_failed_bundle_flush_rolls_back_direct_receipt_and_preserves_restart_state(self) -> None:
+        from immune.runtime import ImmuneRuntime, RuntimeIntegrityError
+
+        runtime = ImmuneRuntime()
+        runtime.boot()
+        runtime.run_cycle("immune:test", "establish durable baseline")
+        path = Path(self._tmp.name) / "runtime.json"
+        baseline = path.read_bytes()
+        observed: list[int] = []
+
+        def fail_fsync(_fd: int) -> None:
+            observed.append(runtime.ledger_count())
+            raise OSError("I/O error")
+
+        with patch("immune.persist.os.fsync", side_effect=fail_fsync):
+            with self.assertRaisesRegex(RuntimeIntegrityError, "RUNTIME_BUNDLE_PERSIST_FAILED"):
+                runtime.append_receipt({"actor": "test", "intent": "fault injection"})
+        self.assertEqual(runtime.ledger_count(), 0)
+        self.assertEqual(observed, [0])
+        self.assertEqual(path.read_bytes(), baseline)
+        self.assertEqual(sorted(p.name for p in path.parent.iterdir()), ["runtime.json"])
+        reopened = ImmuneRuntime()
+        reopened.boot()
+        self.assertEqual(reopened.ledger_count(), 0)
+        self.assertEqual(reopened.evidence, json.loads(baseline)["evidence"])
+
+    def test_concurrent_boot_and_append_preserve_both_committed_receipts(self) -> None:
+        import immune.runtime as runtime_mod
+
+        seed = runtime_mod.ImmuneRuntime()
+        seed.append_receipt({"actor": "test", "intent": "durable seed"})
+        target = runtime_mod.ImmuneRuntime()
+        loaded = threading.Event()
+        release = threading.Event()
+        writer_started = threading.Event()
+        writer_done = threading.Event()
+        failures: list[BaseException] = []
+        receipts: list[dict] = []
+        original_load = runtime_mod.load_bundle
+
+        def delayed_load() -> dict | None:
+            bundle = original_load()
+            loaded.set()
+            if not release.wait(5):
+                raise RuntimeError("test boot release timed out")
+            return bundle
+
+        def read_ready() -> None:
+            try:
+                target.readiness()
+            except BaseException as error:
+                failures.append(error)
+
+        def append() -> None:
+            writer_started.set()
+            try:
+                receipts.append(target.append_receipt(
+                    {"actor": "test", "intent": "racing append"}
+                ))
+            except BaseException as error:
+                failures.append(error)
+            finally:
+                writer_done.set()
+
+        reader = threading.Thread(target=read_ready, daemon=True)
+        writer = threading.Thread(target=append, daemon=True)
+        with patch("immune.runtime.load_bundle", side_effect=delayed_load):
+            reader.start()
+            try:
+                self.assertTrue(loaded.wait(5))
+                writer.start()
+                self.assertTrue(writer_started.wait(5))
+                writer_done.wait(1)
+            finally:
+                release.set()
+                reader.join(timeout=5)
+                if writer.ident is not None:
+                    writer.join(timeout=5)
+        self.assertFalse(reader.is_alive())
+        self.assertFalse(writer.is_alive())
+        self.assertEqual(failures, [])
+        self.assertEqual([receipt["seq"] for receipt in receipts], [2])
+        self.assertEqual([entry["payload"]["intent"] for entry in target.ledger],
+                         ["durable seed", "racing append"])
+        reopened = runtime_mod.ImmuneRuntime()
+        reopened.boot()
+        self.assertEqual(reopened.ledger, target.ledger)
+
+    def test_get_readiness_restores_without_writing_or_signing(self) -> None:
+        import immune.runtime as runtime_mod
+
+        seed = runtime_mod.ImmuneRuntime()
+        seed.append_receipt({"actor": "test", "intent": "read-only seed"})
+        path = Path(self._tmp.name) / "runtime.json"
+        raw = path.read_bytes()
+        runtime_mod._RUNTIME = None
+        with (
+            patch("immune.runtime.save_bundle", side_effect=AssertionError("GET wrote")) as save,
+            patch.object(runtime_mod.ImmuneRuntime, "_sign", side_effect=AssertionError("GET signed")) as sign,
+        ):
+            code, ready = self._http_json("/readyz")
+        self.assertEqual(code, 503)
+        self.assertEqual(ready["ledger"]["count"], 1)
+        self.assertFalse(ready["write_ready"])
+        save.assert_not_called()
+        sign.assert_not_called()
+        self.assertEqual(path.read_bytes(), raw)
+        self.assertEqual(runtime_mod.get_runtime().ledger_count(), 1)
+
     def test_impossible_or_decreasing_evidence_sequence_preserves_bundle(self) -> None:
         import immune.runtime as runtime_mod
         from immune.canonical import hash_canonical
