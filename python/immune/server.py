@@ -24,15 +24,10 @@ from .organs import dashboard, local_organ_mesh
 from .runtime import RuntimeIntegrityError, get_runtime
 from .second_brain import search_brain
 from .sentra import sentra_inspect
+from .source_identity import bundled_source
 
 HTML = Path(__file__).resolve().parent.parent / "space" / "index.html"
 NEXUS_HTML = Path(__file__).resolve().parent.parent / "space" / "nexus.html"
-SOURCE_REV = (
-    os.environ.get("SOURCE_REVISION")
-    or os.environ.get("GITHUB_SHA")
-    or os.environ.get("SPACE_REPO_ID")
-    or "UNSIGNED-honest"
-)
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$")
 
 
@@ -273,7 +268,7 @@ class Handler(BaseHTTPRequestHandler):
                     "energy": None,
                     "source": {
                         "repository": "szl-holdings/immune",
-                        "revision": SOURCE_REV,
+                        **bundled_source(),
                         "channel": "python",
                         "alignment": "src/lib/immune",
                     },

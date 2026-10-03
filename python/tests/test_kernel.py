@@ -158,6 +158,29 @@ class KernelTests(unittest.TestCase):
         if runtime.key_id is not None:
             self.assertNotIn(runtime.key_id, json.dumps(ready))
 
+    def test_declared_bundle_identity_does_not_change_readiness_or_write_on_get(self) -> None:
+        declaration = {
+            "revision": "a" * 40,
+            "evidence_class": "DECLARED",
+            "manifest_sha256": "b" * 64,
+        }
+        with patch("immune.server.bundled_source", return_value=declaration):
+            code, ready = self._http_json("/readyz")
+        self.assertEqual(code, 503)
+        self.assertFalse(ready["ok"])
+        self.assertFalse(ready["read_ready"])
+        self.assertFalse(ready["write_ready"])
+        self.assertIn("ACTION_AUTHORITY_UNAVAILABLE", ready["blockers"])
+        self.assertEqual(ready["source"]["revision"], declaration["revision"])
+        self.assertEqual(ready["source"]["evidence_class"], "DECLARED")
+        with patch.dict(os.environ, {"GITHUB_SHA": "c" * 40,
+                                   "SOURCE_REVISION": "c" * 40}):
+            unknown_code, unknown = self._http_json("/readyz")
+        self.assertEqual(unknown_code, 503)
+        self.assertEqual(unknown["source"]["evidence_class"], "UNKNOWN")
+        self.assertIsNone(unknown["source"]["revision"])
+        self.assertEqual(list(Path(self._tmp.name).iterdir()), [])
+
     def test_malformed_persisted_bundles_are_integrity_failures(self) -> None:
         import immune.runtime as runtime_mod
 

@@ -21,6 +21,11 @@ SHA = re.compile(r"[0-9a-f]{40}")
 MAX_FILES = 5000
 MAX_FILE_BYTES = 32 * 1024 * 1024
 MAX_TOTAL_BYTES = 128 * 1024 * 1024
+SOURCE_STAMP = "immune/_source_identity.json"
+SOURCE_SCHEMA = "szl.immune.bundled-source/v1"
+SOURCE_REPOSITORY = "szl-holdings/immune"
+RUNTIME_ROOT_FILES = frozenset({"server.py", "requirements.txt", "index.html", "nexus.html"})
+MAX_SOURCE_STAMP_BYTES = 16 * 1024
 CONTRACTS = {
     "SZLHOLDINGS/immune": {
         "root": "frontend/deploy",
@@ -41,6 +46,16 @@ CONTRACTS = {
 
 class PublicationBoundaryError(RuntimeError):
     """A sanitized, non-authorizing failure; no raw provider exception text."""
+
+
+def _is_reparse(path: Path) -> bool:
+    info = path.lstat()
+    return (
+        stat.S_ISLNK(info.st_mode)
+        or bool(getattr(info, "st_file_attributes", 0)
+                & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+        or getattr(path, "is_junction", lambda: False)()
+    )
 
 
 def _sha(value: Any) -> str:
@@ -89,9 +104,22 @@ def freeze_uploads(space: str, uploads: Mapping[str, str], checkout: Path) -> di
         raise PublicationBoundaryError("INVALID_UPLOAD_SET")
     if not spec["required"].issubset(uploads):
         raise PublicationBoundaryError("INCOMPLETE_UPLOAD_SET")
-    root = checkout.resolve(strict=True)
+    try:
+        source_root = checkout.absolute()
+        if any(_is_reparse(part) for part in reversed((source_root, *source_root.parents))):
+            raise PublicationBoundaryError("INVALID_LOCAL_ROOT")
+        root = source_root.resolve(strict=True)
+    except OSError:
+        raise PublicationBoundaryError("INVALID_LOCAL_ROOT") from None
     allowed_root = root / spec["root"]
-    if not allowed_root.is_dir() or allowed_root.is_symlink():
+    try:
+        allowed_components = [part for part in reversed((allowed_root, *allowed_root.parents))
+                              if part != root and part.is_relative_to(root)]
+        if any(_is_reparse(part) for part in allowed_components):
+            raise PublicationBoundaryError("INVALID_LOCAL_ROOT")
+    except OSError:
+        raise PublicationBoundaryError("INVALID_LOCAL_ROOT") from None
+    if not allowed_root.is_dir():
         raise PublicationBoundaryError("INVALID_LOCAL_ROOT")
     frozen = {}
     total = 0
@@ -107,10 +135,17 @@ def freeze_uploads(space: str, uploads: Mapping[str, str], checkout: Path) -> di
             p.relative_to(allowed_root)
         except ValueError:
             raise PublicationBoundaryError("LOCAL_PATH_OUTSIDE_SOURCE") from None
-        # Reject symlinks in every component, not just the leaf. CI checkout is
-        # trusted; this is not a concurrent hostile-filesystem sandbox.
-        if any(parent.is_symlink() for parent in [p, *p.parents] if parent != root):
-            raise PublicationBoundaryError("LOCAL_SYMLINK")
+        # Reject links and NTFS reparse points before opening the file. CI
+        # checkout is trusted; this is not a concurrent filesystem sandbox.
+        try:
+            components = [part for part in reversed((p, *p.parents))
+                          if part != root and part.is_relative_to(root)]
+            if any(_is_reparse(part) for part in components):
+                raise PublicationBoundaryError("LOCAL_SYMLINK")
+            if not p.resolve(strict=True).is_relative_to(allowed_root.resolve(strict=True)):
+                raise PublicationBoundaryError("LOCAL_PATH_OUTSIDE_SOURCE")
+        except OSError:
+            raise PublicationBoundaryError("LOCAL_FILE_UNAVAILABLE") from None
         try:
             before = p.stat()
             if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_FILE_BYTES:
@@ -133,20 +168,71 @@ def freeze_uploads(space: str, uploads: Mapping[str, str], checkout: Path) -> di
     return frozen
 
 
-def require_main_source(revision: str, checkout: Path) -> None:
+def prepare_uploads(space: str, uploads: dict[str, str], checkout: Path,
+                    revision: str) -> dict[str, bytes]:
+    """Add a Channel B declaration derived only from frozen upload bytes."""
+    revision = _sha(revision)
+    if space == "SZLHOLDINGS/immune-lattice" and SOURCE_STAMP in uploads:
+        raise PublicationBoundaryError("SOURCE_STAMP_NOT_PUBLISHER_GENERATED")
+    frozen = freeze_uploads(space, uploads, checkout)
+    if space == "SZLHOLDINGS/immune-lattice":
+        if len(frozen) >= MAX_FILES:
+            raise PublicationBoundaryError("LOCAL_BUNDLE_TOO_LARGE")
+        files = {
+            name: hashlib.sha256(data).hexdigest()
+            for name, data in frozen.items()
+            if name.startswith("immune/") or name in RUNTIME_ROOT_FILES
+        }
+        declaration = {
+            "schema": SOURCE_SCHEMA,
+            "repository": SOURCE_REPOSITORY,
+            "revision": revision,
+            "files": files,
+        }
+        stamp = (
+            json.dumps(declaration, sort_keys=True, separators=(",", ":")) + "\n"
+        ).encode("utf-8")
+        if len(stamp) > MAX_SOURCE_STAMP_BYTES or sum(map(len, frozen.values())) + len(stamp) > MAX_TOTAL_BYTES:
+            raise PublicationBoundaryError("SOURCE_STAMP_TOO_LARGE")
+        frozen[SOURCE_STAMP] = stamp
+    return frozen
+
+
+def require_main_source(revision: str, checkout: Path,
+                        uploads: Mapping[str, str] | None = None,
+                        frozen: Mapping[str, bytes] | None = None) -> None:
     """Require the actual checkout and a fresh canonical main read, not an alias."""
     _sha(revision)
     if os.environ.get("GITHUB_REF") != "refs/heads/main" or os.environ.get("GITHUB_REPOSITORY") != "szl-holdings/immune":
         raise PublicationBoundaryError("SOURCE_NOT_CANONICAL_MAIN")
+    git_env = {**os.environ, "GIT_NO_REPLACE_OBJECTS": "1"}
     try:
         head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=checkout,
-                              check=True, capture_output=True, text=True, timeout=10).stdout.strip()
+                              check=True, capture_output=True, text=True, timeout=10,
+                              env=git_env).stdout.strip()
         remote = subprocess.run(["git", "ls-remote", "--exit-code", "https://github.com/szl-holdings/immune.git", "refs/heads/main"],
-                                cwd=checkout, check=True, capture_output=True, text=True, timeout=30).stdout.strip()
+                                cwd=checkout, check=True, capture_output=True, text=True, timeout=30,
+                                env=git_env).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         raise PublicationBoundaryError("SOURCE_READBACK_UNAVAILABLE") from None
     if head != revision or remote != revision + "\trefs/heads/main":
         raise PublicationBoundaryError("SOURCE_REVISION_MOVED")
+    if uploads is not None:
+        if frozen is None or not set(uploads).issubset(frozen):
+            raise PublicationBoundaryError("SOURCE_UPLOAD_SET_MISMATCH")
+        for remote_path, local_path in sorted(uploads.items()):
+            try:
+                committed = subprocess.run(
+                    ["git", "cat-file", "blob", f"{revision}:{_path(local_path)}"],
+                    cwd=checkout, check=True, capture_output=True, timeout=10,
+                    env=git_env,
+                ).stdout
+            except (OSError, subprocess.TimeoutExpired):
+                raise PublicationBoundaryError("SOURCE_READBACK_UNAVAILABLE") from None
+            except subprocess.CalledProcessError:
+                raise PublicationBoundaryError("SOURCE_BYTES_NOT_AT_REVISION") from None
+            if committed != frozen[remote_path]:
+                raise PublicationBoundaryError("SOURCE_BYTES_NOT_AT_REVISION")
 
 
 def publish_existing(api: Any, space: str, uploads: dict[str, str], revision: str,
@@ -176,7 +262,7 @@ def publish_existing(api: Any, space: str, uploads: dict[str, str], revision: st
         record("PREFLIGHT")
         try:
             require_main_source(revision, checkout)
-            frozen = freeze_uploads(space, uploads, checkout)
+            frozen = prepare_uploads(space, uploads, checkout, revision)
             parent = observe_existing(api, space)
             try:
                 names = api.list_repo_files(repo_id=space, repo_type="space", revision=parent)
@@ -198,7 +284,10 @@ def publish_existing(api: Any, space: str, uploads: dict[str, str], revision: st
             from huggingface_hub import CommitOperationAdd, CommitOperationDelete
             operations = [CommitOperationAdd(path_in_repo=k, path_or_fileobj=v) for k, v in frozen.items()]
             operations += [CommitOperationDelete(path_in_repo=k) for k in stale]
-            require_main_source(revision, checkout)
+            if space == "SZLHOLDINGS/immune-lattice":
+                require_main_source(revision, checkout, uploads, frozen)
+            else:
+                require_main_source(revision, checkout)
             if observe_existing(api, space) != parent:
                 raise PublicationBoundaryError("SPACE_REVISION_MOVED")
             record("ATTEMPT_JOURNALED")

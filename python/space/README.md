@@ -28,6 +28,12 @@ Read contract: `GET /api/immune/state` and `GET /api/immune/dashboard`.
 `GET /healthz` reports process liveness, not action authority. `GET /readyz`
 returns 503 while authority or whole-system readiness is unavailable; a proxy
 failure or a non-JSON response must also leave governed controls disabled.
+The existing Channel B publisher includes a source declaration in its single
+guarded Hub commit. `/readyz` labels it `DECLARED` only when the repository,
+full source revision, and hashes of the files in the running image match that
+declaration; absent or stale declarations are `UNKNOWN` with no revision.
+This identifies bundled source only. It does not establish deployment or action
+authority, change readiness, or create a receipt on GET.
 
 Channel B does not possess a privileged action-signing key, seal genesis PASS,
 or renew action authority. Mode and reset requests return

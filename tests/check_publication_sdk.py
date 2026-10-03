@@ -61,7 +61,7 @@ def main() -> None:
     summaries = []
     for index, (space, uploads) in enumerate(bundles.items()):
         api = HfApi(endpoint="https://huggingface.co", token=False)
-        frozen = guard.freeze_uploads(space, uploads, ROOT)
+        frozen = guard.prepare_uploads(space, uploads, ROOT, source)
         calls = []
         parent = "b" * 40
         result_sha = "c" * 40
