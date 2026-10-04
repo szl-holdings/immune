@@ -10,6 +10,28 @@ pinned: false
 license: apache-2.0
 ---
 
+<p><a href="https://huggingface.co/spaces/SZLHOLDINGS/szl-command-lab"><img src="https://raw.githubusercontent.com/szl-holdings/.github/main/profile/assets/szl/logos/szl_mark_holographic.svg" alt="SZL Holdings" width="112" /></a></p>
+
+# IMMUNE
+
+Inspect governance-kernel state, tripwire boundaries and the source-owned NEXUS dynamics surface.
+
+**Artifact:** Governance-kernel application · **Stage:** Action admission gated
+
+[Explore in Command Lab](https://huggingface.co/spaces/SZLHOLDINGS/szl-command-lab) · [Build](https://github.com/szl-holdings/immune) · [Evidence](https://github.com/szl-holdings/immune/blob/54949d5a791fc3cd54d6261bdde22c861570d635/frontend/deploy/README.md)
+
+## Before you use it
+
+- Action authority requires the independently admitted trust lease and whole-system readiness evidence; serving this interface cannot grant itself PASS.
+- Λ remains Conjecture 1. Missing ledger authority or real energy measurements remain unavailable.
+
+<details>
+<summary>Technical details and original evidence</summary>
+
+The retained source below is exact and may contain historical observations. Its dates, use restrictions, licenses and evidence boundaries continue to apply.
+
+<!-- SZL-PRESERVED-TECHNICAL-BODY:START -->
+
 # IMMUNE — Channel A kernel
 
 Public TypeScript kernel for IMMUNE. Not an investor-demo stub. SENTRA admits,
@@ -80,3 +102,7 @@ Deployment and operator actions share one mutation queue. The publisher sets
 reads both back twice, and independently verifies provider and runtime bytes.
 See the source repository's external-authority activation guide for prerequisites
 and the forward-only initial migration boundary.
+
+<!-- SZL-PRESERVED-TECHNICAL-BODY:END -->
+
+</details>

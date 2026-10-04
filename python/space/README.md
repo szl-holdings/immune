@@ -10,6 +10,29 @@ pinned: false
 license: apache-2.0
 ---
 
+<p><a href="https://huggingface.co/spaces/SZLHOLDINGS/szl-command-lab"><img src="https://raw.githubusercontent.com/szl-holdings/.github/main/profile/assets/szl/logos/szl_mark_holographic.svg" alt="SZL Holdings" width="112" /></a></p>
+
+# IMMUNE Lattice
+
+Inspect the read-only Python compatibility channel and its explicit system-state evidence.
+
+**Artifact:** Read-only compatibility application · **Stage:** Readiness separate from reachability
+
+[Explore in Command Lab](https://huggingface.co/spaces/SZLHOLDINGS/szl-command-lab) · [Build](https://github.com/szl-holdings/immune) · [Evidence](https://github.com/szl-holdings/immune/blob/54949d5a791fc3cd54d6261bdde22c861570d635/python/space/README.md)
+
+## Before you use it
+
+- Health reports process liveness; unavailable whole-system authority keeps readiness closed.
+- Read requests cannot create action authority or receipts. Any admitted writes retain the canonical TypeScript authority path.
+- Energy requires an actual meter reading.
+
+<details>
+<summary>Technical details and original evidence</summary>
+
+The retained source below is exact and may contain historical observations. Its dates, use restrictions, licenses and evidence boundaries continue to apply.
+
+<!-- SZL-PRESERVED-TECHNICAL-BODY:START -->
+
 # IMMUNE lattice (Channel B)
 
 Read-only Python compatibility channel for IMMUNE. Same doctrine as Channel A (`SZLHOLDINGS/immune`):
@@ -54,3 +77,7 @@ Same sealed hashes as Channel A:
 - inputHash `c5fcc5029392a5e4f7cd65a655d5379cd65d8f915b2ee96a1db5d44e35ea2358`
 - outputHash `4071a2f2faca744907747cb2cc82a9d841e125fa287240505f9f9a8454a399ac`
 - 320 steps, σ 10 · ρ 27.9 · β 2.67, energy UNAVAILABLE
+
+<!-- SZL-PRESERVED-TECHNICAL-BODY:END -->
+
+</details>
