@@ -144,10 +144,16 @@ export default function Home() {
       <a className="kanchay-skip" href="#main-content">
         Skip to evidence
       </a>
-      <main id="main-content" className="relative w-full bg-background text-foreground font-sans">
+      <nav className="kanchay-navigation" aria-label="Explore IMMUNE">
+        <a href="#main-content">Workspace</a>
+        <a href="#proof-boundary-title">Investor brief</a>
+        <a href="#developer-quickstart">Developers</a>
+        <a href="https://github.com/szl-holdings/immune">Source</a>
+      </nav>
+      <main id="main-content" className="@container/immune relative w-full bg-background text-foreground font-sans">
       {/* ============================ HERO ============================ */}
       <section
-        className="relative flex min-h-[100svh] w-full flex-col overflow-x-hidden lg:h-screen lg:block lg:overflow-hidden"
+        className="relative flex min-h-[100svh] w-full flex-col overflow-x-hidden @5xl/immune:h-screen @5xl/immune:block @5xl/immune:overflow-hidden"
         aria-labelledby="immune-title"
       >
         {/* 3D Background */}
@@ -170,30 +176,30 @@ export default function Home() {
         </AnimatePresence>
 
         {/* Top HUD */}
-        <header className="absolute top-0 left-0 w-full p-4 sm:p-6 z-30 flex justify-between items-start gap-3 pointer-events-none">
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-4">
+        <header className="relative w-full p-4 @min-[40rem]/immune:p-6 z-30 flex flex-wrap justify-between items-start gap-4 pointer-events-none @5xl/immune:absolute @5xl/immune:top-0 @5xl/immune:left-0" data-testid="immune-hud">
+          <div className="flex min-w-0 flex-1 basis-64 flex-col gap-2">
+            <div className="flex min-w-0 items-center gap-3">
               <motion.div
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ duration: 0.5 }}
-                className={`p-3 border bg-black/60 backdrop-blur-md ${getStatusColor()}`}
+                className={`shrink-0 p-3 border bg-black/60 backdrop-blur-md ${getStatusColor()}`}
               >
                 <StatusIcon />
               </motion.div>
-              <div>
-                <h1 id="immune-title" className="text-2xl sm:text-3xl font-display font-bold tracking-widest leading-none flex items-center gap-3">
+              <div className="min-w-0">
+                <h1 id="immune-title" className="text-2xl @min-[40rem]/immune:text-3xl font-display font-bold tracking-widest leading-none flex items-center gap-3">
                   <span className={deadman ? "glitch-text text-destructive" : ""}>IMMUNE</span>
                 </h1>
-                <p className="hidden sm:block text-muted-foreground font-mono text-xs uppercase tracking-[0.2em] mt-1">
+                <p className="hidden @min-[40rem]/immune:block text-muted-foreground font-mono text-xs uppercase tracking-[0.2em] mt-1">
                   Verifiable-AI Defense Matrix
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-col items-end gap-1 font-mono text-[10px] sm:text-xs uppercase tracking-widest">
-            <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 basis-64 flex-col items-start gap-1 font-mono text-[10px] @min-[40rem]/immune:text-xs uppercase tracking-widest @5xl/immune:items-end">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-muted-foreground">Authority State</span>
               <span
                 className={`px-2 py-1 bg-black/50 border ${getStatusColor()} backdrop-blur`}
@@ -203,13 +209,13 @@ export default function Home() {
                 {systemStatus}
               </span>
             </div>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex flex-wrap items-center gap-2 mt-2">
               <Activity className={`w-3 h-3 ${authorityLabelColor}`} />
               <span className={authorityLabelColor}>
                 {authorityLabel}
               </span>
             </div>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex flex-wrap items-center gap-2 mt-1">
               <span className="text-muted-foreground">Whole System</span>
               <span
                 className={readinessLabelColor}
@@ -223,18 +229,18 @@ export default function Home() {
           </div>
         </header>
 
-        {/* Panels: stacked in normal flow on mobile/tablet, absolute HUD on desktop (lg:contents) */}
-        <div className="kanchay-safe relative z-20 flex w-full flex-col gap-4 px-4 pb-10 pt-24 sm:px-6 lg:contents">
+        {/* Panels: stacked in normal flow on mobile/tablet, absolute HUD on desktop (@5xl/immune:contents) */}
+        <div className="kanchay-safe relative z-20 flex w-full min-w-0 flex-col gap-4 px-4 pb-10 pt-2 @min-[40rem]/immune:px-6 @5xl/immune:contents">
           {/* Left Panel: Controls */}
           <motion.div
             initial={{ x: -60, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ delay: 0.2, type: "spring", stiffness: 200, damping: 20 }}
-            className="w-full pointer-events-auto flex flex-col gap-6 lg:absolute lg:left-6 lg:top-32 lg:bottom-6 lg:min-h-0 lg:w-[320px]"
+            className="w-full pointer-events-auto flex flex-col gap-6 @5xl/immune:absolute @5xl/immune:left-6 @5xl/immune:top-32 @5xl/immune:bottom-6 @5xl/immune:min-h-0 @5xl/immune:w-[320px]"
           >
             <div
               aria-label="Governed controls"
-              className="group relative flex flex-1 flex-col border border-border/50 bg-black/40 p-5 backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-6 lg:min-h-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-contain [scrollbar-gutter:stable]"
+              className="group relative flex flex-1 flex-col border border-border/50 bg-black/40 p-5 backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary @min-[40rem]/immune:p-6 @5xl/immune:min-h-0 @5xl/immune:overflow-x-hidden @5xl/immune:overflow-y-auto @5xl/immune:overscroll-contain [scrollbar-gutter:stable]"
               data-testid="controls-scroll-region"
               role="region"
               tabIndex={0}
@@ -252,9 +258,10 @@ export default function Home() {
             initial={{ x: 60, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ delay: 0.3, type: "spring", stiffness: 200, damping: 20 }}
-            className="w-full pointer-events-auto flex flex-col gap-6 lg:absolute lg:right-6 lg:top-32 lg:bottom-6 lg:w-[400px]"
+            data-testid="audit-panel"
+            className="w-full pointer-events-auto flex flex-col gap-6 @5xl/immune:absolute @5xl/immune:right-6 @5xl/immune:top-32 @5xl/immune:bottom-6 @5xl/immune:w-[400px]"
           >
-            <div className="flex-1 bg-black/40 backdrop-blur-md border border-border/50 p-5 sm:p-6 flex flex-col relative overflow-hidden">
+            <div className="flex-1 bg-black/40 backdrop-blur-md border border-border/50 p-5 @min-[40rem]/immune:p-6 flex flex-col relative overflow-hidden">
               <div className="absolute top-0 right-0 w-full h-1 bg-gradient-to-l from-primary/50 to-transparent" />
               <div className="text-[10px] text-primary/70 uppercase tracking-[0.3em] mb-6 font-mono flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
@@ -266,7 +273,7 @@ export default function Home() {
         </div>
 
         {/* Target Reticle overlays */}
-        <div className="absolute inset-0 pointer-events-none hidden lg:flex items-center justify-center z-10 opacity-20">
+        <div className="absolute inset-0 pointer-events-none hidden @5xl/immune:flex items-center justify-center z-10 opacity-20">
           <div className="w-[60vw] h-[60vh] border border-primary/20 rounded-full relative">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-px h-8 bg-primary/50" />
             <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-px h-8 bg-primary/50" />
@@ -293,7 +300,7 @@ export default function Home() {
 
       {/* ===================== VALUE + PROOF BOUNDARY ===================== */}
       <section className="relative z-20 border-y border-primary/10 bg-black/70" aria-labelledby="proof-boundary-title">
-        <div className="mx-auto grid max-w-6xl gap-8 px-6 py-14 lg:grid-cols-[1.05fr_1.95fr]">
+        <div className="mx-auto grid max-w-6xl gap-8 px-6 py-14 @5xl/immune:grid-cols-[1.05fr_1.95fr]">
           <header>
             <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-secondary">
               Investor brief · proof before posture
@@ -311,7 +318,7 @@ export default function Home() {
             </div>
           </header>
 
-          <div className="grid gap-3 sm:grid-cols-2" aria-label="Evidence state contract">
+          <div className="grid gap-3 @min-[40rem]/immune:grid-cols-2" aria-label="Evidence state contract">
             <article className="kanchay-proof-card">
               <h3>LIVE / MEASURED</h3>
               <p>Reserved for a current successful API observation. Authority expires and transport loss invalidates cached green state.</p>
@@ -328,7 +335,7 @@ export default function Home() {
               <h3>UNAVAILABLE / LIMITS</h3>
               <p>Missing, stale, contradictory, or unreachable authority fails closed. Public readback is not an ATO or a performance claim.</p>
             </article>
-            <aside className="kanchay-quickstart sm:col-span-2" aria-label="Developer quickstart">
+            <aside id="developer-quickstart" className="kanchay-quickstart @min-[40rem]/immune:col-span-2" aria-label="Developer quickstart">
               <strong>Developer quickstart</strong>
               <code>pnpm install --frozen-lockfile</code>
               <code>pnpm run typecheck</code>
@@ -347,7 +354,7 @@ export default function Home() {
               <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
               Verifiable AI · You Can't Fake It
             </div>
-            <h2 id="intelligence-title" className="text-2xl md:text-3xl font-display font-bold tracking-widest">
+            <h2 id="intelligence-title" className="text-2xl @3xl/immune:text-3xl font-display font-bold tracking-widest">
               EVIDENCE FEEDS WITH SOURCE-BY-SOURCE STATE
             </h2>
             <p className="font-mono text-[11px] text-muted-foreground leading-relaxed max-w-3xl">
@@ -372,7 +379,7 @@ export default function Home() {
           <PulsePanel />
 
           {/* Transparency log (Rekor) + ATLAS case studies | Leaders */}
-          <div className="grid lg:grid-cols-2 gap-8 items-start">
+          <div className="grid @5xl/immune:grid-cols-2 gap-8 items-start">
             <IntelPanel />
             <LeadersPanel />
           </div>
