@@ -144,6 +144,12 @@ export default function Home() {
       <a className="kanchay-skip" href="#main-content">
         Skip to evidence
       </a>
+      <nav className="kanchay-navigation" aria-label="Explore IMMUNE">
+        <a href="#main-content">Workspace</a>
+        <a href="#proof-boundary-title">Investor brief</a>
+        <a href="#developer-quickstart">Developers</a>
+        <a href="https://github.com/szl-holdings/immune">Source</a>
+      </nav>
       <main id="main-content" className="relative w-full bg-background text-foreground font-sans">
       {/* ============================ HERO ============================ */}
       <section
@@ -170,18 +176,18 @@ export default function Home() {
         </AnimatePresence>
 
         {/* Top HUD */}
-        <header className="absolute top-0 left-0 w-full p-4 sm:p-6 z-30 flex justify-between items-start gap-3 pointer-events-none">
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-4">
+        <header className="relative w-full p-4 sm:p-6 z-30 flex flex-wrap justify-between items-start gap-4 pointer-events-none lg:absolute lg:top-0 lg:left-0" data-testid="immune-hud">
+          <div className="flex min-w-0 flex-1 basis-64 flex-col gap-2">
+            <div className="flex min-w-0 items-center gap-3">
               <motion.div
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ duration: 0.5 }}
-                className={`p-3 border bg-black/60 backdrop-blur-md ${getStatusColor()}`}
+                className={`shrink-0 p-3 border bg-black/60 backdrop-blur-md ${getStatusColor()}`}
               >
                 <StatusIcon />
               </motion.div>
-              <div>
+              <div className="min-w-0">
                 <h1 id="immune-title" className="text-2xl sm:text-3xl font-display font-bold tracking-widest leading-none flex items-center gap-3">
                   <span className={deadman ? "glitch-text text-destructive" : ""}>IMMUNE</span>
                 </h1>
@@ -192,8 +198,8 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="flex flex-col items-end gap-1 font-mono text-[10px] sm:text-xs uppercase tracking-widest">
-            <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 basis-64 flex-col items-start gap-1 font-mono text-[10px] sm:text-xs uppercase tracking-widest lg:items-end">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-muted-foreground">Authority State</span>
               <span
                 className={`px-2 py-1 bg-black/50 border ${getStatusColor()} backdrop-blur`}
@@ -203,13 +209,13 @@ export default function Home() {
                 {systemStatus}
               </span>
             </div>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex flex-wrap items-center gap-2 mt-2">
               <Activity className={`w-3 h-3 ${authorityLabelColor}`} />
               <span className={authorityLabelColor}>
                 {authorityLabel}
               </span>
             </div>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex flex-wrap items-center gap-2 mt-1">
               <span className="text-muted-foreground">Whole System</span>
               <span
                 className={readinessLabelColor}
@@ -224,7 +230,7 @@ export default function Home() {
         </header>
 
         {/* Panels: stacked in normal flow on mobile/tablet, absolute HUD on desktop (lg:contents) */}
-        <div className="kanchay-safe relative z-20 flex w-full flex-col gap-4 px-4 pb-10 pt-24 sm:px-6 lg:contents">
+        <div className="kanchay-safe relative z-20 flex w-full min-w-0 flex-col gap-4 px-4 pb-10 pt-2 sm:px-6 lg:contents">
           {/* Left Panel: Controls */}
           <motion.div
             initial={{ x: -60, opacity: 0 }}
@@ -328,7 +334,7 @@ export default function Home() {
               <h3>UNAVAILABLE / LIMITS</h3>
               <p>Missing, stale, contradictory, or unreachable authority fails closed. Public readback is not an ATO or a performance claim.</p>
             </article>
-            <aside className="kanchay-quickstart sm:col-span-2" aria-label="Developer quickstart">
+            <aside id="developer-quickstart" className="kanchay-quickstart sm:col-span-2" aria-label="Developer quickstart">
               <strong>Developer quickstart</strong>
               <code>pnpm install --frozen-lockfile</code>
               <code>pnpm run typecheck</code>
