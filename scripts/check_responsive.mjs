@@ -58,16 +58,24 @@ try {
           return rect.width * rect.height > innerWidth * innerHeight * .88;
         }).map(identify);
         const clippedHeadings = [...document.querySelectorAll('h1,h2,h3')].filter(element => visible(element) && element.scrollWidth > element.clientWidth + 2).map(identify);
-        return { applied_zoom: Number.parseFloat(getComputedStyle(document.documentElement).zoom), root_zoom_tier: document.documentElement.dataset.szlZoomTier ?? null, body_inline_size: document.body.clientWidth, body_rendered_width: document.body.getBoundingClientRect().width, title: document.title, has_main: Boolean(document.querySelector('main')), text_characters: document.body.innerText.trim().length, overflow_px: Math.max(0, document.documentElement.scrollWidth - viewport), blocking_overlays: overlays, clipped_headings: clippedHeadings, error_overlay: Boolean(document.querySelector('[data-nextjs-dialog],vite-error-overlay')) };
+        const controls = document.querySelector('[data-testid="controls-scroll-region"]')?.getBoundingClientRect();
+        const audit = document.querySelector('[data-testid="audit-panel"]')?.getBoundingClientRect();
+        const hud = document.querySelector('[data-testid="immune-hud"]')?.getBoundingClientRect();
+        const overlap = (a, b) => !a || !b ? null : Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+        return { panels_overlap_px: overlap(controls, audit), hud_overlap_px: overlap(controls, hud), applied_zoom: Number.parseFloat(getComputedStyle(document.documentElement).zoom), root_zoom_tier: document.documentElement.dataset.szlZoomTier ?? null, body_inline_size: document.body.clientWidth, body_rendered_width: document.body.getBoundingClientRect().width, title: document.title, has_main: Boolean(document.querySelector('main')), text_characters: document.body.innerText.trim().length, overflow_px: Math.max(0, document.documentElement.scrollWidth - viewport), blocking_overlays: overlays, clipped_headings: clippedHeadings, error_overlay: Boolean(document.querySelector('[data-nextjs-dialog],vite-error-overlay')) };
       });
       const result = { route, case: name, width, height, zoom, http_status: response?.status() ?? null, ...measured, page_errors: errors };
-      result.passed = result.http_status === 200 && measured.applied_zoom === zoom && measured.has_main && measured.text_characters > 100 && measured.overflow_px <= 1 && measured.blocking_overlays.length === 0 && measured.clipped_headings.length === 0 && !measured.error_overlay && errors.length === 0;
+      result.passed = result.http_status === 200 && measured.applied_zoom === zoom && measured.panels_overlap_px === 0 && measured.hud_overlap_px === 0 && measured.has_main && measured.text_characters > 100 && measured.overflow_px <= 1 && measured.blocking_overlays.length === 0 && measured.clipped_headings.length === 0 && !measured.error_overlay && errors.length === 0;
       if (!result.passed || ['phone-320', 'desktop-1440', 'zoom-400'].includes(name)) {
         const filename = `${route.replace(/[^a-z0-9]+/gi, '-') || 'home'}--${name}.png`;
         await page.screenshot({ path: path.join(directory, filename) });
         result.screenshot = filename;
         result.zoom_after_screenshot = await page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).zoom));
         result.passed = result.passed && result.zoom_after_screenshot === zoom;
+        await page.locator('[data-testid="controls-scroll-region"]').evaluate(element => element.scrollIntoView({ block: 'start' }));
+        const controlsFilename = filename.replace('.png', '--controls.png');
+        await page.screenshot({ path: path.join(directory, controlsFilename) });
+        result.controls_screenshot = controlsFilename;
       }
       report.cases.push(result);
       await context.close();

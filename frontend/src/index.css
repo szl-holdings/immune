@@ -228,6 +228,37 @@
   overflow-wrap: anywhere;
 }
 
+/* The shared rail follows its own width, including magnified layouts. */
+.szl-holo-rail {
+  position: relative;
+  container: immune-nav / inline-size;
+}
+
+@container immune-nav (max-width: 760px) {
+  .szl-holo-menu { display: inline-flex; }
+  .szl-holo-eyebrow { display: none; }
+  .szl-holo-nav {
+    position: absolute;
+    top: calc(100% + 7px);
+    right: 8px;
+    width: min(240px, calc(100cqi - 16px));
+    min-width: 0;
+    max-height: 60dvh;
+    overflow: auto;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
+    padding: 8px;
+    border: 1px solid var(--szl-holo-line);
+    border-radius: var(--szl-holo-radius-md);
+    background: var(--szl-holo-bg);
+    box-shadow: var(--szl-holo-shadow);
+  }
+  .szl-holo-nav[data-open="true"] { display: flex; }
+  .szl-holo-link { justify-content: flex-start; padding-inline: 14px; }
+}
+
 .kanchay-action:hover {
   background: hsl(var(--primary) / 0.1);
 }
@@ -275,7 +306,7 @@
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 1023px) {
+@container immune (max-width: 1023px) {
   .kanchay-safe {
     padding-right: max(1rem, env(safe-area-inset-right));
     padding-bottom: max(2.5rem, env(safe-area-inset-bottom));

@@ -855,8 +855,8 @@ test("readyz is registered before static hosting and metadata is evidence-scoped
   assert.match(home, /document\.title = "IMMUNE \| Evidence-Scoped AI Defense"/);
   assert.doesNotMatch(home, /document\.title = "IMMUNE — Verifiable-AI Defense"/);
   assert.match(home, /data-testid="controls-scroll-region"/);
-  assert.match(home, /lg:overflow-y-auto/);
-  assert.match(home, /lg:overscroll-contain/);
+  assert.match(home, /@5xl\/immune:overflow-y-auto/);
+  assert.match(home, /@5xl\/immune:overscroll-contain/);
   assert.match(home, /tabIndex=\{0\}/);
   assert.match(home, /focus-visible:ring-2/);
   assert.match(agentConsole, /Governed agent blocked/);
