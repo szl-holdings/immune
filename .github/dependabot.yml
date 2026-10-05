@@ -61,7 +61,8 @@ updates:
       semver-minor-days: 7
       semver-patch-days: 3
 
-  # Base images are digest-pinned; this keeps tag and digest moving together.
+  # Base-image runtime lines are admitted by packaging contracts.
+  # Major moves require a separate reviewed runtime migration.
   - package-ecosystem: "docker"
     directories:
       - "/python"
@@ -75,6 +76,9 @@ updates:
     labels:
       - "dependencies"
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       docker:
         patterns:
