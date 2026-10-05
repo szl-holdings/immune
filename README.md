@@ -117,6 +117,13 @@ concepts are independently implemented under Doctrine v11. In an external-v2
 deployment, write availability is governed by `/readyz` and the current
 authority lease; the observed pre-v2 runtime is not that witness.
 
+On compact screens, the six surface tabs wrap onto additional rows. Labels,
+tab selection and authority checks retain their existing behavior. The
+source-bound Responsive UI preview checks phone, desktop and zoom layouts;
+deployed browser verification remains a separate requirement. This source
+change does not rewrite the retained public audit's failures or establish
+runtime readiness.
+
 | Tab | What it does | Honesty bound |
 |---|---|---|
 | **RANGE** | White-hat counter-ops (`HUNT` `ISOLATE` `PATCH` `INTERDICT` `DECEIVE` `STRIKE`) against simulated adversary infrastructure. Sweep inbound RANGE in one governed pass. | `STRIKE` is RANGE-only. Live CISA/KEV objects accept isolate / hunt / patch. No packets at the public internet. |
