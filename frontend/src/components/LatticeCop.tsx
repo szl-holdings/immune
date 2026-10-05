@@ -268,7 +268,7 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
           </div>
         </header>
 
-        <div className="flex gap-2" role="tablist" aria-label="Lattice surfaces">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Lattice surfaces">
           {(
             [
               ["range", "RANGE", Swords],
