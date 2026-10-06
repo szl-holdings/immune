@@ -576,7 +576,7 @@ class WorkflowTests(FixtureMixin, unittest.TestCase):
             calls={node.func.attr for node in ast.walk(tree) if isinstance(node,ast.Call) and isinstance(node.func,ast.Attribute)}
             self.assertFalse(calls & {'create_repo','update_repo_settings','create_commit','list_repo_files'})
         s=workflow.read_text()
-        self.assertIn('scripts/immune_publication_guard.py',s)
+        self.assertEqual(s.count('from scripts.immune_publication_guard import publish_existing'),2)
         self.assertEqual(s.count('Validate publication boundary offline'),2)
         self.assertEqual(s.count('immune-publication-boundary-'),2)
 

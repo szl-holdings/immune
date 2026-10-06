@@ -4,19 +4,28 @@ name: Deploy IMMUNE Spaces
 # Channel A = SZLHOLDINGS/immune (TypeScript HUD + kernel)
 # Channel B = SZLHOLDINGS/immune-lattice (Python kernel COP)
 # Do not delete either Space. First-class product tab remains a-11-oy.com/immune.
+# A source merge must not publish either Space. A separately authorized manual
+# invocation admits one exact target only; selecting A can never launch B.
 on:
-  push:
-    branches: [main]
-    paths:
-      - frontend/**
-      - server/**
-      - python/**
-      - scripts/assert_hf_space_operational.py
-      - scripts/attest_hf_space_runtime.py
-      - scripts/immune_publication_guard.py
-      - tests/test_immune_publication_guard.py
-      - .github/workflows/deploy-hf-space.yml
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      space:
+        description: Separately authorized Space (one target only)
+        type: choice
+        required: true
+        default: NONE
+        options:
+          - NONE
+          - SZLHOLDINGS/immune
+          - SZLHOLDINGS/immune-lattice
+      source_revision:
+        description: Exact 40-character protected main SHA authorized for publication
+        type: string
+        required: true
+      confirmation:
+        description: 'Exact confirmation: PUBLISH <space>@<source_revision>'
+        type: string
+        required: true
 
 permissions:
   actions: read
@@ -29,6 +38,7 @@ concurrency:
 jobs:
   channel-a:
     name: Publish SZLHOLDINGS/immune
+    if: github.event_name == 'workflow_dispatch' && inputs.space == 'SZLHOLDINGS/immune'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     # Canonical per-asset Hub write lock (plan D3).
@@ -49,6 +59,9 @@ jobs:
           test "$GITHUB_REF" = refs/heads/main
           test "$GITHUB_REPOSITORY" = szl-holdings/immune
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
         with:
           version: 11.9.0
@@ -60,6 +73,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
+      - name: Require explicit single-target exact-source publication
+        run: node scripts/require-publication-dispatch.mjs
       - name: Require terminal exact-head source qualification
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -183,6 +198,7 @@ jobs:
 
   channel-b:
     name: Publish SZLHOLDINGS/immune-lattice
+    if: github.event_name == 'workflow_dispatch' && inputs.space == 'SZLHOLDINGS/immune-lattice'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     # Canonical per-asset Hub write lock (plan D3).
@@ -199,9 +215,21 @@ jobs:
           test "$GITHUB_REF" = refs/heads/main
           test "$GITHUB_REPOSITORY" = szl-holdings/immune
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
+      - name: Require explicit single-target exact-source publication
+        run: node scripts/require-publication-dispatch.mjs
+      - name: Require terminal exact-head source qualification
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/require-exact-ci-success.mjs
       - name: Install pinned Hugging Face publisher
         run: python3 -m pip install --quiet "huggingface_hub==1.23.0"
       - name: Validate publication boundary offline
