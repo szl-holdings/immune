@@ -210,6 +210,22 @@ The current canonical publisher preserves the bounded existing-Space contract:
 it does not create Spaces, change visibility or settings, write Space variables,
 or perform unbounded deletion. Its publication-boundary receipt records that
 bounded operation; it is not a v2 authority activation or release attestation.
+Source merges run qualification only: `deploy-hf-space.yml` is manual-only and
+requires one separately authorized `space`, exact `source_revision`, and the
+literal confirmation `PUBLISH <space>@<source_revision>`. The default `NONE`
+selects no publisher. Both jobs validate this binding and terminal exact-main CI
+before receiving any HF credential; selecting Immune cannot launch Lattice.
+An Immune-only authorization does not authorize an immune-lattice dispatch.
+No publication is authorized merely by merging this source repair.
+
+The existing source-live observer preserves action-readiness failures: an
+observed HTTP 503 must not become a claim of action authority or operational
+readiness. Its source observation is separate from the attested
+`immune-hf-release-<source SHA>` artifact required by the external operator.
+That stronger artifact remains **BLOCKED** until independently qualified;
+neither the publication-boundary receipt nor source-live observation may be
+renamed or substituted for it.
+
 The required exact deployment-revision binding (`IMMUNE_EXPECTED_HF_REVISION`
 and `HF_SPACE_REVISION`) must be independently provisioned and qualified under
 a separate authorized activation procedure. This repair does not write those

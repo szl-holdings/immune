@@ -447,7 +447,8 @@ class WorkflowWiringTests(unittest.TestCase):
             self.assertEqual(text.count(f"--smoke-path {path} "), 2)
         self.assertEqual(text.count("--blocked-readiness"), 2)
         self.assertNotIn("--smoke-path /readyz", text)
-        self.assertIn("- scripts/attest_hf_space_runtime.py", text)
+        self.assertIn("  workflow_dispatch:", text)
+        self.assertNotRegex(text, r"(?m)^  push:")
 
 
 if __name__ == "__main__":
