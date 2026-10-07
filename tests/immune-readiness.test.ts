@@ -4,6 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { observeAuthorityStorage } from "../server/routes/immune/state";
+import { ledgerDurability } from "../server/routes/immune/ledger";
 import {
   bindRuntimeStaticDir,
   getRuntimeHashBinding,
@@ -386,6 +388,35 @@ function assertDurabilityBlocksOnlyWrites(readiness: ReturnType<typeof buildRead
   assert.equal(readiness.runtime.immune_server_sha256, DIGEST, label);
   assert.deepEqual(readiness.blockers, ["RECEIPT_LEDGER_DURABILITY_UNVERIFIED"], label);
 }
+
+test("rejected mount observations reach write-disabled readiness without erasing runtime evidence", () => {
+  for (const filesystem of ["nfs4", "fuse.hf-mount", "unknownfs"]) {
+    let fileObservations = 0;
+    const forbidden = (): never => { fileObservations++; throw new Error("unqualified mount touched"); };
+    const io = {
+      readMountInfo: () => `1 0 8:1 / /data rw - ${filesystem} example rw`,
+      lstat: forbidden, realpath: forbidden, access: forbidden,
+      openExisting: forbidden, fstat: forbidden, fsync: forbidden, close: forbidden,
+    };
+    const authorityObservation = observeAuthorityStorage("/data/immune/authority.sqlite", { fileSystem: io });
+    const authorityCandidate = writeReadyInputs();
+    authorityCandidate.authority.authority.durability.verified = authorityObservation.available;
+    const authorityResult = readinessHttpResult(dependencies(authorityCandidate));
+    assert.equal(authorityResult.statusCode, 503);
+    assert.equal(authorityResult.body.authority_ready, false);
+    assert.equal(authorityResult.body.write_ready, false);
+    assert.equal(authorityResult.body.runtime_ready, true);
+    assert.equal(authorityResult.body.source.revision, REVISION);
+    assert.ok(authorityResult.body.blockers.includes("ACTION_AUTHORITY_DURABILITY_UNVERIFIED"));
+
+    const evidenceCandidate = writeReadyInputs();
+    evidenceCandidate.ledgerDurability = ledgerDurability({ dataDir: "/data/immune/evidence", fileSystem: io });
+    const evidenceResult = readinessHttpResult(dependencies(evidenceCandidate));
+    assert.equal(evidenceResult.statusCode, 503);
+    assertDurabilityBlocksOnlyWrites(evidenceResult.body, filesystem);
+    assert.equal(fileObservations, 0, filesystem);
+  }
+});
 
 test("omitted evidence durability input or callback cannot inherit authority storage readiness", () => {
   const candidate = writeReadyInputs();

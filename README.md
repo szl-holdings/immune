@@ -233,6 +233,23 @@ descendant, or normalized substitute. These parser checks establish only the
 evidence format; they do not qualify the provider mount, attest a release, or
 prove state survives container replacement.
 
+Authority and evidence observers now share a **DECLARED** filesystem-type
+candidate policy: exactly `ext4`, `xfs`, or `btrfs`. Other types, including
+network/object-backed mounts and unknown names, are rejected before file
+observation. Contradictory `rw,ro` flags also deny admission. A candidate name
+only permits the existing checks to continue; it does not prove physical
+locality, correct locking/synchronization, or restart persistence. Authority
+observation remains metadata-only; evidence observation retains its existing
+JSONL descriptor and `fsync` checks. No provider volume is created or changed.
+
+This boundary follows [SQLite's WAL constraints](https://sqlite.org/wal.html)
+and [HF mount's documented consistency limits](https://github.com/huggingface/hf-mount#consistency-model).
+[Managed HF volume mounts](https://huggingface.co/docs/hub/storage-buckets-access#volume-mounts-in-jobs-and-spaces)
+are not an independent transaction-durability certificate. Bucket identity can
+remain a provider-binding observation without qualifying live SQLite storage.
+The actual deployed backend/options and restart continuity remain **UNKNOWN**
+until independently witnessed; do not relax this policy to activate a bucket.
+
 The required exact deployment-revision binding (`IMMUNE_EXPECTED_HF_REVISION`
 and `HF_SPACE_REVISION`) must be independently provisioned and qualified under
 a separate authorized activation procedure. This repair does not write those
