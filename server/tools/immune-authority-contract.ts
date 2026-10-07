@@ -116,7 +116,7 @@ export type ReleaseReceipt = {
     revision: number;
     receipt_hash: string;
     evidence_state: "UNAVAILABLE" | "STALE";
-    durability: { required: true; verified: true; path: string };
+    durability: { required: true; verified: true; path: "/data/immune" };
   };
   ledger: VerifiedEvidenceLedger;
   readiness: {
@@ -232,6 +232,7 @@ export function parseReleaseReceipt(value: unknown): ReleaseReceipt {
   if (
     root.schema !== "szl.immune-hf-release-receipt/v1" ||
     root.repository !== REPOSITORY ||
+    typeof root.source_revision !== "string" ||
     !REVISION_PATTERN.test(root.source_revision)
   ) {
     throw new Error("release receipt source binding is invalid");
@@ -265,7 +266,9 @@ export function parseReleaseReceipt(value: unknown): ReleaseReceipt {
   exactKeys(hf, ["space", "parent_revision", "revision"], "release receipt hf");
   if (
     hf.space !== SPACE ||
+    typeof hf.parent_revision !== "string" ||
     !REVISION_PATTERN.test(hf.parent_revision) ||
+    typeof hf.revision !== "string" ||
     !REVISION_PATTERN.test(hf.revision)
   ) {
     throw new Error("release receipt Hugging Face binding is invalid");
@@ -275,6 +278,7 @@ export function parseReleaseReceipt(value: unknown): ReleaseReceipt {
   exactKeys(manifest, ["path", "sha256"], "release receipt manifest");
   if (
     manifest.path !== "hf-deploy-manifest.json" ||
+    typeof manifest.sha256 !== "string" ||
     !DIGEST_PATTERN.test(manifest.sha256)
   ) {
     throw new Error("release receipt manifest binding is invalid");
@@ -294,6 +298,7 @@ export function parseReleaseReceipt(value: unknown): ReleaseReceipt {
       output.path.startsWith("/") ||
       output.path.includes("..") ||
       output.path.includes("\\") ||
+      typeof output.sha256 !== "string" ||
       !DIGEST_PATTERN.test(output.sha256)
     ) {
       throw new Error(`release receipt output ${index} is invalid`);
@@ -306,6 +311,7 @@ export function parseReleaseReceipt(value: unknown): ReleaseReceipt {
   if (
     JSON.stringify(outputFiles) !== JSON.stringify(sorted) ||
     new Set(outputFiles.map((file) => file.path)).size !== outputFiles.length ||
+    typeof outputs.set_sha256 !== "string" ||
     !DIGEST_PATTERN.test(outputs.set_sha256) ||
     sha256(Buffer.from(JSON.stringify(outputFiles), "utf8")) !== outputs.set_sha256
   ) {
@@ -340,7 +346,8 @@ export function parseReleaseReceipt(value: unknown): ReleaseReceipt {
   const authorityRevision = integer(authority.revision, "release receipt authority revision");
   if (
     (authorityRevision === 0 && authority.receipt_hash !== "GENESIS") ||
-    (authorityRevision > 0 && !DIGEST_PATTERN.test(authority.receipt_hash)) ||
+    (authorityRevision > 0 && (typeof authority.receipt_hash !== "string" ||
+      !DIGEST_PATTERN.test(authority.receipt_hash))) ||
     !["UNAVAILABLE", "STALE"].includes(authority.evidence_state)
   ) {
     throw new Error("release receipt authority head is invalid");
@@ -350,8 +357,9 @@ export function parseReleaseReceipt(value: unknown): ReleaseReceipt {
   if (
     durability.required !== true ||
     durability.verified !== true ||
-    typeof durability.path !== "string" ||
-    !durability.path.startsWith("/data/immune")
+    // Match the directory reported by AuthorityStore and required by readyz.
+    // A path string is not an independent mount or restart-persistence proof.
+    durability.path !== "/data/immune"
   ) {
     throw new Error("release receipt authority durability is invalid");
   }

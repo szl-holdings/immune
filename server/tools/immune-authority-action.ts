@@ -65,7 +65,7 @@ type Discovery = {
     revision: number;
     receiptHash: string;
     evidenceState: string;
-    durabilityPath: string;
+    durabilityPath: "/data/immune";
     deploymentRevision: string;
   };
   ledger: VerifiedEvidenceLedger;
@@ -228,15 +228,15 @@ function exactRemotePaths(manifest: JsonObject): Set<string> {
   return paths;
 }
 
-function parseAuthorityHead(
+export function parseAuthorityHead(
   state: JsonObject,
   trust: ConfiguredTrust,
   hfRevision: string,
 ): Discovery["authority"] {
-  const revision = Number(state.revision);
+  const revision = state.revision;
   const rawHash = state.authorityReceiptHash;
-  const receiptHash = revision === 0 ? "GENESIS" : String(rawHash ?? "");
-  const durabilityPath = String(state.authority?.durability?.path ?? "");
+  const receiptHash = revision === 0 ? "GENESIS" : rawHash;
+  const durabilityPath = state.authority?.durability?.path;
   if (
     state.authority?.enabled !== true ||
     state.authority?.version !== ACTION_VERSION ||
@@ -247,20 +247,21 @@ function parseAuthorityHead(
     state.authority?.externalOperator !== true ||
     state.authority?.keyId !== trust.keyId ||
     state.authority?.trustEpoch !== trust.trustEpoch ||
-    !INSTANCE_PATTERN.test(String(state.authority?.instanceId ?? "")) ||
+    typeof state.authority?.instanceId !== "string" ||
+    !INSTANCE_PATTERN.test(state.authority.instanceId) ||
     !Number.isSafeInteger(revision) ||
     revision < 0 ||
-    Number(state.authorityReceiptCount) !== revision ||
+    state.authorityReceiptCount !== revision ||
     (revision === 0 && rawHash !== null) ||
-    (revision > 0 && !DIGEST_PATTERN.test(receiptHash)) ||
+    (revision > 0 && (typeof receiptHash !== "string" || !DIGEST_PATTERN.test(receiptHash))) ||
     state.authority?.durability?.required !== true ||
     state.authority?.durability?.verified !== true ||
-    !durabilityPath.startsWith("/data/immune")
+    durabilityPath !== "/data/immune"
   ) {
     throw new Error("live action authority identity, receipt head, or durability is invalid");
   }
   return {
-    instanceId: String(state.authority.instanceId),
+    instanceId: state.authority.instanceId,
     revision,
     receiptHash,
     evidenceState: String(state.evidenceState ?? ""),
@@ -455,7 +456,7 @@ async function observe(
   };
 }
 
-function parseDiscovery(value: JsonObject): Discovery {
+export function parseDiscovery(value: JsonObject): Discovery {
   assertVerifiedEvidenceLedger(value.ledger);
   if (
     value.schema !== "szl.immune-authority-discovery/v1" ||
@@ -477,6 +478,7 @@ function parseDiscovery(value: JsonObject): Discovery {
     !DIGEST_PATTERN.test(value.trust?.publicKeySha256) ||
     !INSTANCE_PATTERN.test(value.authority?.instanceId) ||
     !REVISION_PATTERN.test(value.authority?.deploymentRevision) ||
+    value.authority?.durabilityPath !== "/data/immune" ||
     !Number.isSafeInteger(value.authority?.revision) ||
     value.authority.revision < 0
   ) {
