@@ -41,3 +41,60 @@ test("publication receipt requires independent exact durable evidence without cl
   const activated = fixture(); activated.readiness.write_ready = true;
   assert.throws(() => parseReleaseReceipt(activated), /read-only readiness/);
 });
+
+// These are local parser fixtures, not production release or persistence evidence.
+for (const [label, object, field] of [
+  ["source revision", (value: any) => value, "source_revision"],
+  ["HF parent revision", (value: any) => value.hf, "parent_revision"],
+  ["HF revision", (value: any) => value.hf, "revision"],
+  ["manifest digest", (value: any) => value.manifest, "sha256"],
+  ["output digest", (value: any) => value.outputs.files[0], "sha256"],
+  ["output set digest", (value: any) => value.outputs, "set_sha256"],
+  ["authority receipt digest", (value: any) => value.authority, "receipt_hash"],
+] as const) {
+  test(`release receipt rejects non-string ${label} without coercion`, () => {
+    for (const malformed of ["array", "null", "object", "number", "boolean"] as const) {
+      const receipt = fixture();
+      receipt.authority.revision = 1;
+      receipt.authority.receipt_hash = "2".repeat(64);
+      const target = object(receipt);
+      const original = target[field];
+      target[field] = malformed === "array" ? [original]
+        : malformed === "null" ? null
+          : malformed === "object" ? { value: original }
+            : malformed === "number" ? 42 : true;
+      // Keep the aggregate digest consistent so malformed file fields cannot
+      // be rejected only as an unrelated aggregate-hash mismatch.
+      if (label === "output digest") {
+        receipt.outputs.set_sha256 = sha256(JSON.stringify(receipt.outputs.files));
+      }
+      assert.throws(() => parseReleaseReceipt(receipt), undefined, `${label}: ${malformed}`);
+    }
+  });
+}
+
+for (const authorityPath of [
+  "/data/immune-other/authority.sqlite",
+  "/data/immune/authority.sqlite",
+  "/data/immune/../authority.sqlite",
+  "/data/immune/./authority.sqlite",
+  "/data/immune//authority.sqlite",
+  "/data/immune/authority.sqlite/",
+  "/data/immune\\authority.sqlite",
+  "/data/immune/authority\u0000.sqlite",
+  "/data/immune/authority\n.sqlite",
+  "/data/immune/authority\u007f.sqlite",
+  ["/data/immune/authority.sqlite"],
+  null,
+]) {
+  test(`release receipt rejects noncanonical authority path ${JSON.stringify(authorityPath)}`, () => {
+    const receipt = fixture();
+    receipt.authority.durability.path = authorityPath;
+    assert.throws(() => parseReleaseReceipt(receipt), /authority durability/);
+  });
+}
+
+test("exact authority directory retains its bytes without claiming restart durability", () => {
+  const receipt = fixture();
+  assert.equal(parseReleaseReceipt(receipt).authority.durability.path, "/data/immune");
+});

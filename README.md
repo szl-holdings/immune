@@ -226,6 +226,13 @@ That stronger artifact remains **BLOCKED** until independently qualified;
 neither the publication-boundary receipt nor source-live observation may be
 renamed or substituted for it.
 
+Release-receipt revisions and hashes must be JSON strings, not values coerced
+to strings. The receipt and live authority observation must name the exact
+`/data/immune` authority directory required by readiness, not a sibling,
+descendant, or normalized substitute. These parser checks establish only the
+evidence format; they do not qualify the provider mount, attest a release, or
+prove state survives container replacement.
+
 The required exact deployment-revision binding (`IMMUNE_EXPECTED_HF_REVISION`
 and `HF_SPACE_REVISION`) must be independently provisioned and qualified under
 a separate authorized activation procedure. This repair does not write those
