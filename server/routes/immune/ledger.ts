@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { canonicalBytes, sha256Hex, CanonicalError } from "./canonical";
 import { signReceiptBytes, verifyReceiptSignature, officialPublicKeyB64 } from "./signing";
+import { isDeclaredLocalFilesystemCandidate } from "./storage-policy";
 
 // The append-only chain lives under data/immune by default. IMMUNE_DATA_DIR lets
 // a deploy (or a test) point at a different writable dir without touching cwd.
@@ -84,10 +85,12 @@ export function ledgerDurability(options: {
     const dataMount = dataMounts[0];
     if (
       !dataMount.options.includes("rw") ||
+      dataMount.options.includes("ro") ||
       !dataMount.superOptions.includes("rw") ||
-      ["", "overlay", "tmpfs", "ramfs", "squashfs"].includes(dataMount.filesystem)
+      dataMount.superOptions.includes("ro") ||
+      !isDeclaredLocalFilesystemCandidate(dataMount.filesystem)
     ) {
-      return report(false, "/data is not a writable persistent filesystem");
+      return report(false, "/data is not a writable declared filesystem candidate");
     }
     const targets = [
       "/data/immune", dataDir,

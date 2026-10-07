@@ -4,6 +4,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { canonicalBytes, sha256Hex } from "./canonical";
+import { isDeclaredLocalFilesystemCandidate } from "./storage-policy";
 
 export type ImmuneMode = "PASS" | "SENTRA_REJECT" | "DEADMAN";
 export type EvidenceState = "VERIFIED" | "FAILED" | "UNAVAILABLE" | "STALE";
@@ -447,8 +448,8 @@ export function observeAuthorityStorage(databasePath: string, options: {
     const dataMount = dataMounts[0];
     if (!dataMount.options.includes("rw") || dataMount.options.includes("ro") ||
         !dataMount.superOptions.includes("rw") || dataMount.superOptions.includes("ro") ||
-        ["", "overlay", "tmpfs", "ramfs", "squashfs"].includes(dataMount.filesystem)) {
-      return unavailable("/data is not a writable persistent filesystem");
+        !isDeclaredLocalFilesystemCandidate(dataMount.filesystem)) {
+      return unavailable("/data is not a writable declared filesystem candidate");
     }
     const files = [databasePath, `${databasePath}-wal`, `${databasePath}-shm`];
     for (const target of ["/data/immune", ...files]) {

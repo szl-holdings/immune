@@ -117,6 +117,32 @@ test("ledger durability rejects noncanonical locations before filesystem observa
   }
 });
 
+for (const filesystem of [
+  "nfs", "nfs4", "cifs", "smb3", "9p", "fuse", "fuseblk",
+  "fuse.hf-mount", "fuse.s3fs", "unknownfs", "EXT4", "ext4-like",
+]) {
+  test(`evidence rejects unqualified filesystem ${filesystem} before file observation`, () => {
+    const subject = fixture();
+    subject.io.readMountInfo = () => MOUNT_INFO.replace("ext4", filesystem);
+    const result = ledgerDurability({ dataDir: DATA_DIR, fileSystem: subject.io });
+    assert.equal(result.verified, false);
+    assert.deepEqual(subject.trace, []);
+    assert.equal(subject.opened.size, 0);
+  });
+}
+
+test("declared filesystem candidates retain evidence fsync without claiming restart proof", () => {
+  for (const filesystem of ["ext4", "xfs", "btrfs"]) {
+    const subject = fixture();
+    subject.io.readMountInfo = () => MOUNT_INFO.replace("ext4", filesystem);
+    const result = ledgerDurability({ dataDir: DATA_DIR, fileSystem: subject.io });
+    assert.equal(result.verified, true);
+    assert.match(result.reason, /fsync-capable.*restart proof remains separate/u);
+    assert.equal(subject.trace.filter(([operation]) => operation === "fsync").length, 2);
+    assert.equal(subject.opened.size, 0);
+  }
+});
+
 test("ledger durability rejects missing, ambiguous, malformed, ephemeral, or read-only mounts", () => {
   const cases: Array<[string, string]> = [
     ["missing /data", "10 1 0:1 / / rw - overlay overlay rw"],
@@ -125,6 +151,8 @@ test("ledger durability rejects missing, ambiguous, malformed, ephemeral, or rea
     ["malformed mount fields", "20 10 - ext4 /dev/example-volume rw"],
     ["read-only mount", MOUNT_INFO.replace("/data rw,relatime", "/data ro,relatime")],
     ["read-only superblock", MOUNT_INFO.replace("/dev/example-volume rw", "/dev/example-volume ro")],
+    ["contradictory mount options", MOUNT_INFO.replace("/data rw,relatime", "/data rw,ro,relatime")],
+    ["contradictory superblock options", MOUNT_INFO.replace("/dev/example-volume rw", "/dev/example-volume rw,ro")],
     ...["overlay", "tmpfs", "ramfs", "squashfs"].map((kind): [string, string] => [
       `ephemeral ${kind}`, MOUNT_INFO.replace("- ext4 /dev/example-volume", `- ${kind} example-volume`),
     ]),

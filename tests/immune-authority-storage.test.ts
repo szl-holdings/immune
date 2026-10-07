@@ -80,6 +80,35 @@ test("bootstrap allows missing files only before open, never orphaned sidecars",
   assert.equal(observeAuthorityStorage(DATABASE, { fileSystem: fixture.io, preopen: true }).available, false);
 });
 
+for (const filesystem of [
+  "nfs", "nfs4", "cifs", "smb3", "9p", "fuse", "fuseblk",
+  "fuse.hf-mount", "fuse.s3fs", "unknownfs", "EXT4", "ext4-like",
+]) {
+  test(`authority rejects unqualified filesystem ${filesystem} before file observation`, () => {
+    for (const preopen of [false, true]) {
+      const subject = storageFixture();
+      subject.io.readMountInfo = () => MOUNTS.replace("ext4", filesystem);
+      let fileObservations = 0;
+      const original = subject.io.lstat;
+      subject.io.lstat = (file) => { fileObservations++; return original(file); };
+      const result = observeAuthorityStorage(DATABASE, { fileSystem: subject.io, preopen });
+      assert.equal(result.available, false);
+      assert.equal(fileObservations, 0);
+      assert.deepEqual(subject.accessed, []);
+    }
+  });
+}
+
+test("declared filesystem candidates retain only the existing metadata observation", () => {
+  for (const filesystem of ["ext4", "xfs", "btrfs"]) {
+    const subject = storageFixture();
+    subject.io.readMountInfo = () => MOUNTS.replace("ext4", filesystem);
+    const result = observeAuthorityStorage(DATABASE, { fileSystem: subject.io });
+    assert.equal(result.available, true);
+    assert.match(result.reason, /metadata.*restart proof.*separate/u);
+  }
+});
+
 test("canonical exact path, mount, persistence, and complete observations fail closed", () => {
   for (const candidate of ["/tmp/authority.sqlite", "/data/immune/../authority.sqlite", "/data/immune/sub/a.sqlite", "/data/immune/a.db"]) {
     assert.equal(observeAuthorityStorage(candidate, { fileSystem: storageFixture().io }).available, false, candidate);
