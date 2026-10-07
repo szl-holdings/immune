@@ -2,6 +2,7 @@ packages:
   - frontend
 
 overrides:
+  "source-map-js@>=1.0.0 <1.2.2": 1.2.2
   "@tailwindcss/typography@0.5.20>postcss-selector-parser": 7.1.6
   esbuild: 0.28.1
   vite: 8.0.16
