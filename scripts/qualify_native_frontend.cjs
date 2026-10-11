@@ -96,6 +96,7 @@ async function inspect(page, forced = false) {
       const request = route.request(), url = new URL(request.url());
       requests.push({ method: request.method(), path: url.pathname });
       if (url.origin !== origin) { denied.push(request.method() + ' ' + url.origin + url.pathname); return route.abort(); }
+      if (scenario === 'missing-illustration' && /ThreeScene-/.test(url.pathname)) return route.fulfill({ status: 503, contentType: 'text/plain', body: 'Explicit missing-chunk fixture' });
       if (url.pathname.startsWith('/api/') || url.pathname === '/readyz') {
         if (request.method() === 'POST' && scenario !== 'explicit-read-only') { denied.push(request.method() + ' ' + url.pathname); return route.abort(); }
         if (scenario === 'explicit-read-only' && request.method() === 'POST' && ['/api/immune/brain', '/api/immune/nexus/verify'].includes(url.pathname)) {
@@ -188,6 +189,13 @@ async function inspect(page, forced = false) {
     check('Hiding illustration releases the canvas', await keyboard.page.locator('#immune-illustration canvas').count() === 0);
     traffic('Workspace keyboard and optional illustration', keyboard);
     await keyboard.context.close();
+    const missingIllustration = await open(0, '/', {}, 'missing-illustration');
+    await missingIllustration.page.getByRole('button', { name: 'Show 3D illustration', exact: true }).click();
+    await missingIllustration.page.getByText('The 3D illustration is unavailable. The evidence workspace remains available below.', { exact: true }).waitFor();
+    check('A failed optional chunk preserves the evidence workspace', await missingIllustration.page.locator('main h1').count() === 1 && await missingIllustration.page.locator('[data-testid="controls-scroll-region"]').count() === 1);
+    record('Missing optional illustration', await inspect(missingIllustration.page));
+    traffic('Missing illustration chunk', missingIllustration);
+    await missingIllustration.context.close();
     const zero = await open(1, '/', {}, 'zero');
     check('Observed zero counts are preserved', /^0 handles/.test(await zero.page.locator('#brainMeta').innerText()) && await zero.page.locator('#meshMeta').innerText() === '0-of-4 · OPEN');
     traffic('Observer zero', zero); await zero.context.close();

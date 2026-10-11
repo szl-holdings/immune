@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import {
   useGetImmuneReadiness,
   useGetImmuneState,
@@ -27,8 +27,16 @@ import { Activity, ShieldAlert, ShieldCheck, Skull } from "lucide-react";
 // controls render without downloading or initializing its WebGL implementation.
 const ThreeScene = lazy(() => import("@/components/ThreeScene").then((module) => ({ default: module.ThreeScene })));
 
-function AuthorityIllustrationSummary() {
-  return <div className="immune-scene-fallback"><div className="immune-flow-map"><span>HEART<small>Intent</small></span><span>SENTRA<small>Admission</small></span><span>YAWAR<small>Receipt</small></span></div><p>Illustrative relationship · inspect the evidence above for current state.</p></div>;
+function AuthorityIllustrationSummary({ notice }: { notice?: string }) {
+  return <div className="immune-scene-fallback"><div className="immune-flow-map"><span>HEART<small>Intent</small></span><span>SENTRA<small>Admission</small></span><span>YAWAR<small>Receipt</small></span></div><p role={notice ? "status" : undefined}>{notice ?? "Illustrative relationship · inspect the evidence above for current state."}</p></div>;
+}
+
+class IllustrationBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    return this.state.failed ? <AuthorityIllustrationSummary notice="The 3D illustration is unavailable. The evidence workspace remains available below." /> : this.props.children;
+  }
 }
 
 export default function Home() {
@@ -167,7 +175,7 @@ export default function Home() {
 
         <figure className="immune-visual-card" data-surface="dark">
           <div className="immune-visual-heading"><span>Authority illustration</span><span>Source state projected as form · no measured telemetry</span></div>
-          <div id="immune-illustration" className="immune-visual-stage">{showIllustration ? <Suspense fallback={<AuthorityIllustrationSummary />}><ThreeScene authority={authority} /></Suspense> : <AuthorityIllustrationSummary />}</div>
+          <div id="immune-illustration" className="immune-visual-stage">{showIllustration ? <IllustrationBoundary><Suspense fallback={<AuthorityIllustrationSummary />}><ThreeScene authority={authority} /></Suspense></IllustrationBoundary> : <AuthorityIllustrationSummary />}</div>
           <div className="immune-illustration-action"><button type="button" aria-controls="immune-illustration" aria-pressed={showIllustration} onClick={() => setShowIllustration(!showIllustration)}>{showIllustration ? "Hide 3D illustration" : "Show 3D illustration"}</button><span>Optional visual · no additional evidence request</span></div>
           <figcaption className="immune-visual-caption"><span>HEART / Intent</span><span>SENTRA / Admission</span><span>YAWAR / Receipt</span></figcaption>
         </figure>
