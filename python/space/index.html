@@ -1,65 +1,31 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-surface="dark">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
   <title>IMMUNE — Python kernel</title>
-  <style>
-    :root {
-      --bg:#07090c; --elev:#0e1218; --subtle:#141a22; --fg:#e8eef4;
-      --muted:#8b96a5; --primary:#e8b86d; --ok:#7dcea0; --danger:#f07167; --line:rgba(232,238,244,.12);
-    }
-    * { box-sizing:border-box }
-    html,body { margin:0; background:var(--bg); color:var(--fg);
-      font:15px/1.45 "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; min-height:100% }
-    body { background: radial-gradient(80% 50% at 10% -10%, rgba(232,184,109,.09), transparent 46%), var(--bg) }
-    header { display:flex; flex-wrap:wrap; gap:12px; align-items:center;
-      padding:16px 20px; border-bottom:1px solid var(--line) }
-    .mark { width:40px; height:40px; display:grid; place-items:center; border:1px solid var(--primary);
-      color:var(--primary); border-radius:8px; font:700 13px ui-monospace,monospace }
-    h1 { margin:0; font-size:18px; letter-spacing:.16em }
-    .kicker { font:10px ui-monospace,monospace; letter-spacing:.2em; text-transform:uppercase; color:var(--muted) }
-    .pill { font:11px ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase;
-      border:1px solid var(--ok); color:var(--ok); padding:6px 10px; border-radius:999px }
-    .pill.bad { border-color:var(--danger); color:var(--danger) }
-    main { max-width:1180px; margin:0 auto; padding:20px; display:grid; gap:14px }
-    @media (min-width:900px) { .cols { grid-template-columns:1.1fr .9fr } }
-    .grid { display:grid; gap:14px }
-    .panel { background:rgba(14,18,24,.9); border:1px solid var(--line); border-radius:16px; padding:16px 18px }
-    h2 { margin:0 0 8px; font-size:14px; letter-spacing:.12em; text-transform:uppercase }
-    .muted { color:var(--muted); font-size:13px }
-    .mono { font-family:ui-monospace, Menlo, monospace }
-    .tiny { font:10px ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--muted) }
-    .card { background:var(--subtle); border:1px solid var(--line); border-radius:10px; padding:12px }
-    .row { display:flex; justify-content:space-between; gap:8px; align-items:center;flex-wrap:wrap }
-    .panel,.card { min-width:0;overflow-wrap:anywhere }
-    input { min-width:0 }
-    .list { display:grid; gap:8px }
-    button, .act { font:12px ui-sans-serif; background:var(--primary); color:#1a1408; border:0;
-      border-radius:8px; padding:10px 14px; min-height:44px; cursor:pointer; font-weight:600 }
-    button.ghost { background:transparent; color:var(--fg); border:1px solid var(--line) }
-    button:disabled { cursor:not-allowed; opacity:.55 }
-    input, textarea { width:100%; background:var(--subtle); color:var(--fg); border:1px solid var(--line);
-      border-radius:8px; padding:10px; font:inherit }
-    a { color:var(--primary) }
-    footer { padding:12px 20px; border-top:1px solid var(--line); font:10px ui-monospace,monospace;
-      letter-spacing:.14em; text-transform:uppercase; color:var(--muted) }
-    .ok { color:var(--ok) } .bad { color:var(--danger) }
-  </style>
+  <link rel="icon" href="/assets/szl/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/assets/szl/apple-touch-icon.png" />
+  <link rel="stylesheet" href="/assets/szl/szl-tokens.css" />
+  <link rel="stylesheet" href="/assets/szl/surface.css" />
+  <script src="/assets/szl/appearance.js" defer></script>
 </head>
 <body>
-  <header>
-    <div class="mark">Λ</div>
-    <div>
-      <h1>IMMUNE</h1>
-      <p class="kicker">Python compatibility kernel · read-only observer · YAWAR · SENTRA</p>
-    </div>
-    <span id="pill" class="pill bad" role="status" aria-live="polite">BOOTING</span>
-  </header>
-  <main>
-    <section class="panel">
+
+<a class="skip" href="#main-content">Skip to evidence</a>
+<header class="native-header">
+  <div class="native-bar">
+    <a class="native-brand" href="/" aria-label="IMMUNE Python observer"><img src="/assets/szl/szl-icon-32.svg" width="40" height="40" alt="" /><span><span class="native-parent">SZL Holdings</span><strong>IMMUNE / Python</strong></span></a>
+    <nav aria-label="Python workspace"><a href="/">Observer</a><a href="/nexus.html">NEXUS replay</a><a href="https://github.com/szl-holdings/immune">Source</a></nav>
+    <button id="appearance" class="appearance" type="button" hidden aria-label="Use light appearance"><span aria-hidden="true">◐</span><span class="appearance-label">Light</span></button>
+  </div>
+</header>
+  <main class="observer-main" id="main-content" tabindex="-1">
+    <div class="workspace-intro"><div><p class="eyebrow">Python compatibility kernel</p><h1>IMMUNE observer</h1><p class="lede">Read the available authority, receipt and software observations in one place.</p></div><div class="boundary-note"><strong>ACTION READ_ONLY</strong>This compatibility channel does not submit governed writes. External v2 authority is required in the canonical IMMUNE channel.</div></div>
+    <noscript><p class="noscript-note">JavaScript is needed to refresh observations and retrieve handles. The source and readiness links remain available below.</p></noscript>
+    <section class="panel authority-panel">
       <div class="row">
-        <h2>Authority</h2>
+        <h2>Authority observation</h2><span id="pill" class="pill" role="status" aria-live="polite">CONNECTING</span>
         <span class="tiny" id="kid">kid —</span>
       </div>
       <p class="muted" id="reason">loading this process…</p>
@@ -78,12 +44,12 @@
       </section>
       <section class="panel">
         <h2>Second brain</h2>
-        <p class="muted" id="brainMeta">575 SOFTWARE handles</p>
-        <div class="row">
+        <p class="muted" id="brainMeta">Software inventory pending observation</p>
+        <div class="search-row">
           <input id="q" value="yawar receipts" aria-label="Search software handles" />
-          <button id="retrieve">Retrieve</button>
+          <button disabled id="retrieve" class="primary" type="button">Retrieve</button>
         </div>
-        <div id="hits" class="list" style="margin-top:12px"></div>
+        <div id="hits" class="list" style="margin-top:12px" aria-live="polite"><p class="muted">Choose Retrieve to search the read-only software index.</p></div>
       </section>
     </div>
     <section class="panel">
@@ -92,11 +58,13 @@
     </section>
     <section class="panel">
       <h2>MESH</h2>
-      <p class="muted" id="meshMeta">3-of-4</p>
+      <p class="muted" id="meshMeta">Mesh observation pending</p>
       <div id="votes" class="list"></div>
     </section>
   </main>
-  <footer>read-only compatibility channel · external v2 authority required · doctrine v11</footer>
+
+<footer class="native-footer"><div class="footer-main"><div><strong>IMMUNE · Python compatibility channel</strong><p>Read-only observation · external v2 authority required</p></div><nav aria-label="SZL ecosystem"><a href="https://a-11-oy.com">Product</a><a href="https://a11oy.net">Proof</a><a href="/readyz">Readiness JSON</a><a href="/assets/szl/PROJECTION.json">Design source</a></nav></div><p class="attribution">Native Orbit artwork © SZL Holdings, CC BY 4.0 · code Apache-2.0 · <a href="https://orcid.org/0009-0001-0110-4173">Stephen Lutar</a></p></footer>
+
 <script>
 const $ = (id) => document.getElementById(id);
 function pill(ok, text) {
@@ -104,11 +72,12 @@ function pill(ok, text) {
   $("pill").className = "pill" + (ok ? "" : " bad");
 }
 async function j(path, opt) {
-  const r = await fetch(path, opt);
+  const r = await fetch(path, { signal: AbortSignal.timeout(8000), ...opt });
+  if (!r.ok) throw new Error("Observation unavailable");
   return r.json();
 }
 async function statusJson(path) {
-  const response = await fetch(path, { cache: "no-store" });
+  const response = await fetch(path, { cache: "no-store", signal: AbortSignal.timeout(8000) });
   let body = {};
   try { body = await response.json(); } catch (_) { body = {}; }
   return { ok: response.ok, status: response.status, body };
@@ -143,10 +112,10 @@ async function refresh() {
   const organs = dash.organs?.organs || [];
   renderCards($("organs"), organs.map(o => [o.title, o.provenance, o.detail]));
   const mesh = dash.mesh || {};
-  $("meshMeta").textContent = `${mesh.liveCount || 0}-of-${mesh.of || 4} · ${mesh.reached ? "QUORUM" : "OPEN"}`;
+  $("meshMeta").textContent = `${Number.isFinite(mesh.liveCount) ? mesh.liveCount : "UNAVAILABLE"}-of-${Number.isFinite(mesh.of) ? mesh.of : "UNAVAILABLE"} · ${mesh.reached === true ? "QUORUM" : mesh.reached === false ? "OPEN" : "UNAVAILABLE"}`;
   renderCards($("votes"), (mesh.votes || []).map(v => [v.title, v.stage]));
   const brain = dash.brain || {};
-  $("brainMeta").textContent = `${brain.chunks || 575} handles · loss ${brain.trained?.finalLoss ?? "—"} · acc ${brain.trained?.accuracy ?? "—"}`;
+  $("brainMeta").textContent = `${Number.isFinite(brain.chunks) ? brain.chunks : "UNAVAILABLE"} handles · loss ${brain.trained?.finalLoss ?? "UNAVAILABLE"} · acc ${brain.trained?.accuracy ?? "UNAVAILABLE"}`;
 }
 
 function cycle() {
@@ -161,10 +130,11 @@ async function retrieve() {
   });
   renderCards($("hits"), (body.hits || []).map(h => [h.handle, h.score, h.excerpt]));
 }
-function unavailable() { $("cycle").disabled = true; pill(false, "UNAVAILABLE"); }
+function unavailable() { $("cycle").disabled = true; pill(false, "UNAVAILABLE"); $("reason").textContent = "Current observation unavailable. Source and readiness can be inspected below."; }
 $("cycle").onclick = cycle;
 $("retrieve").onclick = () => retrieve().catch(unavailable);
-refresh().then(retrieve).catch(unavailable);
+$("retrieve").disabled=false;
+refresh().catch(unavailable);
 setInterval(() => { if (!document.hidden) refresh().catch(unavailable); }, 15000);
 window.addEventListener("offline", unavailable);
 </script>

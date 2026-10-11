@@ -76,6 +76,27 @@ jobs:
           path: reports/static-delivery/observation.json
           if-no-files-found: error
           retention-days: 90
+      - name: Install isolated browser qualification dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/immune-browser-qualification" --no-save --package-lock=false --ignore-scripts --no-audit --no-fund playwright@1.62.0
+          node "$RUNNER_TEMP/immune-browser-qualification/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Render all three native pages with intercepted API fixtures
+        id: native_frontend
+        timeout-minutes: 10
+        env:
+          SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+          NODE_PATH: ${{ runner.temp }}/immune-browser-qualification/node_modules
+        run: node scripts/qualify_native_frontend.cjs
+      - name: Retain unsigned rendered observations
+        if: ${{ always() && steps.native_frontend.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: immune-native-frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/native-frontend/
+          if-no-files-found: error
+          retention-days: 30
       - name: Set up production publisher Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:

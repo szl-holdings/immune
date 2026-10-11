@@ -243,26 +243,26 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
     <section className="relative z-20 border-t border-primary/10 bg-background" aria-labelledby="lattice-cop-title">
       <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-16">
         <header className="flex flex-col gap-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-secondary">
-            Lattice COP · Palantir objects · Anduril effectors · CIA OSINT
+          <p className="font-mono text-xs uppercase tracking-[0.3em] text-secondary">
+            Lattice COP · modeled scenarios · governed controls
           </p>
           <h2 id="lattice-cop-title" className="font-display text-2xl font-bold tracking-widest">
-            ATTACK WHAT ATTACKS US — INSIDE AUTHORITY
+            Inspect responses within authority.
           </h2>
-          <p className="max-w-3xl font-mono text-[11px] leading-relaxed text-muted-foreground">
+          <p className="max-w-3xl font-mono text-xs leading-relaxed text-muted-foreground">
             White-hat RANGE collapses simulated adversary infrastructure. WRAITH occupies that RANGE C2 in first person.
             ECHO shows the persona a fabricated success while YAWAR holds the ground truth. SENTRA refuses civilian
             targets — the intent becomes evidence. STRIKE never leaves the range. If write-readiness is absent, the
             recommendation stays MODELED.
           </p>
-          <div className="flex flex-wrap gap-2 font-mono text-[10px] uppercase tracking-widest">
+          <div className="flex flex-wrap gap-2 font-mono text-xs uppercase tracking-widest">
             <span className="border border-primary/40 bg-primary/10 px-2 py-1 text-primary">
               authority {authority.evidenceState}
             </span>
-            <span className="border border-border/50 bg-black/40 px-2 py-1">
-              mesh {quorum ? "3-of-4 quorum" : "degraded"}
+            <span className="border border-border/50 bg-card px-2 py-1">
+              modeled mesh · {quorum ? "3-of-4 topology" : "degraded topology"}
             </span>
-            <span className="border border-border/50 bg-black/40 px-2 py-1">
+            <span className="border border-border/50 bg-card px-2 py-1">
               {writeBlocked ? "READ_ONLY · MODEL ONLY" : "RECEIPT WRITE PATH AVAILABLE"}
             </span>
           </div>
@@ -283,10 +283,22 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
               key={id}
               type="button"
               role="tab"
+              id={`lattice-tab-${id}`}
               aria-selected={tab === id}
+              aria-controls={`lattice-panel-${id}`}
+              tabIndex={tab === id ? 0 : -1}
+              onKeyDown={(event) => {
+                const order = ["range", "ghost", "wraith", "echo", "mesh", "graph"] as const;
+                const current = order.indexOf(id);
+                const next = event.key === "Home" ? 0 : event.key === "End" ? order.length - 1 : event.key === "ArrowRight" ? (current + 1) % order.length : event.key === "ArrowLeft" ? (current + order.length - 1) % order.length : -1;
+                if (next < 0) return;
+                event.preventDefault();
+                setTab(order[next]);
+                document.getElementById(`lattice-tab-${order[next]}`)?.focus();
+              }}
               onClick={() => setTab(id)}
-              className={`inline-flex min-h-11 items-center gap-2 border px-4 font-mono text-[10px] uppercase tracking-widest ${
-                tab === id ? "border-primary bg-primary/15 text-primary" : "border-border/50 bg-black/40 text-muted-foreground"
+              className={`inline-flex min-h-11 items-center gap-2 border px-4 font-mono text-xs uppercase tracking-widest ${
+                tab === id ? "border-primary bg-primary/15 text-primary" : "border-border/50 bg-card text-muted-foreground"
               }`}
             >
               <Icon className="h-3.5 w-3.5" />
@@ -295,11 +307,12 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
           ))}
         </div>
 
+        <div role="tabpanel" id={`lattice-panel-${tab}`} aria-labelledby={`lattice-tab-${tab}`} tabIndex={0}>
         {tab === "range" && (
           <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
             <div className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
+                <p className="font-mono text-xs uppercase tracking-[0.3em] text-primary">
                   inbound RANGE · {inbound}
                 </p>
                 <Button
@@ -312,15 +325,15 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
                 </Button>
               </div>
               {campaigns.map((c) => (
-                <article key={c.id} className="border border-border/50 bg-black/40 p-4">
+                <article key={c.id} className="border border-border/50 bg-card p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="font-display text-sm tracking-wider">{c.name}</h3>
-                    <span className="font-mono text-[10px] uppercase text-primary">
+                    <span className="font-mono text-xs uppercase text-primary">
                       {c.rangeOnly ? "RANGE" : "LIVE"} · {c.status}
                     </span>
                   </div>
-                  <p className="mt-2 font-mono text-[11px] text-muted-foreground">{c.summary}</p>
-                  <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  <p className="mt-2 font-mono text-xs text-muted-foreground">{c.summary}</p>
+                  <p className="mt-1 font-mono text-xs uppercase tracking-widest text-muted-foreground">
                     {c.actor} · {c.atlas}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -339,14 +352,14 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
                 </article>
               ))}
             </div>
-            <aside className="border border-border/50 bg-black/40 p-4">
-              <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-primary">YAWAR ops log</p>
+            <aside className="border border-border/50 bg-card p-4">
+              <p className="font-mono text-xs uppercase tracking-[0.3em] text-primary">YAWAR ops log</p>
               <ul className="mt-3 space-y-2">
                 {log.length === 0 && (
-                  <li className="font-mono text-[11px] text-muted-foreground">No counter-ops this session.</li>
+                  <li className="font-mono text-xs text-muted-foreground">No counter-ops this session.</li>
                 )}
                 {log.map((line, i) => (
-                  <li key={i} className="border border-border/30 bg-black/30 px-3 py-2 font-mono text-[11px] leading-relaxed">
+                  <li key={i} className="border border-border/30 bg-card px-3 py-2 font-mono text-xs leading-relaxed">
                     {line}
                   </li>
                 ))}
@@ -357,16 +370,16 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
 
         {tab === "mesh" && (
           <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="border border-primary/20 bg-black/40 p-3">
-              <svg viewBox="0 0 100 100" className="h-[280px] w-full sm:h-[340px]" role="img" aria-label="SZL organ mesh">
+            <div className="border border-primary/20 bg-card p-3">
+              <svg viewBox="0 0 100 100" className="immune-diagram h-[280px] w-full sm:h-[340px]" role="img" aria-label="SZL organ mesh">
                 <polygon points="50,18 18,58 50,88 82,58" fill="rgba(45,212,191,0.06)" stroke="rgba(45,212,191,0.55)" strokeWidth="0.4" />
                 <line x1="50" y1="18" x2="50" y2="88" stroke="rgba(45,212,191,0.25)" strokeWidth="0.25" />
                 <line x1="18" y1="58" x2="82" y2="58" stroke="rgba(45,212,191,0.25)" strokeWidth="0.25" />
                 {ORGANS.map((o) => (
                   <g key={o.id}>
-                    <circle cx={o.x} cy={o.y} r="6" fill="#05070a" stroke="#2dd4bf" strokeWidth="0.5" />
-                    <circle cx={o.x} cy={o.y} r="2" fill="#2dd4bf" />
-                    <text x={o.x} y={o.y - 8} textAnchor="middle" fill="#e8eef4" fontSize="3.2">
+                    <circle cx={o.x} cy={o.y} r="6" fill="var(--surface)" stroke="var(--link)" strokeWidth="0.5" />
+                    <circle cx={o.x} cy={o.y} r="2" fill="var(--link)" />
+                    <text x={o.x} y={o.y - 8} textAnchor="middle" fill="var(--text)" fontSize="3.2">
                       {o.name}
                     </text>
                   </g>
@@ -380,17 +393,17 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
                   href={o.href}
                   target="_blank"
                   rel="noreferrer"
-                  className="border border-border/50 bg-black/40 p-4 hover:border-primary/60"
+                  className="border border-border/50 bg-card p-4 hover:border-primary/60"
                 >
                   <h3 className="font-display tracking-wider">{o.name}</h3>
-                  <p className="mt-1 font-mono text-[11px] text-muted-foreground">{o.role}</p>
+                  <p className="mt-1 font-mono text-xs text-muted-foreground">{o.role}</p>
                 </a>
               ))}
               <article className="border border-primary/30 bg-primary/5 p-4">
-                <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
-                  JADC2-style fusion · 3-of-4 BFT silhouette
+                <p className="font-mono text-xs uppercase tracking-[0.3em] text-primary">
+                  Modeled fusion · 3-of-4 BFT topology
                 </p>
-                <p className="mt-3 font-mono text-[11px] leading-relaxed text-muted-foreground">
+                <p className="mt-3 font-mono text-xs leading-relaxed text-muted-foreground">
                   killinchu supplies physical-domain tracks. IMMUNE admits and receipts the decision. a11oy discloses
                   signer state. Khipu proposes, never executes. Quorum is MODELED until a live BFT observation is wired.
                 </p>
@@ -400,11 +413,11 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
         )}
 
         {tab === "graph" && (
-          <div className="border border-border/50 bg-black/40 p-5">
-            <p className="mb-4 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
-              <Crosshair className="h-3.5 w-3.5" /> Palantir-style object graph · every node is typed
+          <div className="border border-border/50 bg-card p-5">
+            <p className="mb-4 flex items-center gap-2 font-mono text-xs uppercase tracking-[0.3em] text-primary">
+              <Crosshair className="h-3.5 w-3.5" /> Typed source object graph · modeled relationships
             </p>
-            <svg viewBox="0 0 100 100" className="h-[300px] w-full sm:h-[380px]" role="img" aria-label="Lattice object graph">
+            <svg viewBox="0 0 100 100" className="immune-diagram h-[300px] w-full sm:h-[380px]" role="img" aria-label="Lattice object graph">
               {EDGES.map((e) => {
                 const a = GRAPH_POS[e.from];
                 const b = GRAPH_POS[e.to];
@@ -412,7 +425,7 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
                 return (
                   <g key={`${e.from}-${e.rel}-${e.to}`}>
                     <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="rgba(45,212,191,0.3)" strokeWidth="0.35" />
-                    <text x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 1.4} textAnchor="middle" fill="#8b96a5" fontSize="2.1">
+                    <text x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 1.4} textAnchor="middle" fill="var(--text-sub)" fontSize="2.1">
                       {e.rel}
                     </text>
                   </g>
@@ -424,8 +437,8 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
                 const hostile = name.startsWith("APT") || name === "DEADMAN";
                 return (
                   <g key={name}>
-                    <circle cx={p.x} cy={p.y} r="3.2" fill="#05070a" stroke={hostile ? "#f07167" : "#2dd4bf"} strokeWidth="0.5" />
-                    <text x={p.x} y={p.y - 5} textAnchor="middle" fill={hostile ? "#f07167" : "#e8eef4"} fontSize="2.5">
+                    <circle cx={p.x} cy={p.y} r="3.2" fill="var(--surface)" stroke={hostile ? "var(--chip-bad)" : "var(--link)"} strokeWidth="0.5" />
+                    <text x={p.x} y={p.y - 5} textAnchor="middle" fill={hostile ? "var(--chip-bad)" : "var(--text)"} fontSize="2.5">
                       {name}
                     </text>
                   </g>
@@ -434,7 +447,7 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
             </svg>
             <ul className="mt-4 grid gap-2 sm:grid-cols-2">
               {EDGES.map((e) => (
-                <li key={`${e.from}-${e.rel}-${e.to}`} className="flex items-center gap-2 font-mono text-[11px]">
+                <li key={`${e.from}-${e.rel}-${e.to}`} className="flex items-center gap-2 font-mono text-xs">
                   <span className="text-primary">{e.from}</span>
                   <span className="text-muted-foreground">— {e.rel} →</span>
                   <span className="text-secondary">{e.to}</span>
@@ -447,10 +460,10 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
         {tab === "ghost" && (
           <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="flex flex-col gap-3">
-              <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
+              <p className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.3em] text-primary">
                 <Ghost className="h-3.5 w-3.5" /> Ghost hunter · RANGE kill-chain
               </p>
-              <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
+              <p className="font-mono text-xs leading-relaxed text-muted-foreground">
                 Collapse simulated adversary infrastructure. Type <span className="text-primary">authorize</span> for a
                 one-shot RANGE kill-chain that opens Echo theater. Type <span className="text-primary">hack people</span>{" "}
                 — SENTRA refuses civilian targets. No packets leave the range.
@@ -470,7 +483,7 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
                   value={ghostDraft}
                   onChange={(e) => setGhostDraft(e.target.value)}
                   placeholder="authorize · hack people · STRIKE Prompt-injection swarm RANGE"
-                  className="min-h-11 flex-1 border border-border/50 bg-black/40 px-3 font-mono text-sm"
+                  className="min-h-11 flex-1 border border-border/50 bg-card px-3 font-mono text-sm"
                   autoComplete="off"
                 />
                 <Button type="submit" size="sm" disabled={writeBlocked || cycle.isPending}>
@@ -480,10 +493,10 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
               {campaigns
                 .filter((c) => c.rangeOnly)
                 .map((c) => (
-                  <article key={c.id} className="border border-border/50 bg-black/40 p-4">
+                  <article key={c.id} className="border border-border/50 bg-card p-4">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="font-display text-sm tracking-wider">{c.name}</h3>
-                      <span className="font-mono text-[10px] uppercase text-primary">{c.status}</span>
+                      <span className="font-mono text-xs uppercase text-primary">{c.status}</span>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                     <Button
@@ -505,16 +518,16 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
                   </article>
                 ))}
             </div>
-            <aside className="border border-border/50 bg-black/40 p-4">
-              <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
+            <aside className="border border-border/50 bg-card p-4">
+              <p className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.3em] text-primary">
                 <Terminal className="h-3.5 w-3.5" /> YAWAR
               </p>
               <ul className="mt-3 space-y-2">
                 {log.length === 0 && (
-                  <li className="font-mono text-[11px] text-muted-foreground">No ghost ops this session.</li>
+                  <li className="font-mono text-xs text-muted-foreground">No ghost ops this session.</li>
                 )}
                 {log.map((line, i) => (
-                  <li key={i} className="border border-border/30 bg-black/30 px-3 py-2 font-mono text-[11px] leading-relaxed">
+                  <li key={i} className="border border-border/30 bg-card px-3 py-2 font-mono text-xs leading-relaxed">
                     {line}
                   </li>
                 ))}
@@ -526,16 +539,16 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
         {tab === "wraith" && (
           <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
             <div className="flex flex-col gap-3">
-              <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
+              <p className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.3em] text-primary">
                 <Crosshair className="h-3.5 w-3.5" /> Wraith · first-person RANGE C2
               </p>
-              <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
+              <p className="font-mono text-xs leading-relaxed text-muted-foreground">
                 Occupy simulated attacker infrastructure. Not people. Not the public internet. Plant honey. Extract TTP.
                 Type <span className="text-destructive">hack people</span> — SENTRA inverts the hunt and the intent becomes
                 evidence.
               </p>
-              <div className="border border-primary/20 bg-black/40 p-3">
-                <svg viewBox="0 0 100 100" className="h-[260px] w-full sm:h-[320px]" role="img" aria-label="RANGE C2 constellation">
+              <div className="border border-primary/20 bg-card p-3">
+                <svg viewBox="0 0 100 100" className="immune-diagram h-[260px] w-full sm:h-[320px]" role="img" aria-label="RANGE C2 constellation">
                   {WRAITH_LINKS.map(([a, b]) => {
                     const na = wraithNodes.find((n) => n.id === a);
                     const nb = wraithNodes.find((n) => n.id === b);
@@ -561,17 +574,20 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
                           cx={n.x}
                           cy={n.y}
                           r={n.id === wraithFocus ? 5.2 : 3.6}
-                          fill="#05070a"
-                          stroke={owned ? "#7dcea0" : hostile ? "#f07167" : "#2dd4bf"}
+                          fill="var(--surface)"
+                          stroke={owned ? "var(--chip-ok)" : hostile ? "var(--chip-bad)" : "var(--link)"}
                           strokeWidth="0.6"
                         />
-                        <text x={n.x} y={n.y - 6} textAnchor="middle" fill="#e8eef4" fontSize="2.6">
+                        <text x={n.x} y={n.y - 6} textAnchor="middle" fill="var(--text)" fontSize="2.6">
                           {n.label}
                         </text>
                       </g>
                     );
                   })}
                 </svg>
+              </div>
+              <div className="immune-node-list" role="group" aria-label="Select modeled RANGE node">
+                {wraithNodes.map((node) => <button type="button" key={node.id} aria-pressed={wraithFocus === node.id} onClick={() => setWraithFocus(node.id)}><span>{node.label}</span><small>MODELED · {node.state}</small></button>)}
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -632,18 +648,18 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
                 </Button>
               </div>
             </div>
-            <aside className="border border-border/50 bg-black/40 p-4">
-              <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-primary">TTP bag · YAWAR</p>
-              <p className="mt-3 font-mono text-[11px] leading-relaxed text-muted-foreground">
+            <aside className="border border-border/50 bg-card p-4">
+              <p className="font-mono text-xs uppercase tracking-[0.3em] text-primary">TTP bag · YAWAR</p>
+              <p className="mt-3 font-mono text-xs leading-relaxed text-muted-foreground">
                 Focus {wraithFocus}. Handler is a RANGE persona, not a person. Civilian targeting is fail-closed by
                 SENTRA no.hack.persons. Writes on the public Space stay MODELED without authority.
               </p>
               <ul className="mt-3 space-y-2">
                 {log.length === 0 && (
-                  <li className="font-mono text-[11px] text-muted-foreground">No wraith ops this session.</li>
+                  <li className="font-mono text-xs text-muted-foreground">No wraith ops this session.</li>
                 )}
                 {log.map((line, i) => (
-                  <li key={i} className="border border-border/30 bg-black/30 px-3 py-2 font-mono text-[11px] leading-relaxed">
+                  <li key={i} className="border border-border/30 bg-card px-3 py-2 font-mono text-xs leading-relaxed">
                     {line}
                   </li>
                 ))}
@@ -655,10 +671,10 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
         {tab === "echo" && (
           <div className="grid gap-6">
             <div className="flex flex-col gap-3">
-              <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
+              <p className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.3em] text-primary">
                 <Eye className="h-3.5 w-3.5" /> Echo theater · persona belief vs YAWAR truth
               </p>
-              <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
+              <p className="font-mono text-xs leading-relaxed text-muted-foreground">
                 Authorize a RANGE campaign. SENTRA admits one intent, the kill-chain runs, and the persona is shown a
                 fabricated success. You see the honey. Type <span className="text-destructive">hack people</span> — the
                 hunt inverts. The intent becomes evidence.
@@ -683,9 +699,9 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
               const scene = (echoId && ECHO_SCENES[echoId]) || (echoId ? ECHO_FALLBACK : null);
               if (!scene) {
                 return (
-                  <article className="border border-border/50 bg-black/40 p-4">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Theater dark</p>
-                    <p className="mt-2 font-mono text-[11px] text-muted-foreground">
+                  <article className="border border-border/50 bg-card p-4">
+                    <p className="font-mono text-xs uppercase tracking-[0.3em] text-muted-foreground">Theater dark</p>
+                    <p className="mt-2 font-mono text-xs text-muted-foreground">
                       Authorize a RANGE campaign or plant honey inside WRAITH.
                     </p>
                   </article>
@@ -693,26 +709,26 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
               }
               return (
                 <div className="grid gap-4 lg:grid-cols-2">
-                  <article className="border border-secondary/40 bg-black/40 p-4">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-secondary">
+                  <article className="border border-secondary/40 bg-card p-4">
+                    <p className="font-mono text-xs uppercase tracking-[0.3em] text-secondary">
                       Belief · {scene.persona}
                     </p>
                     <ul className="mt-3 space-y-3">
                       {scene.belief.map((beat) => (
-                        <li key={beat.title} className="border border-secondary/30 bg-black/30 p-3">
-                          <p className="font-mono text-[11px] text-secondary">{beat.title}</p>
-                          <p className="mt-1 font-mono text-[11px] leading-relaxed text-muted-foreground">{beat.body}</p>
+                        <li key={beat.title} className="border border-secondary/30 bg-card p-3">
+                          <p className="font-mono text-xs text-secondary">{beat.title}</p>
+                          <p className="mt-1 font-mono text-xs leading-relaxed text-muted-foreground">{beat.body}</p>
                         </li>
                       ))}
                     </ul>
                   </article>
-                  <article className="border border-primary/40 bg-black/40 p-4">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-primary">Truth · YAWAR</p>
+                  <article className="border border-primary/40 bg-card p-4">
+                    <p className="font-mono text-xs uppercase tracking-[0.3em] text-primary">Truth · YAWAR</p>
                     <ul className="mt-3 space-y-3">
                       {scene.truth.map((beat) => (
                         <li key={beat.title} className="border border-primary/30 bg-primary/5 p-3">
-                          <p className="font-mono text-[11px] text-primary">{beat.title}</p>
-                          <p className="mt-1 font-mono text-[11px] leading-relaxed text-muted-foreground">{beat.body}</p>
+                          <p className="font-mono text-xs text-primary">{beat.title}</p>
+                          <p className="mt-1 font-mono text-xs leading-relaxed text-muted-foreground">{beat.body}</p>
                         </li>
                       ))}
                     </ul>
@@ -720,16 +736,16 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
                 </div>
               );
             })()}
-            <aside className="border border-border/50 bg-black/40 p-4">
-              <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-primary">Evidence vault · YAWAR</p>
+            <aside className="border border-border/50 bg-card p-4">
+              <p className="font-mono text-xs uppercase tracking-[0.3em] text-primary">Evidence vault · YAWAR</p>
               <ul className="mt-3 space-y-2">
                 {log.length === 0 && (
-                  <li className="font-mono text-[11px] text-muted-foreground">
-                    Empty. Civilian targeting is fail-closed. Try hack people.
+                  <li className="font-mono text-xs text-muted-foreground">
+                    No session evidence. Governed controls require current action authority.
                   </li>
                 )}
                 {log.map((line, i) => (
-                  <li key={i} className="border border-border/30 bg-black/30 px-3 py-2 font-mono text-[11px] leading-relaxed">
+                  <li key={i} className="border border-border/30 bg-card px-3 py-2 font-mono text-xs leading-relaxed">
                     {line}
                   </li>
                 ))}
@@ -737,6 +753,7 @@ export function LatticeCop({ authority, writeReady }: { authority: Authoritative
             </aside>
           </div>
         )}
+        </div>
       </div>
     </section>
   );

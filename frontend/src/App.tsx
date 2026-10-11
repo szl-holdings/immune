@@ -4,7 +4,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
-import { useEffect } from "react";
+import { MotionConfig } from "framer-motion";
+import NativeShell from "@/components/NativeShell";
 
 const queryClient = new QueryClient();
 
@@ -18,17 +19,17 @@ function Router() {
 }
 
 function App() {
-  useEffect(() => {
-    document.documentElement.classList.add("dark");
-  }, []);
-
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        <MotionConfig reducedMotion="user">
+        <NativeShell>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
         </WouterRouter>
         <Toaster />
+        </NativeShell>
+        </MotionConfig>
       </TooltipProvider>
     </QueryClientProvider>
   );

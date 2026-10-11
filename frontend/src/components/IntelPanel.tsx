@@ -97,7 +97,7 @@ function ProvenancePill({
         : "border-warning/60 text-warning bg-warning/10";
   return (
     <span
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border font-mono text-[8px] uppercase tracking-[0.2em] ${cls}`}
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border font-mono text-xs uppercase tracking-[0.2em] ${cls}`}
     >
       {kind === "LIVE" && (
         <span className="inline-block w-1 h-1 rounded-full bg-primary animate-pulse" />
@@ -187,7 +187,7 @@ export default function IntelPanel() {
     <div className="flex flex-col gap-6 text-xs overflow-y-auto pr-2 custom-scrollbar h-full relative z-10">
       {/* (a) TRANSPARENCY LOG — LIVE (Sigstore Rekor) */}
       <div
-        className={`bg-black/50 border p-3 rounded-sm ${
+        className={`bg-card border p-3 rounded-sm ${
           transparency.status === "ok" &&
           transparency.data.provenance === "LIVE"
             ? "border-primary/40"
@@ -195,7 +195,7 @@ export default function IntelPanel() {
         }`}
       >
         <div className="flex items-center justify-between border-b border-border/50 pb-2 mb-3">
-          <div className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-mono flex items-center gap-1.5">
+          <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-mono flex items-center gap-1.5">
             <Radio className="w-3 h-3" /> Transparency Log — Live
           </div>
           {transparency.status === "ok" ? (
@@ -208,14 +208,14 @@ export default function IntelPanel() {
         </div>
 
         {transparency.status === "loading" && (
-          <div className="font-mono text-[10px] text-muted-foreground flex items-center gap-2 py-3">
+          <div className="font-mono text-xs text-muted-foreground flex items-center gap-2 py-3">
             <Loader2 className="w-3 h-3 animate-spin" />
             Querying Sigstore Rekor…
           </div>
         )}
 
         {transparency.status === "error" && (
-          <div className="font-mono text-[11px] text-warning flex items-center gap-2 py-3">
+          <div className="font-mono text-xs text-warning flex items-center gap-2 py-3">
             <WifiOff className="w-3.5 h-3.5 shrink-0" />
             <span>[ UNAVAILABLE ] transparency feed unreachable — no number to show</span>
           </div>
@@ -223,7 +223,7 @@ export default function IntelPanel() {
 
         {transparency.status === "ok" &&
           transparency.data.provenance === "UNAVAILABLE" && (
-            <div className="font-mono text-[11px] text-warning flex items-center gap-2 py-3">
+            <div className="font-mono text-xs text-warning flex items-center gap-2 py-3">
               <WifiOff className="w-3.5 h-3.5 shrink-0" />
               <span>[ UNAVAILABLE ] Rekor fetch failed server-side — treeSize withheld</span>
             </div>
@@ -234,7 +234,7 @@ export default function IntelPanel() {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <div className="text-[9px] text-muted-foreground font-mono mb-1">
+                  <div className="text-xs text-muted-foreground font-mono mb-1">
                     Rekor Tree Size
                   </div>
                   <motion.div
@@ -245,29 +245,29 @@ export default function IntelPanel() {
                   >
                     {counted.toLocaleString()}
                   </motion.div>
-                  <div className="text-[8px] text-muted-foreground/60 font-mono mt-1">
+                  <div className="text-xs text-muted-foreground font-mono mt-1">
                     entries logged
                   </div>
                 </div>
                 <div>
-                  <div className="text-[9px] text-muted-foreground font-mono mb-1">
+                  <div className="text-xs text-muted-foreground font-mono mb-1">
                     Root Hash (SHA-256)
                   </div>
                   <div
-                    className="font-mono text-[10px] text-primary break-all leading-tight"
+                    className="font-mono text-xs text-primary break-all leading-tight"
                     title={transparency.data.rootHash ?? ""}
                   >
                     {shortHash(transparency.data.rootHash)}
                   </div>
-                  <div className="text-[8px] text-muted-foreground/60 font-mono mt-1">
+                  <div className="text-xs text-muted-foreground font-mono mt-1">
                     fetched {transparency.data.fetchedAt.slice(11, 19)}Z
                   </div>
                 </div>
               </div>
 
               <div className="flex items-start gap-2 border-t border-border/30 pt-3">
-                <Link2 className="w-3 h-3 text-primary/70 mt-0.5 shrink-0" />
-                <p className="text-[9px] font-mono text-muted-foreground leading-relaxed">
+                <Link2 className="w-3 h-3 text-primary mt-0.5 shrink-0" />
+                <p className="text-xs font-mono text-muted-foreground leading-relaxed">
                   {transparency.data.note ??
                     "IMMUNE applies the same append-only hash-chain principle to every AI-agent action — each receipt links to the last, so tampering breaks the chain."}
                 </p>
@@ -278,7 +278,7 @@ export default function IntelPanel() {
                 target="_blank"
                 rel="noopener noreferrer"
                 data-testid="link-rekor-source"
-                className="inline-flex items-center gap-1.5 font-mono text-[9px] text-primary/70 hover:text-primary uppercase tracking-widest transition-colors"
+                className="inline-flex items-center gap-1.5 font-mono text-xs text-primary hover:text-primary uppercase tracking-widest transition-colors"
               >
                 <ExternalLink className="w-3 h-3" />
                 rekor.sigstore.dev
@@ -288,9 +288,9 @@ export default function IntelPanel() {
       </div>
 
       {/* (b) REAL-WORLD ATTACK CASE STUDIES (MITRE ATLAS) */}
-      <div className="bg-black/50 border border-border/50 p-3 rounded-sm flex-1 flex flex-col min-h-0">
+      <div className="bg-card border border-border/50 p-3 rounded-sm flex-1 flex flex-col min-h-0">
         <div className="flex items-center justify-between border-b border-border/50 pb-2 mb-3 shrink-0">
-          <div className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-mono flex items-center gap-1.5">
+          <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-mono flex items-center gap-1.5">
             <Crosshair className="w-3 h-3" /> Real-World Attack Case Studies
           </div>
           {incidents.status === "ok" ? (
@@ -302,19 +302,19 @@ export default function IntelPanel() {
           )}
         </div>
 
-        <div className="text-[8px] text-muted-foreground/60 font-mono uppercase tracking-[0.15em] mb-3 shrink-0">
+        <div className="text-xs text-muted-foreground font-mono uppercase tracking-[0.15em] mb-3 shrink-0">
           Source · MITRE ATLAS
         </div>
 
         {incidents.status === "loading" && (
-          <div className="font-mono text-[10px] text-muted-foreground flex items-center gap-2 py-3">
+          <div className="font-mono text-xs text-muted-foreground flex items-center gap-2 py-3">
             <Loader2 className="w-3 h-3 animate-spin" />
             Loading curated case studies…
           </div>
         )}
 
         {incidents.status === "error" && (
-          <div className="font-mono text-[11px] text-warning flex items-center gap-2 py-3">
+          <div className="font-mono text-xs text-warning flex items-center gap-2 py-3">
             <WifiOff className="w-3.5 h-3.5 shrink-0" />
             <span>[ UNAVAILABLE ] case-study feed unreachable</span>
           </div>
@@ -322,7 +322,7 @@ export default function IntelPanel() {
 
         {incidents.status === "ok" &&
           incidents.data.caseStudies.length === 0 && (
-            <div className="font-mono text-[10px] text-muted-foreground italic text-center py-4 opacity-50">
+            <div className="font-mono text-xs text-muted-foreground italic text-center py-4 ">
               [ no case studies returned ]
             </div>
           )}
@@ -340,18 +340,18 @@ export default function IntelPanel() {
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.04 }}
-                  className="group border border-border/30 rounded-sm bg-black/40 hover:border-secondary/50 hover:bg-secondary/5 px-2.5 py-2 transition-colors"
+                  className="group border border-border/30 rounded-sm bg-card hover:border-secondary/50 hover:bg-secondary/5 px-2.5 py-2 transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-[8px] text-secondary/80 shrink-0">
+                    <span className="font-mono text-xs text-secondary shrink-0">
                       {cs.id}
                     </span>
-                    <span className="font-display font-bold text-[10px] text-foreground/90 tracking-wide truncate">
+                    <span className="font-display font-bold text-xs text-foreground tracking-wide truncate">
                       {cs.name}
                     </span>
-                    <ExternalLink className="w-3 h-3 text-muted-foreground/50 group-hover:text-secondary ml-auto shrink-0 transition-colors" />
+                    <ExternalLink className="w-3 h-3 text-muted-foreground group-hover:text-secondary ml-auto shrink-0 transition-colors" />
                   </div>
-                  <p className="font-mono text-[9px] text-muted-foreground leading-relaxed mt-1">
+                  <p className="font-mono text-xs text-muted-foreground leading-relaxed mt-1">
                     {cs.summary}
                   </p>
                 </motion.a>

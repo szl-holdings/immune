@@ -244,19 +244,19 @@ function FoundationCard({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
       transition={{ delay: index * 0.06, type: "spring", stiffness: 200, damping: 24 }}
-      className="group flex flex-col gap-3 min-w-0 rounded-sm border border-border/50 bg-black/40 p-4 sm:p-5 hover:border-primary/50 transition-colors"
+      className="group flex flex-col gap-3 min-w-0 rounded-sm border border-border/50 bg-card p-4 sm:p-5 hover:border-primary/50 transition-colors"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h4 className="font-display font-bold text-sm sm:text-base tracking-wide text-foreground leading-tight">
             {content.title}
           </h4>
-          <p className="font-mono text-[10px] sm:text-[11px] text-muted-foreground mt-1 leading-snug">
+          <p className="font-mono text-xs sm:text-xs text-muted-foreground mt-1 leading-snug">
             {content.subtitle}
           </p>
         </div>
         <span
-          className={`inline-flex items-center gap-1 shrink-0 rounded-sm border px-1.5 py-1 font-mono text-[9px] sm:text-[10px] uppercase tracking-widest ${m.cls}`}
+          className={`inline-flex items-center gap-1 shrink-0 rounded-sm border px-1.5 py-1 font-mono text-xs sm:text-xs uppercase tracking-widest ${m.cls}`}
           title={m.blurb}
         >
           <MIcon className="w-3 h-3" />
@@ -265,25 +265,25 @@ function FoundationCard({
       </div>
 
       {/* The formula itself — the canonical corpus, rendered honestly */}
-      <div className="rounded-sm border border-primary/15 bg-black/50 px-3 py-4 text-center overflow-hidden">
+      <div className="rounded-sm border border-primary/15 bg-card px-3 py-4 text-center overflow-hidden">
         <div className="font-mono text-base sm:text-xl text-foreground break-words [overflow-wrap:anywhere]">
           {content.formula}
         </div>
         {content.where && (
-          <div className="font-mono text-[11px] sm:text-xs text-primary/60 mt-2 break-words [overflow-wrap:anywhere]">
+          <div className="font-mono text-xs sm:text-xs text-primary mt-2 break-words [overflow-wrap:anywhere]">
             {content.where}
           </div>
         )}
       </div>
 
-      <p className="font-mono text-[10px] sm:text-[11px] text-muted-foreground/80 leading-relaxed">
+      <p className="font-mono text-xs sm:text-xs text-muted-foreground leading-relaxed">
         {content.note}
       </p>
 
-      <div className="mt-auto flex items-center gap-1.5 font-mono text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-secondary/70 group-hover:text-secondary transition-colors">
+      <div className="mt-auto flex items-center gap-1.5 font-mono text-xs sm:text-xs uppercase tracking-[0.2em] text-secondary group-hover:text-secondary transition-colors">
         <ExternalLink className="w-3 h-3" />
         szl-holdings/{src.repo}
-        <span className="ml-1 rounded-sm border border-secondary/30 px-1 py-px text-secondary/80">
+        <span className="ml-1 rounded-sm border border-secondary/30 px-1 py-px text-secondary">
           REFERENCE
         </span>
       </div>
@@ -295,14 +295,14 @@ export default function FoundationsPanel() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-3">
-        <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.3em] text-primary/70">
+        <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-[0.3em] text-primary">
           <Sigma className="w-3.5 h-3.5" />
           Mathematical Foundations · The Canonical Corpus
         </div>
         <h3 className="text-xl sm:text-2xl md:text-3xl font-display font-bold tracking-widest">
           THE MATH UNDERNEATH — AND WHAT IT DOES / DOESN'T PROVE
         </h3>
-        <p className="font-mono text-[11px] text-muted-foreground leading-relaxed max-w-3xl">
+        <p className="font-mono text-xs text-muted-foreground leading-relaxed max-w-3xl">
           IMMUNE's guarantees rest on a public, versioned body of math. Every formula
           below is transcribed verbatim from its open-source kernel and links to that
           source. Each carries an honest maturity label — because the fastest way to
@@ -315,11 +315,11 @@ export default function FoundationsPanel() {
             return (
               <span
                 key={k}
-                className={`inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 font-mono text-[9px] sm:text-[10px] uppercase tracking-wider ${m.cls}`}
+                className={`inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 font-mono text-xs sm:text-xs uppercase tracking-wider ${m.cls}`}
               >
                 <MIcon className="w-3 h-3" />
                 {m.label}
-                <span className="normal-case tracking-normal text-muted-foreground/70">
+                <span className="normal-case tracking-normal text-muted-foreground">
                   — {m.blurb}
                 </span>
               </span>
@@ -338,10 +338,10 @@ export default function FoundationsPanel() {
         })}
       </div>
 
-      <p className="font-mono text-[10px] text-muted-foreground/60 leading-relaxed border-t border-border/40 pt-4">
+      <p className="font-mono text-xs text-muted-foreground leading-relaxed border-t border-border/40 pt-4">
         Sources are the SZL Holdings open kernels on GitHub (Apache-2.0 code · CC-BY-4.0
         papers). Each served formula is checked against a committed snapshot of the
-        canonical corpus (<code className="text-secondary/70">corpus/</code>) by an
+        canonical corpus (<code className="text-secondary">corpus/</code>) by an
         automated honesty guard — a formula that does not exist in that corpus fails the
         build. Overclaiming is treated as a failure, not a feature.
       </p>

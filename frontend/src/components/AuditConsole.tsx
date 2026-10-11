@@ -102,7 +102,7 @@ export function AuditConsole({ authority }: { authority: AuthoritativeTripwireSt
     : authority.evidenceState === "FAILED"
       ? "text-destructive"
       : authority.evidenceState === "VERIFIED"
-        ? "text-primary/70"
+        ? "text-primary"
         : "text-warning";
 
   return (
@@ -110,17 +110,17 @@ export function AuditConsole({ authority }: { authority: AuthoritativeTripwireSt
       
       {/* Primary Readouts */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-black/50 border border-border/50 p-3 rounded-sm">
-          <div className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground mb-2 font-mono flex items-center gap-1.5">
+        <div className="bg-card border border-border/50 p-3 rounded-sm">
+          <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2 font-mono flex items-center gap-1.5">
             <Terminal className="w-3 h-3" /> Mode
           </div>
-          <div className={`inline-block px-2 py-1 rounded-sm border font-display font-bold text-[10px] tracking-widest ${modeBadgeClass}`}>
+          <div className={`inline-block px-2 py-1 rounded-sm border font-display font-bold text-xs tracking-widest ${modeBadgeClass}`}>
             {authorityLabel}
           </div>
         </div>
 
-        <div className={`bg-black/50 border p-3 rounded-sm transition-colors ${isDeadman ? 'border-destructive/50' : 'border-border/50'}`}>
-          <div className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground mb-2 font-mono flex items-center gap-1.5">
+        <div className={`bg-card border p-3 rounded-sm transition-colors ${isDeadman ? 'border-destructive/50' : 'border-border/50'}`}>
+          <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2 font-mono flex items-center gap-1.5">
             <ShieldAlert className="w-3 h-3" /> Kill-Switch
           </div>
           <div className={`font-display font-bold text-xs tracking-widest ${killSwitchClass}`}>
@@ -134,22 +134,22 @@ export function AuditConsole({ authority }: { authority: AuthoritativeTripwireSt
       </div>
 
       {/* Ledger State */}
-      <div className="bg-black/50 border border-border/50 p-3 rounded-sm space-y-3">
-        <div className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-mono flex items-center gap-1.5 border-b border-border/50 pb-2">
+      <div className="bg-card border border-border/50 p-3 rounded-sm space-y-3">
+        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-mono flex items-center gap-1.5 border-b border-border/50 pb-2">
           <Database className="w-3 h-3" /> Yawar Ledger Status
         </div>
         
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <div className="text-[9px] text-muted-foreground font-mono mb-1">Receipts</div>
+            <div className="text-xs text-muted-foreground font-mono mb-1">Receipts</div>
             <div className="font-display font-bold text-xl text-foreground">
               {ledger?.count ?? 0}
             </div>
           </div>
           <div>
-            <div className="text-[9px] text-muted-foreground font-mono mb-1">Latest Hash (SHA-256)</div>
+            <div className="text-xs text-muted-foreground font-mono mb-1">Latest Hash (SHA-256)</div>
             <div
-              className="font-mono text-[10px] text-primary break-all leading-tight"
+              className="font-mono text-xs text-primary break-all leading-tight"
               title={ledger?.entries[0]?.hash ?? ""}
             >
               {shortHash(ledger?.entries[0]?.hash)}
@@ -159,12 +159,12 @@ export function AuditConsole({ authority }: { authority: AuthoritativeTripwireSt
 
         {/* Signing identity — honest about whether new receipts are Ed25519-signed */}
         <div className="border-t border-border/40 pt-2.5 flex items-center gap-2">
-          <div className="text-[9px] text-muted-foreground font-mono flex items-center gap-1.5 shrink-0">
+          <div className="text-xs text-muted-foreground font-mono flex items-center gap-1.5 shrink-0">
             <KeyRound className="w-3 h-3" /> Signing
           </div>
           {pubkey?.enabled ? (
             <span
-              className="inline-flex items-center gap-1.5 font-mono text-[9px] text-primary border border-primary/40 bg-primary/10 rounded-sm px-1.5 py-0.5"
+              className="inline-flex items-center gap-1.5 font-mono text-xs text-primary border border-primary/40 bg-primary/10 rounded-sm px-1.5 py-0.5"
               title={pubkey.publicKey ? `${pubkey.alg} public key: ${pubkey.publicKey}` : undefined}
               data-testid="badge-signing-identity"
             >
@@ -173,7 +173,7 @@ export function AuditConsole({ authority }: { authority: AuthoritativeTripwireSt
             </span>
           ) : (
             <span
-              className="font-mono text-[9px] text-muted-foreground/70 border border-border/40 rounded-sm px-1.5 py-0.5"
+              className="font-mono text-xs text-muted-foreground border border-border/40 rounded-sm px-1.5 py-0.5"
               data-testid="badge-signing-identity"
             >
               hash-only (unsigned)
@@ -183,18 +183,18 @@ export function AuditConsole({ authority }: { authority: AuthoritativeTripwireSt
       </div>
 
       {/* Verifier Report */}
-      <div className={`bg-black/50 border p-3 rounded-sm ${verifier && !verifier.ok ? 'border-destructive/50' : 'border-border/50'}`}>
+      <div className={`bg-card border p-3 rounded-sm ${verifier && !verifier.ok ? 'border-destructive/50' : 'border-border/50'}`}>
         <div className="flex items-center justify-between border-b border-border/50 pb-2 mb-3">
-          <div className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-mono flex items-center gap-1.5">
+          <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-mono flex items-center gap-1.5">
             {verifier && !verifier.ok ? <XCircle className="w-3 h-3 text-destructive" /> : <CheckCircle2 className="w-3 h-3 text-primary" />} 
             Chain Verification
           </div>
           {verifierQuery.isFetching && (
-            <span className="text-[9px] text-primary animate-pulse font-mono">Running...</span>
+            <span className="text-xs text-primary animate-pulse font-mono">Running...</span>
           )}
         </div>
         
-        <div className={`font-mono text-[11px] ${verifier?.ok ? "text-primary" : "text-destructive"}`}>
+        <div className={`font-mono text-xs ${verifier?.ok ? "text-primary" : "text-destructive"}`}>
           {verifier
             ? verifier.ok
               ? `[ OK ] Verified ${verifier.count} blocks independently`
@@ -207,10 +207,10 @@ export function AuditConsole({ authority }: { authority: AuthoritativeTripwireSt
             {verifier.issues.map((iss, i) => (
               <div
                 key={i}
-                className="font-mono text-[9px] text-destructive border-l-2 border-destructive pl-2 py-1 bg-destructive/5"
+                className="font-mono text-xs text-destructive border-l-2 border-destructive pl-2 py-1 bg-destructive/5"
               >
-                <div className="font-bold opacity-80">Seq {iss.seq} :: {iss.kind}</div>
-                <div className="opacity-60">{iss.detail}</div>
+                <div className="font-bold ">Seq {iss.seq} :: {iss.kind}</div>
+                <div className="">{iss.detail}</div>
               </div>
             ))}
           </div>
@@ -219,36 +219,36 @@ export function AuditConsole({ authority }: { authority: AuthoritativeTripwireSt
 
       {/* Tamper-Evidence (client-side simulation on a copy) */}
       {tamperAnalysis && (
-        <div className="bg-black/50 border border-destructive/50 p-3 rounded-sm">
+        <div className="bg-card border border-destructive/50 p-3 rounded-sm">
           <div className="flex items-center justify-between border-b border-destructive/30 pb-2 mb-3">
-            <div className="text-[9px] uppercase tracking-[0.2em] text-destructive font-mono flex items-center gap-1.5">
+            <div className="text-xs uppercase tracking-[0.2em] text-destructive font-mono flex items-center gap-1.5">
               <Unlink className="w-3 h-3" /> Tamper-Evidence · Client-Side
             </div>
             <button
               data-testid="button-restore-tamper"
               onClick={() => setTamperedSeq(null)}
-              className="text-[9px] font-mono text-primary/70 hover:text-primary uppercase tracking-widest"
+              className="text-xs font-mono text-primary hover:text-primary uppercase tracking-widest"
             >
               Restore
             </button>
           </div>
-          <div className="font-mono text-[11px] text-destructive">
+          <div className="font-mono text-xs text-destructive">
             {tamperAnalysis.kind === "link"
               ? `[ BROKEN ] receipt #${tamperAnalysis.brokenSeq} prevHash no longer matches altered #${tamperAnalysis.tamperedSeq}`
               : `[ BROKEN ] altered head #${tamperAnalysis.tamperedSeq} no longer matches published lastHash`}
           </div>
-          <div className="mt-2 text-[9px] font-mono text-muted-foreground leading-relaxed">
+          <div className="mt-2 text-xs font-mono text-muted-foreground leading-relaxed">
             Simulated on a copy in your browser. The server ledger is untouched — run Verify Chain to confirm it still reads OK.
           </div>
         </div>
       )}
 
       {/* Tripwire Registry — aligned to public frameworks (OUR mapping) */}
-      <div className="bg-black/50 border border-border/50 p-3 rounded-sm">
-        <div className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-mono border-b border-border/50 pb-2 mb-1">
+      <div className="bg-card border border-border/50 p-3 rounded-sm">
+        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-mono border-b border-border/50 pb-2 mb-1">
           Huklla Watchers · Framework Alignment
         </div>
-        <div className="text-[8px] font-mono text-muted-foreground/50 mb-3 leading-relaxed">
+        <div className="text-xs font-mono text-muted-foreground mb-3 leading-relaxed">
           IMMUNE's own alignment to the OWASP LLM Top 10 (2025) &amp; MITRE ATLAS — not an official mapping.
         </div>
         <div className="flex flex-col gap-1.5">
@@ -258,10 +258,10 @@ export function AuditConsole({ authority }: { authority: AuthoritativeTripwireSt
             return (
               <div
                 key={id}
-                className={`flex items-center gap-1.5 font-mono text-[9px] ${isFired ? 'text-destructive font-bold bg-destructive/10 -mx-1 px-1 rounded-sm py-0.5' : 'text-muted-foreground'}`}
+                className={`flex items-center gap-1.5 font-mono text-xs ${isFired ? 'text-destructive font-bold bg-destructive/10 -mx-1 px-1 rounded-sm py-0.5' : 'text-muted-foreground'}`}
               >
                 <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${isFired ? 'bg-destructive animate-pulse' : 'bg-primary/20'}`} />
-                <span className={`shrink-0 ${isFired ? "text-destructive" : "text-foreground/50"}`}>{id}</span>
+                <span className={`shrink-0 ${isFired ? "text-destructive" : "text-foreground"}`}>{id}</span>
                 <span className="truncate" title={name}>{name}</span>
                 {fw && (
                   <span className="ml-auto flex items-center gap-1 shrink-0">
@@ -271,7 +271,7 @@ export function AuditConsole({ authority }: { authority: AuthoritativeTripwireSt
                       rel="noopener noreferrer"
                       title={fw.alignmentNote}
                       data-testid={`badge-owasp-${id}`}
-                      className="px-1 py-0.5 rounded-sm border border-secondary/40 text-secondary/90 hover:border-secondary hover:text-secondary text-[8px] tracking-wider transition-colors"
+                      className="px-1 py-0.5 rounded-sm border border-secondary/40 text-secondary hover:border-secondary hover:text-secondary text-xs tracking-wider transition-colors"
                     >
                       {fw.owasp.id}
                     </a>
@@ -281,7 +281,7 @@ export function AuditConsole({ authority }: { authority: AuthoritativeTripwireSt
                       rel="noopener noreferrer"
                       title={fw.atlas.title}
                       data-testid={`badge-atlas-${id}`}
-                      className="px-1 py-0.5 rounded-sm border border-primary/30 text-primary/80 hover:border-primary hover:text-primary text-[8px] tracking-wider transition-colors"
+                      className="px-1 py-0.5 rounded-sm border border-primary/30 text-primary hover:border-primary hover:text-primary text-xs tracking-wider transition-colors"
                     >
                       ATLAS
                     </a>
@@ -294,8 +294,8 @@ export function AuditConsole({ authority }: { authority: AuthoritativeTripwireSt
       </div>
 
       {/* Ledger Tail Log */}
-      <div className="bg-black/50 border border-border/50 p-3 rounded-sm flex-1 flex flex-col min-h-0">
-        <div className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-mono border-b border-border/50 pb-2 mb-3 shrink-0">
+      <div className="bg-card border border-border/50 p-3 rounded-sm flex-1 flex flex-col min-h-0">
+        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-mono border-b border-border/50 pb-2 mb-3 shrink-0">
           Append Log
         </div>
         
@@ -311,20 +311,20 @@ export function AuditConsole({ authority }: { authority: AuthoritativeTripwireSt
                   key={r.seq}
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className={`border rounded-sm font-mono text-[9px] overflow-hidden transition-colors ${tampered || broken ? 'border-destructive/60' : open ? 'border-primary/50' : 'border-border/30'}`}
+                  className={`border rounded-sm font-mono text-xs overflow-hidden transition-colors ${tampered || broken ? 'border-destructive/60' : open ? 'border-primary/50' : 'border-border/30'}`}
                 >
                   <div
-                    className={`flex items-stretch ${tampered ? 'bg-destructive/15' : broken ? 'bg-destructive/5' : open ? 'bg-primary/10' : 'bg-black/40'}`}
+                    className={`flex items-stretch ${tampered ? 'bg-destructive/15' : broken ? 'bg-destructive/5' : open ? 'bg-primary/10' : 'bg-card'}`}
                   >
                     <button
                       onClick={() => setOpenReceipt(open ? null : r.seq)}
                       className="flex-1 text-left px-2 py-1.5 flex items-center gap-2 transition-colors hover:bg-white/5"
                     >
                       <ChevronRight className={`w-3 h-3 transition-transform ${open ? 'rotate-90 text-primary' : 'text-muted-foreground'}`} />
-                      <span className="text-secondary/80 shrink-0">#{r.seq}</span>
-                      <span className="text-muted-foreground/60 shrink-0">{r.ts.slice(11, 23)}</span>
-                      {broken && <span className="text-destructive text-[8px] shrink-0">prev!=</span>}
-                      <span className={`ml-auto truncate ${tampered ? 'text-destructive line-through' : broken ? 'text-destructive/70' : 'text-primary/70'}`}>
+                      <span className="text-secondary shrink-0">#{r.seq}</span>
+                      <span className="text-muted-foreground shrink-0">{r.ts.slice(11, 23)}</span>
+                      {broken && <span className="text-destructive text-xs shrink-0">prev!=</span>}
+                      <span className={`ml-auto truncate ${tampered ? 'text-destructive line-through' : broken ? 'text-destructive/70' : 'text-primary'}`}>
                         {shortHash(r.hash)}
                       </span>
                     </button>
@@ -343,7 +343,7 @@ export function AuditConsole({ authority }: { authority: AuthoritativeTripwireSt
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        className="bg-black/60 border-t border-border/30 px-3 py-2 text-[10px] text-primary/60 whitespace-pre-wrap break-all overflow-hidden"
+                        className="bg-card border-t border-border/30 px-3 py-2 text-xs text-primary whitespace-pre-wrap break-all overflow-hidden"
                       >
                         {JSON.stringify(r.payload, null, 2)}
                       </motion.pre>
@@ -354,7 +354,7 @@ export function AuditConsole({ authority }: { authority: AuthoritativeTripwireSt
             })}
           </AnimatePresence>
           {(!ledger || ledger.entries.length === 0) && (
-            <div className="font-mono text-[10px] text-muted-foreground italic text-center py-4 opacity-50">
+            <div className="font-mono text-xs text-muted-foreground italic text-center py-4 ">
               [ empty buffer — awaiting ingress ]
             </div>
           )}

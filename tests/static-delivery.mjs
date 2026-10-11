@@ -177,6 +177,24 @@ try {
   assert.ok(emittedJavaScript.includes("__SZL_HOLO_V2__"), "holographic implementation was omitted from emitted JavaScript");
   assert.ok(emittedJavaScript.includes("SZLPublicExperience"), "public-experience implementation was omitted");
 
+  // Literal projection paths, independent of URL strings supplied by a manifest.
+  const nativeAssets = [
+    ["szl-tokens.css", /^text\/css\b/i], ["SOURCE.json", /^application\/json\b/i],
+    ["PROJECTION.json", /^application\/json\b/i], ["szl-icon-32.svg", /^image\/svg\+xml\b/i],
+    ["favicon.svg", /^image\/svg\+xml\b/i], ["apple-touch-icon.png", /^image\/png\b/i],
+  ];
+  for (const [name, mime] of nativeAssets) {
+    const relative = `public/assets/szl/${name}`;
+    const source = fs.readFileSync(path.join(root, "frontend", relative));
+    assert.equal(manifest.artifacts[relative], hash(source), `native asset is sealed from source: ${name}`);
+    const served = await request(`/assets/szl/${name}`);
+    assert.equal(served.status, 200);
+    assert.match(served.headers.get("content-type") ?? "", mime);
+    const bytes = Buffer.from(await served.arrayBuffer());
+    assert.deepEqual(bytes, source, `native served byte identity: ${name}`);
+    observation.assets.push({ path: relative, contentType: served.headers.get("content-type"), bytes: bytes.length, sha256: hash(bytes) });
+  }
+
   const missing = [
     ["/assets/__missing__.js", {}], ["/assets/__missing__.css", {}],
     ["/assets/__missing__", {}], ["/__missing__.mjs?version=1", {}],

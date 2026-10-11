@@ -60,28 +60,28 @@ export default function InferConsole({ writeReady }: { writeReady: boolean }) {
             <h2 id="infer-title" className="font-display text-sm font-bold tracking-[0.2em]">
               Governed inference · NEMO
             </h2>
-            <p className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.25em] text-muted-foreground">
+            <p className="mt-0.5 font-mono text-xs uppercase tracking-[0.25em] text-muted-foreground">
               SENTRA · generate · rule_check R1–R5 · YAWAR
             </p>
           </div>
         </div>
-        <span className="border border-primary/60 bg-primary/10 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-primary">
+        <span className="border border-primary/60 bg-primary/10 px-2 py-1 font-mono text-xs uppercase tracking-widest text-primary">
           {writeReady ? "AVAILABLE · UNMEASURED" : "READ_ONLY"}
         </span>
       </div>
       <div className="space-y-4 p-5">
-        <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
+        <p className="font-mono text-xs leading-relaxed text-muted-foreground">
           szl-nemo is SOFTWARE, not an LLM and not NVIDIA NeMo. It gates every answer. When Groq/xAI is off,
           this process still composes from doctrine handles and fail-closes on R1–R5.
         </p>
-        <label className="block font-mono text-[9px] uppercase tracking-[0.25em] text-primary/80">
+        <label className="block font-mono text-xs uppercase tracking-[0.25em] text-primary">
           Prompt
           <textarea
             value={prompt}
             maxLength={500}
             rows={3}
             onChange={(e) => setPrompt(e.target.value)}
-            className="mt-2 w-full border border-border bg-background px-3 py-2 font-mono text-[11px] text-foreground"
+            className="mt-2 w-full border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
           />
         </label>
         <div className="flex flex-wrap gap-2">
@@ -89,7 +89,7 @@ export default function InferConsole({ writeReady }: { writeReady: boolean }) {
             type="button"
             disabled={!writeReady || busy || prompt.trim().length < 4}
             onClick={() => void go(prompt.trim())}
-            className="inline-flex min-h-11 items-center gap-2 border border-primary bg-primary/10 px-4 font-mono text-[11px] uppercase tracking-widest text-primary hover:bg-primary/20 disabled:opacity-50"
+            className="inline-flex min-h-11 items-center gap-2 border border-primary bg-primary/10 px-4 font-mono text-xs uppercase tracking-widest text-primary hover:bg-primary/20 disabled:opacity-50"
           >
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cpu className="w-4 h-4" />}
             Infer
@@ -102,18 +102,18 @@ export default function InferConsole({ writeReady }: { writeReady: boolean }) {
               onClick={() => {
                 setPrompt(ex);
               }}
-              className="inline-flex min-h-11 items-center border border-border px-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:border-primary/50"
+              className="inline-flex min-h-11 items-center border border-border px-3 font-mono text-xs uppercase tracking-widest text-muted-foreground hover:border-primary/50"
             >
               {ex.slice(0, 22)}…
             </button>
           ))}
         </div>
         {error && (
-          <p className="border border-destructive/40 bg-destructive/10 p-3 font-mono text-[11px] text-destructive">{error}</p>
+          <p className="border border-destructive/40 bg-destructive/10 p-3 font-mono text-xs text-destructive">{error}</p>
         )}
         {run && (
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-widest">
+            <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-xs uppercase tracking-widest">
               <span>
                 {run.provider}/{run.model} · energy {run.energy}
               </span>
@@ -133,11 +133,11 @@ export default function InferConsole({ writeReady }: { writeReady: boolean }) {
               <p className="border border-primary/40 bg-primary/5 p-3 font-mono text-[12px] leading-relaxed">{run.answer}</p>
             )}
             {run.cycle.receipt && (
-              <p className="font-mono text-[10px] text-primary">
+              <p className="font-mono text-xs text-primary">
                 YAWAR #{run.cycle.receipt.seq} {run.cycle.receipt.hash.slice(0, 16)}
               </p>
             )}
-            <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">{run.stoppedReason}</p>
+            <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">{run.stoppedReason}</p>
           </div>
         )}
       </div>
