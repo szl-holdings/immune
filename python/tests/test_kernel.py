@@ -36,11 +36,17 @@ class KernelTests(unittest.TestCase):
         organs_mod.reset_estate_probe_cache()
 
     def tearDown(self) -> None:
+        import time
+
         import immune.organs as organs_mod
         import immune.runtime as runtime_mod
 
         runtime_mod._RUNTIME = None
         organs_mod.reset_estate_probe_cache()
+        # No probe worker may leak into the next test.
+        limit = time.monotonic() + 10
+        while organs_mod.outstanding_estate_workers() and time.monotonic() < limit:
+            time.sleep(0.01)
         self._environment.stop()
         self._tmp.cleanup()
 
@@ -970,92 +976,23 @@ class KernelTests(unittest.TestCase):
         )
         self.assertEqual(mesh["liveCount"], 0)
 
-    def _estate_mesh(self, fetch):
-        from immune.organs import dashboard
+    def test_mesh_former_remote_live_fixture_is_rejected(self) -> None:
+        # The input the original positive test used to close quorum: remote
+        # organs labelled LIVE as if they were this process. It must not count.
+        from immune.mesh import mesh_from_surfaces
 
-        with patch.dict(os.environ, {"IMMUNE_ESTATE_PROBE": "1"}), patch(
-            "immune.organs._fetch_json", side_effect=fetch
-        ) as fetched:
-            projected = dashboard()
-        return projected, fetched
-
-    def test_estate_failed_probes_are_unavailable_and_quorum_open(self) -> None:
-        from urllib.error import URLError
-
-        def fetch(url, timeout):
-            self.assertLessEqual(timeout, 3.0)
-            if "killinchu" in url:
-                raise HTTPError(url, 503, "Service Unavailable", {}, None)
-            raise URLError("egress refused")
-
-        projected, _ = self._estate_mesh(fetch)
-        votes = {v["id"]: v for v in projected["mesh"]["votes"]}
-        for oid in ("a11oy", "killinchu", "khipu"):
-            self.assertFalse(votes[oid]["live"])
-            self.assertEqual(votes[oid]["stage"], "UNAVAILABLE")
-            self.assertEqual(votes[oid]["provenance"], "UNAVAILABLE")
-        self.assertIn("URLError", votes["a11oy"]["detail"])
-        self.assertIn("HTTP 503", votes["killinchu"]["detail"])
-        # This process is NOT_READY at boot, so nothing counts.
-        self.assertFalse(votes["immune"]["live"])
-        self.assertEqual(projected["mesh"]["liveCount"], 0)
-        self.assertFalse(projected["mesh"]["reached"])
-        for row in projected["estate"]:
-            self.assertNotIn("observed from this process", row["detail"])
-
-    def test_estate_non_ok_health_is_not_live(self) -> None:
-        def fetch(url, timeout):
-            if "a11oy" in url:
-                return 200, {"status": "degraded", "organ": "a11oy"}
-            if "killinchu" in url:
-                return 200, {"status": "ok", "organ": "a11oy",
-                             "operational_readiness": {"ready": True, "status": "READY"}}
-            return 200, {"id": "someone/else", "private": False}
-
-        projected, _ = self._estate_mesh(fetch)
-        votes = {v["id"]: v for v in projected["mesh"]["votes"]}
-        self.assertEqual(projected["mesh"]["liveCount"], 0)
-        self.assertIn("status='degraded'", votes["a11oy"]["detail"])
-        self.assertIn("does not match", votes["killinchu"]["detail"])
-        self.assertIn("does not match", votes["khipu"]["detail"])
-
-    def test_estate_observed_probes_count_and_are_cached(self) -> None:
-        def fetch(url, timeout):
-            if "a11oy" in url:
-                return 200, {"status": "ok", "organ": "a11oy",
-                             "operational_readiness": {"ready": True, "status": "READY"}}
-            if "killinchu" in url:
-                return 200, {"status": "ok", "organ": "killinchu"}
-            return 200, {
-                "id": "SZLHOLDINGS/SZL-Khipu-1.5B",
-                "private": False,
-                "siblings": [{"rfilename": "model.safetensors"}],
-            }
-
-        projected, fetched = self._estate_mesh(fetch)
-        votes = {v["id"]: v for v in projected["mesh"]["votes"]}
-        for oid in ("a11oy", "killinchu", "khipu"):
-            self.assertTrue(votes[oid]["live"])
-            self.assertEqual(votes[oid]["provenance"], "OBSERVED")
-        self.assertEqual(votes["khipu"]["stage"], "TRAINED")
-        self.assertFalse(votes["immune"]["live"])
-        self.assertEqual(projected["mesh"]["liveCount"], 3)
-        self.assertTrue(projected["mesh"]["reached"])
-        # dashboard() reads the estate twice; the cache bounds egress to 3 GETs.
-        self.assertEqual(fetched.call_count, 3)
-
-    def test_estate_probe_disabled_is_unobserved(self) -> None:
-        from immune.organs import dashboard
-
-        with patch("immune.organs._fetch_json") as fetched:
-            projected = dashboard()
-        fetched.assert_not_called()
-        votes = {v["id"]: v for v in projected["mesh"]["votes"]}
-        for oid in ("a11oy", "killinchu", "khipu"):
-            self.assertFalse(votes[oid]["live"])
-            self.assertEqual(votes[oid]["stage"], "UNOBSERVED")
-            self.assertEqual(votes[oid]["provenance"], "REFERENCE")
-        self.assertFalse(projected["mesh"]["reached"])
+        surfaces = [
+            {"id": "a11oy", "title": "a11oy", "stage": "LIVE", "provenance": "LIVE"},
+            {"id": "killinchu", "title": "killinchu", "stage": "LIVE", "provenance": "LIVE"},
+            {"id": "khipu", "title": "khipu", "stage": "TRAINED", "provenance": "LIVE"},
+        ]
+        mesh = mesh_from_surfaces(surfaces)
+        self.assertEqual(mesh["liveCount"], 0)
+        self.assertFalse(mesh["reached"])
+        self.assertEqual(mesh["provenance"], "UNAVAILABLE")
+        for vote in mesh["votes"][1:]:
+            self.assertFalse(vote["live"])
+            self.assertIn("requires OBSERVED", vote["reason"])
 
     def test_mesh_provenance_is_bound_to_organ(self) -> None:
         from immune.mesh import mesh_from_surfaces, vote_is_live
@@ -1063,44 +1000,672 @@ class KernelTests(unittest.TestCase):
         for oid in ("immune", "a11oy", "killinchu", "khipu"):
             correct = "LIVE" if oid == "immune" else "OBSERVED"
             incorrect = "OBSERVED" if oid == "immune" else "LIVE"
-            row = {"id": oid, "stage": "READY", "provenance": incorrect}
-            self.assertFalse(vote_is_live(row), oid)
-            self.assertEqual(mesh_from_surfaces([row])["liveCount"], 0)
-            row["provenance"] = correct
+            for provenance in (incorrect, "REFERENCE", "UNAVAILABLE", None):
+                row = {"id": oid, "stage": "READY", "provenance": provenance}
+                self.assertFalse(vote_is_live(row), (oid, provenance))
+                self.assertEqual(mesh_from_surfaces([row])["liveCount"], 0)
+            row = {"id": oid, "stage": "READY", "provenance": correct}
             self.assertTrue(vote_is_live(row), oid)
-        self.assertFalse(vote_is_live({"id": "unknown", "stage": "READY"}))
+            for stage in ("NOT_READY", "UNAVAILABLE", "WEIGHTS_LISTED",
+                          "NO_READINESS_CONTRACT", None):
+                self.assertFalse(vote_is_live({**row, "stage": stage}), (oid, stage))
+        for identity in ("unknown", "", None, 7, ["a11oy"], {"id": "a11oy"}):
+            self.assertFalse(
+                vote_is_live({"id": identity, "stage": "READY", "provenance": "OBSERVED"})
+            )
+        self.assertFalse(vote_is_live({"stage": "READY", "provenance": "OBSERVED"}))
+        self.assertFalse(vote_is_live(None))
 
-    def test_a11oy_liveness_never_substitutes_for_readiness(self) -> None:
+    def test_mesh_unknown_and_duplicate_identities_cannot_add_or_override_votes(
+        self,
+    ) -> None:
+        from immune.mesh import mesh_from_surfaces
+
+        ready = {"id": "a11oy", "stage": "READY", "provenance": "OBSERVED"}
+        unready = {"id": "a11oy", "stage": "UNAVAILABLE", "provenance": "UNAVAILABLE"}
+        extras = [
+            {"id": "a11oy-2", "stage": "READY", "provenance": "OBSERVED"},
+            {"id": "", "stage": "READY", "provenance": "OBSERVED"},
+            {"id": None, "stage": "READY", "provenance": "OBSERVED"},
+            {"id": ["khipu"], "stage": "READY", "provenance": "OBSERVED"},
+            {"stage": "READY", "provenance": "OBSERVED"},
+            "a11oy",
+            None,
+        ]
+        mesh = mesh_from_surfaces([ready, *extras])
+        self.assertEqual(mesh["liveCount"], 1)
+        self.assertEqual([v["id"] for v in mesh["votes"]], ["immune", "a11oy", "killinchu", "khipu"])
+        # Identical repeats collapse into exactly one vote.
+        self.assertEqual(mesh_from_surfaces([ready, dict(ready), dict(ready)])["liveCount"], 1)
+        # Conflicting repeats fail closed in either order; neither row wins.
+        for rows in ([ready, unready], [unready, ready],
+                     [ready, {**ready, "provenance": "LIVE"}],
+                     [ready, {**ready, "stage": "NOT_READY"}]):
+            vote = next(v for v in mesh_from_surfaces(rows)["votes"] if v["id"] == "a11oy")
+            self.assertFalse(vote["live"])
+            self.assertEqual(vote["stage"], "CONFLICT")
+            self.assertIn("conflicting", vote["reason"])
+        # Duplicated ready identities cannot manufacture a quorum.
+        many = [ready, dict(ready), dict(ready),
+                {"id": "khipu", "stage": "READY", "provenance": "OBSERVED"},
+                {"id": "khipu", "stage": "READY", "provenance": "OBSERVED"}]
+        mesh = mesh_from_surfaces(many)
+        self.assertEqual(mesh["liveCount"], 2)
+        self.assertFalse(mesh["reached"])
+
+    @staticmethod
+    def _a11oy_ready_body() -> dict:
+        # Shape of the a11oy producer GET /api/a11oy/healthz (serve.py healthz at
+        # a11oy 84ba3cbd and de36cfea, identical blob c6e6dbdf).
+        return {
+            "status": "ok",
+            "scope": "SERVICE_HEALTH",
+            "service": "a11oy",
+            "operational_readiness": {
+                "scope": "FRONTIER_CAPABILITIES_AND_SERVICE_HEALTH",
+                "ready": True,
+                "status": "READY",
+                "service_blockers": [],
+                "frontier": {
+                    "ready": True,
+                    "ready_tiles": [{"name": "running"}],
+                    "blocked_tiles": [],
+                },
+            },
+            "degraded_reasons": [],
+        }
+
+    _KHIPU_SHA = "e40242a48e5d75f2bd44badc103d070d699a72fc"
+
+    @classmethod
+    def _khipu_body(cls) -> dict:
+        return {
+            "id": "SZLHOLDINGS/SZL-Khipu-1.5B",
+            "private": False,
+            "disabled": False,
+            "sha": cls._KHIPU_SHA,
+            "tags": ["safetensors"],
+            "siblings": [
+                {"rfilename": "README.md"},
+                {"rfilename": "model.safetensors"},
+                {"rfilename": "adapter/adapter_model.safetensors"},
+            ],
+        }
+
+    def test_a11oy_operational_readiness_contract(self) -> None:
+        import copy
+
         from immune.organs import ESTATE_PROBES, _accept
 
         spec = next(row for row in ESTATE_PROBES if row["id"] == "a11oy")
-        self.assertTrue(spec["probe"].endswith("/api/a11oy/healthz"))
-        body = {"status": "ok", "organ": "a11oy", "scope": "PROCESS_LIVENESS",
-                "capability_readiness_asserted": False}
-        self.assertIsNotNone(_accept(spec, 200, body))
-        for readiness in (None, {}, {"ready": False, "status": "NOT_READY"},
-                          {"ready": "true", "status": "READY"},
-                          {"ready": True, "status": "NOT_READY"}):
-            body["operational_readiness"] = readiness
-            self.assertIsNotNone(_accept(spec, 200, body))
-        body["operational_readiness"] = {"ready": True, "status": "READY"}
-        self.assertIsNone(_accept(spec, 200, body))
+        self.assertEqual(spec["probe"], "https://szlholdings-a11oy.hf.space/api/a11oy/healthz")
+        self.assertIsNone(_accept(spec, 200, self._a11oy_ready_body()))
 
-    def test_khipu_requires_weight_file_and_projects_observed_state(self) -> None:
-        from immune.organs import ESTATE_PROBES, _accept, local_organ_mesh
+        def mutated(change):
+            body = copy.deepcopy(self._a11oy_ready_body())
+            change(body, body["operational_readiness"])
+            return body
+
+        process_liveness = {
+            "status": "ok", "scope": "PROCESS_LIVENESS", "organ": "a11oy",
+            "capability_readiness_asserted": False,
+            "operational_readiness_endpoint": "/api/a11oy/healthz",
+        }
+        cases = {
+            "process liveness only": process_liveness,
+            "process liveness labelled a11oy": {**process_liveness, "service": "a11oy"},
+            "ok but ready=false": mutated(lambda b, r: r.update(ready=False, status="NOT_READY")),
+            "readiness missing": mutated(lambda b, r: b.pop("operational_readiness")),
+            "readiness not object": mutated(lambda b, r: b.update(operational_readiness=[])),
+            "ready string": mutated(lambda b, r: r.update(ready="true")),
+            "ready int": mutated(lambda b, r: r.update(ready=1)),
+            "ready missing": mutated(lambda b, r: r.pop("ready")),
+            "status contradicts": mutated(lambda b, r: r.update(status="NOT_READY")),
+            "unavailable": mutated(lambda b, r: r.update(ready=False, status="UNAVAILABLE", frontier=None)),
+            "wrong identity": mutated(lambda b, r: b.update(service="killinchu")),
+            "identity missing": mutated(lambda b, r: b.pop("service")),
+            "organ is not identity": mutated(lambda b, r: (b.pop("service"), b.update(organ="a11oy"))),
+            "wrong scope": mutated(lambda b, r: b.update(scope="FRONTIER")),
+            "wrong readiness scope": mutated(lambda b, r: r.update(scope="SOURCE_REACHABILITY")),
+            "blocker despite ready": mutated(lambda b, r: r.update(service_blockers=["storage-unavailable"])),
+            "blockers missing": mutated(lambda b, r: r.pop("service_blockers")),
+            "blockers not list": mutated(lambda b, r: r.update(service_blockers="none")),
+            "degraded reasons": mutated(lambda b, r: b.update(degraded_reasons=["node-backend-unavailable"])),
+            "degraded reasons missing": mutated(lambda b, r: b.pop("degraded_reasons")),
+            "degraded status": mutated(lambda b, r: b.update(status="degraded")),
+            "frontier missing": mutated(lambda b, r: r.update(frontier=None)),
+            "frontier not ready": mutated(lambda b, r: r["frontier"].update(ready=False)),
+            "frontier blocked tile": mutated(lambda b, r: r["frontier"].update(blocked_tiles=[{"name": "operator"}])),
+        }
+        for label, body in cases.items():
+            with self.subTest(label):
+                self.assertIsNotNone(_accept(spec, 200, body))
+        self.assertIn("process liveness", _accept(spec, 200, process_liveness))
+        self.assertIn("service_blockers", _accept(spec, 200, cases["blocker despite ready"]))
+        self.assertIn("service='killinchu'", _accept(spec, 200, cases["wrong identity"]))
+        self.assertEqual(_accept(spec, 503, self._a11oy_ready_body()), "HTTP 503")
+        self.assertIsNotNone(_accept(spec, 200, [self._a11oy_ready_body()]))
+
+    def test_khipu_weight_inventory_contract(self) -> None:
+        from immune.organs import ESTATE_PROBES, _accept
 
         spec = next(row for row in ESTATE_PROBES if row["id"] == "khipu")
-        body = {"id": spec["model"], "private": False, "tags": ["safetensors"]}
-        self.assertIsNotNone(_accept(spec, 200, body))
-        body["siblings"] = [{"rfilename": "README.md"}, None, "model.safetensors"]
-        self.assertIsNotNone(_accept(spec, 200, body))
-        body["siblings"].append({"rfilename": "model-00001.safetensors"})
-        self.assertIsNone(_accept(spec, 200, body))
-        projected = local_organ_mesh()
-        self.assertEqual(projected["khipu"]["stage"], "UNOBSERVED")
-        skeleton = next(row for row in projected["organs"] if row["id"] == "skeleton")
-        self.assertEqual(skeleton["status"], "UNOBSERVED")
-        self.assertEqual(skeleton["provenance"], "REFERENCE")
+        self.assertIsNone(_accept(spec, 200, self._khipu_body()))
+
+        def body(**changes):
+            value = self._khipu_body()
+            value.update(changes)
+            return value
+
+        no_siblings = self._khipu_body()
+        no_siblings.pop("siblings")
+        no_disabled = self._khipu_body()
+        no_disabled.pop("disabled")
+        no_private = self._khipu_body()
+        no_private.pop("private")
+        no_sha = self._khipu_body()
+        no_sha.pop("sha")
+        good = {"rfilename": "model.safetensors"}
+        cases = {
+            "tag only, no siblings": no_siblings,
+            "empty siblings": body(siblings=[]),
+            "siblings object": body(siblings={"rfilename": "model.safetensors"}),
+            "siblings string": body(siblings="model.safetensors"),
+            "bare string entry": body(siblings=[good, "model.safetensors"]),
+            "null entry": body(siblings=[good, None]),
+            "entry without name": body(siblings=[good, {}]),
+            "non-string name": body(siblings=[good, {"rfilename": 5}]),
+            "blank name": body(siblings=[good, {"rfilename": " "}]),
+            "readme only": body(siblings=[{"rfilename": "README.md"}, {"rfilename": "config.json"}]),
+            "index json only": body(siblings=[{"rfilename": "model.safetensors.index.json"}]),
+            "nameless extension": body(siblings=[{"rfilename": ".safetensors"}]),
+            "wrong model": body(id="SZLHOLDINGS/other"),
+            "private": body(private=True),
+            "private missing": no_private,
+            "disabled": body(disabled=True),
+            "disabled missing": no_disabled,
+            "disabled string": body(disabled="false"),
+            "sha missing": no_sha,
+            "sha short": body(sha="e40242a4"),
+            "sha not string": body(sha=None),
+        }
+        for label, value in cases.items():
+            with self.subTest(label):
+                self.assertIsNotNone(_accept(spec, 200, value))
+        self.assertIn("malformed entry", _accept(spec, 200, cases["null entry"]))
+        self.assertIn("disabled", _accept(spec, 200, cases["disabled missing"]))
+        self.assertEqual(_accept(spec, 404, self._khipu_body()), "HTTP 404")
+
+    def _transport(self, *, a11oy=None, khipu=None, gate=None, before=None):
+        """Fake estate transport. Records URLs; never reaches the network."""
+        import copy as copy_mod
+
+        calls: list[str] = []
+        calls_lock = threading.Lock()
+
+        def fetch(url, timeout):
+            self.assertNotIn("killinchu", url)
+            self.assertGreater(timeout, 0)
+            with calls_lock:
+                calls.append(url)
+            if before is not None:
+                before(url)
+            if gate is not None:
+                gate.wait(10)
+            if "/api/a11oy/healthz" in url:
+                value = a11oy if a11oy is not None else self._a11oy_ready_body()
+            elif url.startswith("https://huggingface.co/api/models/"):
+                value = khipu if khipu is not None else self._khipu_body()
+            else:
+                raise AssertionError(f"unexpected probe target {url}")
+            if isinstance(value, BaseException):
+                raise value
+            return 200, copy_mod.deepcopy(value)
+
+        return fetch, calls
+
+    def _probing(self, fetch, **constants):
+        from contextlib import ExitStack
+
+        stack = ExitStack()
+        stack.enter_context(patch.dict(os.environ, {"IMMUNE_ESTATE_PROBE": "1"}))
+        stack.enter_context(patch("immune.organs._fetch_json", side_effect=fetch))
+        for name, value in constants.items():
+            stack.enter_context(patch(f"immune.organs.{name}", value))
+        return stack
+
+    def _drain(self, gate=None) -> None:
+        import time
+
+        import immune.organs as organs_mod
+
+        if gate is not None:
+            gate.set()
+        limit = time.monotonic() + 10
+        while organs_mod.outstanding_estate_workers() and time.monotonic() < limit:
+            time.sleep(0.01)
+        self.assertEqual(organs_mod.outstanding_estate_workers(), 0)
+
+    def test_estate_failed_probes_are_unavailable_and_quorum_open(self) -> None:
+        from urllib.error import URLError
+
+        from immune.organs import dashboard
+
+        fetch, calls = self._transport(
+            a11oy=URLError("egress refused"),
+            khipu=HTTPError("https://huggingface.co", 503, "Service Unavailable", {}, None),
+        )
+        with self._probing(fetch):
+            projected = dashboard()
+        self._drain()
+        votes = {v["id"]: v for v in projected["mesh"]["votes"]}
+        for oid in ("a11oy", "khipu"):
+            self.assertFalse(votes[oid]["live"])
+            self.assertEqual(votes[oid]["stage"], "UNAVAILABLE")
+            self.assertEqual(votes[oid]["provenance"], "UNAVAILABLE")
+        self.assertIn("URLError", votes["a11oy"]["detail"])
+        self.assertIn("HTTP 503", votes["khipu"]["detail"])
+        self.assertEqual(votes["killinchu"]["stage"], "NO_READINESS_CONTRACT")
+        self.assertFalse(votes["immune"]["live"])
+        self.assertEqual(projected["mesh"]["liveCount"], 0)
+        self.assertFalse(projected["mesh"]["reached"])
+        self.assertEqual(len(calls), 2)
+        for row in projected["estate"]:
+            self.assertNotIn("observed from this process", row["detail"])
+
+    def test_estate_contract_negatives_are_not_live(self) -> None:
+        from immune.organs import dashboard
+
+        fetch, _ = self._transport(
+            a11oy={"status": "ok", "scope": "PROCESS_LIVENESS", "organ": "a11oy"},
+            khipu={**self._khipu_body(), "id": "someone/else"},
+        )
+        with self._probing(fetch):
+            projected = dashboard()
+        self._drain()
+        votes = {v["id"]: v for v in projected["mesh"]["votes"]}
+        self.assertEqual(projected["mesh"]["liveCount"], 0)
+        self.assertIn("process liveness is not operational readiness", votes["a11oy"]["detail"])
+        self.assertIn("does not match", votes["khipu"]["detail"])
+
+    def test_estate_observed_probes_count_and_are_cached(self) -> None:
+        from immune.organs import dashboard, local_organ_mesh
+
+        fetch, calls = self._transport()
+        with self._probing(fetch):
+            projected = dashboard()
+            organs = local_organ_mesh()
+        self._drain()
+        votes = {v["id"]: v for v in projected["mesh"]["votes"]}
+        self.assertTrue(votes["a11oy"]["live"])
+        self.assertEqual(votes["a11oy"]["stage"], "READY")
+        self.assertEqual(votes["a11oy"]["provenance"], "OBSERVED")
+        # killinchu has no whole-organ readiness contract: never fetched, never counted.
+        self.assertFalse(votes["killinchu"]["live"])
+        self.assertEqual(votes["killinchu"]["stage"], "NO_READINESS_CONTRACT")
+        self.assertEqual(votes["killinchu"]["provenance"], "REFERENCE")
+        self.assertIn("no whole-organ operational-readiness contract", votes["killinchu"]["detail"])
+        # Listed weights are observed but are not a quorum vote.
+        self.assertFalse(votes["khipu"]["live"])
+        self.assertEqual(votes["khipu"]["stage"], "WEIGHTS_LISTED")
+        self.assertEqual(votes["khipu"]["provenance"], "OBSERVED")
+        self.assertIn(f"at revision {self._KHIPU_SHA}", votes["khipu"]["detail"])
+        self.assertIn("not quorum-eligible", votes["khipu"]["detail"])
+        khipu_row = next(r for r in projected["estate"] if r["id"] == "khipu")
+        self.assertEqual(khipu_row["revision"], self._KHIPU_SHA)
+        self.assertEqual(projected["organs"]["khipu"]["stage"], "WEIGHTS_LISTED")
+        self.assertEqual(projected["organs"]["khipu"]["revision"], self._KHIPU_SHA)
+        self.assertFalse(votes["immune"]["live"])
+        self.assertEqual(projected["mesh"]["liveCount"], 1)
+        self.assertFalse(projected["mesh"]["reached"])
+        # One observation serves both dashboard projections and the next read.
+        self.assertEqual(projected["mesh"]["votes"], projected["organs"]["mesh"]["votes"])
+        self.assertEqual(organs["khipu"]["revision"], self._KHIPU_SHA)
+        self.assertEqual(len(calls), 2)
+
+    def test_two_eligible_votes_and_unqualified_organs_leave_quorum_open(self) -> None:
+        from immune.mesh import mesh_from_surfaces
+        from immune.organs import local_estate
+
+        class WriteReadyRuntime:
+            def readiness(self) -> dict:
+                return {"status": "READY", "write_ready": True}
+
+            def snapshot(self) -> dict:
+                return {"evidenceState": "VERIFIED"}
+
+        for a11oy, expected in ((None, 2),
+                                ({"status": "ok", "scope": "PROCESS_LIVENESS", "organ": "a11oy"}, 1)):
+            with self.subTest(expected=expected):
+                import immune.organs as organs_mod
+
+                organs_mod.reset_estate_probe_cache()
+                fetch, _ = self._transport(a11oy=a11oy)
+                with self._probing(fetch), patch(
+                    "immune.organs.get_runtime", return_value=WriteReadyRuntime()
+                ):
+                    mesh = mesh_from_surfaces(local_estate())
+                self._drain()
+                self.assertEqual(mesh["liveCount"], expected)
+                self.assertFalse(mesh["reached"])
+
+    def test_estate_probe_disabled_is_unobserved(self) -> None:
+        import immune.organs as organs_mod
+        from immune.organs import dashboard
+
+        generation = organs_mod._STATE["generation"]
+        with patch("immune.organs._fetch_json") as fetched:
+            projected = dashboard()
+        fetched.assert_not_called()
+        self.assertEqual(organs_mod._STATE["generation"], generation)
+        self.assertEqual(organs_mod.outstanding_estate_workers(), 0)
+        votes = {v["id"]: v for v in projected["mesh"]["votes"]}
+        for oid in ("a11oy", "killinchu", "khipu"):
+            self.assertFalse(votes[oid]["live"])
+            self.assertEqual(votes[oid]["stage"], "UNOBSERVED")
+            self.assertEqual(votes[oid]["provenance"], "REFERENCE")
+            self.assertIn("estate probe disabled", votes[oid]["detail"])
+        self.assertFalse(projected["mesh"]["reached"])
+
+    def test_projection_routes_apply_the_same_acceptance_rules(self) -> None:
+        import immune.organs as organs_mod
+
+        routes = ("/api/immune/state", "/api/immune/dashboard", "/api/immune/organs")
+        liveness = {"status": "ok", "scope": "PROCESS_LIVENESS", "organ": "a11oy"}
+        for a11oy, a11oy_live in ((None, True), (liveness, False)):
+            organs_mod.reset_estate_probe_cache()
+            fetch, calls = self._transport(a11oy=a11oy)
+            with self._probing(fetch):
+                for route in routes:
+                    with self.subTest(route=route, a11oy_live=a11oy_live):
+                        code, body = self._http_json(route)
+                        self.assertEqual(code, 200)
+                        votes = {v["id"]: v for v in body["mesh"]["votes"]}
+                        self.assertIs(votes["a11oy"]["live"], a11oy_live)
+                        self.assertFalse(votes["killinchu"]["live"])
+                        self.assertFalse(votes["khipu"]["live"])
+                        self.assertEqual(votes["khipu"]["stage"], "WEIGHTS_LISTED")
+                        self.assertFalse(votes["immune"]["live"])
+                        self.assertEqual(body["mesh"]["liveCount"], int(a11oy_live))
+                        self.assertFalse(body["mesh"]["reached"])
+            self._drain()
+            self.assertEqual(len(calls), 2)
+
+    def test_refresh_normal_completion_within_budget(self) -> None:
+        import time
+
+        from immune.organs import observe_estate
+
+        fetch, calls = self._transport()
+        with self._probing(fetch, PROBE_DEADLINE_SECONDS=1.0):
+            started = time.monotonic()
+            rows = observe_estate()
+            elapsed = time.monotonic() - started
+        self._drain()
+        self.assertLess(elapsed, 1.0)
+        stages = {row["id"]: row["stage"] for row in rows}
+        self.assertEqual(stages, {"a11oy": "READY", "killinchu": "NO_READINESS_CONTRACT",
+                                  "khipu": "WEIGHTS_LISTED"})
+        self.assertEqual(len(calls), 2)
+
+    def test_concurrent_readers_share_one_refresh(self) -> None:
+        import time
+
+        import immune.organs as organs_mod
+        from immune.organs import observe_estate
+
+        gate = threading.Event()
+        fetch, calls = self._transport(gate=gate)
+        generation = organs_mod._STATE["generation"]
+        results: list = []
+        start = threading.Barrier(6)
+
+        def reader():
+            start.wait(5)
+            results.append(observe_estate())
+
+        with self._probing(fetch, PROBE_DEADLINE_SECONDS=5.0):
+            threads = [threading.Thread(target=reader) for _ in range(6)]
+            for thread in threads:
+                thread.start()
+            limit = time.monotonic() + 5
+            while len(calls) < 2 and time.monotonic() < limit:
+                time.sleep(0.01)
+            time.sleep(0.1)  # let the remaining readers join the in-flight refresh
+            gate.set()
+            for thread in threads:
+                thread.join(10)
+        self._drain(gate)
+        self.assertEqual(len(results), 6)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(organs_mod._STATE["generation"], generation + 1)
+        self.assertTrue(all(rows == results[0] for rows in results))
+        self.assertEqual(results[0][0]["stage"], "READY")
+
+    def test_ttl_expiry_and_expired_cache_with_injected_clock(self) -> None:
+        from urllib.error import URLError
+
+        import immune.organs as organs_mod
+        from immune.organs import observe_estate
+
+        clock = [1000.0]
+        mode = {"fail": False}
+
+        def before(url):
+            if mode["fail"]:
+                raise URLError("egress refused")
+
+        fetch, calls = self._transport(before=before)
+        with self._probing(fetch), patch("immune.organs._monotonic", lambda: clock[0]):
+            first = observe_estate()
+            self.assertEqual(len(calls), 2)
+            clock[0] += organs_mod.PROBE_TTL_SECONDS - 1
+            self.assertEqual(observe_estate(), first)
+            self.assertEqual(len(calls), 2)
+            # Expired evidence is never served, and a failed refresh never
+            # resurrects the old READY row.
+            clock[0] += 2
+            mode["fail"] = True
+            expired = observe_estate()
+        self._drain()
+        self.assertEqual(len(calls), 4)
+        self.assertEqual(first[0]["stage"], "READY")
+        self.assertEqual(expired[0]["stage"], "UNAVAILABLE")
+        self.assertIn("URLError", expired[0]["detail"])
+
+    def test_slow_read_past_deadline_is_bounded_and_does_not_wait_for_cleanup(self) -> None:
+        import time
+
+        import immune.organs as organs_mod
+        from immune.organs import observe_estate
+
+        gate = threading.Event()  # never released until cleanup: a hung peer
+        fetch, calls = self._transport(gate=gate)
+        try:
+            with self._probing(fetch, PROBE_DEADLINE_SECONDS=0.3):
+                started = time.monotonic()
+                rows = observe_estate()
+                elapsed = time.monotonic() - started
+                # Executor exit did not wait for the hung workers.
+                self.assertEqual(organs_mod.outstanding_estate_workers(), 2)
+                again = observe_estate()
+            self.assertLess(elapsed, 0.3 + organs_mod.PROBE_LOCK_GRACE_SECONDS + 1.0)
+            for row in (rows[0], rows[2]):
+                self.assertEqual(row["stage"], "UNAVAILABLE")
+                self.assertIn("deadline", row["detail"])
+            self.assertEqual(rows[1]["stage"], "NO_READINESS_CONTRACT")
+            # The bounded failure is cached for the TTL: no new egress.
+            self.assertEqual(again, rows)
+            self.assertEqual(len(calls), 2)
+        finally:
+            self._drain(gate)
+
+    def test_transport_timeout_and_failing_worker_are_honest(self) -> None:
+        import subprocess
+
+        import immune.organs as organs_mod
+        from immune.organs import observe_estate
+
+        fetch, _ = self._transport(
+            a11oy=subprocess.TimeoutExpired("probe", 3.0), khipu=RuntimeError("boom")
+        )
+        with self._probing(fetch):
+            rows = observe_estate()
+        self._drain()
+        self.assertIn("deadline exceeded", rows[0]["detail"])
+        self.assertIn("RuntimeError", rows[2]["detail"])
+        self.assertTrue(all(row["stage"] != "READY" for row in rows))
+
+        organs_mod.reset_estate_probe_cache()
+        with self._probing(fetch), patch(
+            "immune.organs._observe", side_effect=RuntimeError("worker crashed")
+        ):
+            rows = observe_estate()
+        self._drain()
+        for row in (rows[0], rows[2]):
+            self.assertEqual(row["stage"], "UNAVAILABLE")
+            self.assertIn("probe worker failed: RuntimeError", row["detail"])
+
+    def test_lock_contention_returns_bounded_failure(self) -> None:
+        import time
+
+        import immune.organs as organs_mod
+        from immune.organs import observe_estate
+
+        fetch, calls = self._transport()
+        with self._probing(fetch, PROBE_DEADLINE_SECONDS=0.3):
+            organs_mod._STATE_LOCK.acquire()
+            try:
+                started = time.monotonic()
+                rows = observe_estate()
+                elapsed = time.monotonic() - started
+            finally:
+                organs_mod._STATE_LOCK.release()
+        self.assertLess(elapsed, 1.5)
+        self.assertEqual(calls, [])
+        self.assertIn("lock was not available", rows[0]["detail"])
+        self.assertEqual(rows[1]["stage"], "NO_READINESS_CONTRACT")
+        self.assertTrue(all(row["stage"] != "READY" for row in rows))
+
+    def test_cancelled_refresh_and_late_completion_cannot_overwrite_newer(self) -> None:
+        import time
+
+        import immune.organs as organs_mod
+        from immune.organs import observe_estate
+
+        newer_sha = "b" * 40
+        old_gate = threading.Event()
+        mode = {"old": True}
+
+        def before(url):
+            if mode["old"]:
+                old_gate.wait(10)
+
+        old_body = {**self._khipu_body(), "sha": "a" * 40}
+        fetch, calls = self._transport(khipu=old_body, before=before)
+        cancelled: list = []
+        try:
+            with self._probing(fetch, PROBE_DEADLINE_SECONDS=1.0):
+                leader = threading.Thread(target=lambda: cancelled.append(observe_estate()))
+                leader.start()
+                limit = time.monotonic() + 5
+                while len(calls) < 2 and time.monotonic() < limit:
+                    time.sleep(0.01)
+                organs_mod.reset_estate_probe_cache()  # cancel the in-flight refresh
+                mode["old"] = False
+                with patch("immune.organs._fetch_json", side_effect=self._transport(
+                    khipu={**self._khipu_body(), "sha": newer_sha})[0]):
+                    newer = observe_estate()
+                old_gate.set()  # the cancelled refresh now completes late
+                leader.join(5)
+                self._drain()
+                served = observe_estate()
+        finally:
+            self._drain(old_gate)
+        self.assertEqual(len(cancelled), 1)
+        self.assertIn("cancelled", cancelled[0][0]["detail"])
+        self.assertEqual(newer[2]["revision"], newer_sha)
+        # The late result did not overwrite the newer observation or its clock.
+        self.assertEqual(served, newer)
+        self.assertEqual(served[2]["observedAt"], newer[2]["observedAt"])
+
+    def test_completion_after_deadline_never_becomes_ready(self) -> None:
+        import immune.organs as organs_mod
+        from immune.organs import observe_estate
+
+        clock = [5000.0]
+
+        def before(url):
+            if "/api/a11oy/healthz" in url:
+                clock[0] += organs_mod.PROBE_DEADLINE_SECONDS + 1
+
+        fetch, _ = self._transport(before=before)
+        with self._probing(fetch), patch("immune.organs._monotonic", lambda: clock[0]):
+            rows = observe_estate()
+        self._drain()
+        self.assertEqual(rows[0]["stage"], "UNAVAILABLE")
+        self.assertIn("deadline", rows[0]["detail"])
+
+        # Independently of the probe's own check: a READY row handed over after
+        # the refresh deadline is discarded by the coordinator.
+        organs_mod.reset_estate_probe_cache()
+
+        def late_ready(spec, deadline):
+            clock[0] = deadline + 1
+            return {"id": spec["id"], "title": spec["title"], "role": spec["role"],
+                    "href": spec["href"], "stage": spec["readyStage"],
+                    "provenance": "OBSERVED", "detail": "late", "observedAt": "late"}
+
+        with self._probing(fetch), patch("immune.organs._monotonic", lambda: clock[0]), patch(
+            "immune.organs._observe", side_effect=late_ready
+        ):
+            rows = observe_estate()
+        self._drain()
+        for row in (rows[0], rows[2]):
+            self.assertEqual(row["stage"], "UNAVAILABLE")
+            self.assertIn("no result within", row["detail"])
+
+    def test_stalled_refresh_is_closed_honestly_by_the_next_reader(self) -> None:
+        import immune.organs as organs_mod
+        from immune.organs import observe_estate
+
+        clock = [9000.0]
+        fetch, calls = self._transport()
+        with self._probing(fetch), patch("immune.organs._monotonic", lambda: clock[0]):
+            with patch("immune.organs._run_refresh", lambda refresh: None), patch(
+                "immune.organs.PROBE_DEADLINE_SECONDS", 0.2
+            ):
+                stalled = observe_estate()  # leader never closes its refresh
+            self.assertIsNotNone(organs_mod._STATE["inflight"])
+            clock[0] += 1
+            recovered = observe_estate()
+        self.assertIn("did not complete", stalled[0]["detail"])
+        self.assertIsNone(organs_mod._STATE["inflight"])
+        self.assertEqual(recovered[0]["stage"], "UNAVAILABLE")
+        self.assertIn("no result within", recovered[0]["detail"])
+        self.assertEqual(calls, [])
+
+    def test_probe_worker_count_is_bounded(self) -> None:
+        import immune.organs as organs_mod
+        from immune.organs import observe_estate
+
+        gate = threading.Event()
+        fetch, calls = self._transport(gate=gate)
+        try:
+            with self._probing(fetch, PROBE_DEADLINE_SECONDS=0.2):
+                for _ in range(2):
+                    observe_estate()
+                    organs_mod.reset_estate_probe_cache()
+                self.assertEqual(organs_mod.outstanding_estate_workers(), 4)
+                rows = observe_estate()
+                alive = [t for t in threading.enumerate()
+                         if t.name.startswith("immune-estate-probe")]
+            self.assertEqual(len(calls), 4)
+            self.assertLessEqual(len(alive), organs_mod.PROBE_MAX_OUTSTANDING_WORKERS)
+            for row in (rows[0], rows[2]):
+                self.assertIn("probe not started: 4 probe workers still outstanding", row["detail"])
+        finally:
+            self._drain(gate)
 
     def test_probe_deadline_terminates_stuck_fetch_process(self) -> None:
         import subprocess
@@ -1145,6 +1710,7 @@ class KernelTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
+
 
     def test_brain_and_silhouette(self) -> None:
         from immune.second_brain import (
