@@ -90,7 +90,7 @@ jobs:
         with:
           version: 11.9.0
           run_install: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24"
           cache: pnpm
@@ -113,7 +113,7 @@ jobs:
           }
           pnpm exec tsx server/tools/immune-authority-action.ts discover immune-authority-discovery.json
       - name: Download receipt from the exact discovered deploy run
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: immune-hf-release-${{ github.sha }}
           path: immune-authority-release
@@ -164,7 +164,7 @@ jobs:
           pnpm exec tsx server/tools/immune-authority-action.ts submit immune-authority-discovery.json immune-authority-release/immune-hf-release-receipt.json immune-authority-intent.json immune-authority-envelope.json immune-authority-application-evidence.json
       - name: Retain exact public action evidence
         if: ${{ always() && steps.apply-action.outcome == 'success' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: immune-authority-action-${{ github.sha }}-${{ github.run_id }}
           path: immune-authority-application-evidence.json
@@ -204,7 +204,7 @@ jobs:
           pnpm exec tsx server/tools/immune-authority-action.ts submit immune-authority-discovery.json immune-authority-release/immune-hf-release-receipt.json immune-authority-failclosed-intent.json immune-authority-failclosed-envelope.json immune-authority-failclosed-evidence.json
       - name: Retain exact fail-closed action evidence
         if: ${{ always() && steps.cleanup-apply.outcome == 'success' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: immune-authority-failclosed-${{ github.sha }}-${{ github.run_id }}
           path: immune-authority-failclosed-evidence.json

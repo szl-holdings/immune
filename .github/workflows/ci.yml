@@ -26,7 +26,7 @@ jobs:
         with:
           version: 11.9.0
           run_install: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24"
           cache: pnpm
@@ -70,7 +70,7 @@ jobs:
         run: node tests/static-delivery.mjs
       - name: Retain exact built-delivery observation
         if: ${{ always() && steps.static_delivery.outcome != 'skipped' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: immune-static-delivery-${{ github.run_id }}-${{ github.run_attempt }}
           path: reports/static-delivery/observation.json
@@ -97,7 +97,7 @@ jobs:
           "$qpython" tests/check_publication_sdk.py
       - name: Retain source-bound publisher qualification
         if: ${{ always() && steps.publisher_sdk.outcome != 'skipped' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: immune-publisher-sdk-${{ github.run_id }}-${{ github.run_attempt }}
           path: reports/publication-sdk/
