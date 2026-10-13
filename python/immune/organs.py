@@ -2,16 +2,186 @@
 
 from __future__ import annotations
 
+import copy
+import json
+import os
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 from .mesh import mesh_from_surfaces
 from .runtime import get_runtime
 from .second_brain import brain_status
 
+# Estate surfaces other than this process are only reported as LIVE/TRAINED
+# when a bounded probe actually observed them. Results are cached so request
+# handling never fans out to the estate more than once per TTL.
+ESTATE_PROBE_ENV = "IMMUNE_ESTATE_PROBE"
+PROBE_TIMEOUT_SECONDS = 3.0
+PROBE_TTL_SECONDS = 45.0
+PROBE_MAX_BYTES = 256 * 1024
+
+ESTATE_PROBES: tuple[dict[str, str], ...] = (
+    {
+        "id": "a11oy",
+        "title": "a11oy",
+        "role": "governed command center",
+        "href": "https://huggingface.co/spaces/SZLHOLDINGS/a11oy",
+        "probe": "https://szlholdings-a11oy.hf.space/healthz",
+        "kind": "space",
+        "readyStage": "LIVE",
+    },
+    {
+        "id": "killinchu",
+        "title": "killinchu",
+        "role": "field fusion",
+        "href": "https://huggingface.co/spaces/SZLHOLDINGS/killinchu",
+        "probe": "https://szlholdings-killinchu.hf.space/healthz",
+        "kind": "space",
+        "readyStage": "LIVE",
+    },
+    {
+        "id": "khipu",
+        "title": "SZL-Khipu-1.5B",
+        "role": "trained sovereign agent",
+        "href": "https://huggingface.co/SZLHOLDINGS/SZL-Khipu-1.5B",
+        "probe": "https://huggingface.co/api/models/SZLHOLDINGS/SZL-Khipu-1.5B",
+        "kind": "model",
+        "model": "SZLHOLDINGS/SZL-Khipu-1.5B",
+        "readyStage": "TRAINED",
+    },
+)
+
+_PROBE_LOCK = threading.Lock()
+_PROBE_CACHE: dict[str, Any] = {"expires": 0.0, "rows": None}
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _probe_enabled() -> bool:
+    value = os.environ.get(ESTATE_PROBE_ENV, "1").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
+def reset_estate_probe_cache() -> None:
+    with _PROBE_LOCK:
+        _PROBE_CACHE["expires"] = 0.0
+        _PROBE_CACHE["rows"] = None
+
+
+def _fetch_json(url: str, timeout: float) -> tuple[int, Any]:
+    request = Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "szl-immune-estate-probe/1",
+        },
+    )
+    with urlopen(request, timeout=timeout) as response:
+        status = int(response.status)
+        body = response.read(PROBE_MAX_BYTES + 1)
+    if len(body) > PROBE_MAX_BYTES:
+        raise ValueError("probe response exceeds size bound")
+    return status, json.loads(body)
+
+
+def _accept(spec: dict[str, str], status: int, body: Any) -> str | None:
+    """Return None when the observation proves readiness, else the reason."""
+    if status != 200:
+        return f"HTTP {status}"
+    if not isinstance(body, dict):
+        return "HTTP 200 · body is not a JSON object"
+    if spec["kind"] == "space":
+        if body.get("status") != "ok":
+            return f"HTTP 200 · status={body.get('status')!r}"
+        organ = body.get("organ")
+        if organ is not None and organ != spec["id"]:
+            return f"HTTP 200 · organ={organ!r} does not match {spec['id']!r}"
+        return None
+    if body.get("id") != spec["model"]:
+        return f"HTTP 200 · id={body.get('id')!r} does not match {spec['model']!r}"
+    if body.get("private") is not False or body.get("disabled"):
+        return "HTTP 200 · model is not public"
+    siblings = body.get("siblings") or []
+    has_weights = "safetensors" in (body.get("tags") or []) or any(
+        str((row or {}).get("rfilename", "")).endswith(".safetensors")
+        for row in siblings
+        if isinstance(row, dict)
+    )
+    if not has_weights:
+        return "HTTP 200 · no safetensors weights listed"
+    return None
+
+
+def _row(spec: dict[str, str], **fields: Any) -> dict[str, Any]:
+    row = {
+        "id": spec["id"],
+        "title": spec["title"],
+        "role": spec["role"],
+        "href": spec["href"],
+    }
+    row.update(fields)
+    return row
+
+
+def _probe(spec: dict[str, str]) -> dict[str, Any]:
+    try:
+        status, body = _fetch_json(spec["probe"], PROBE_TIMEOUT_SECONDS)
+        reason = _accept(spec, status, body)
+    except HTTPError as exc:
+        reason = f"HTTP {exc.code}"
+    except Exception as exc:  # noqa: BLE001 - any failure is UNAVAILABLE
+        reason = type(exc).__name__
+    observed_at = _utc_now()
+    if reason is None:
+        return _row(
+            spec,
+            stage=spec["readyStage"],
+            provenance="OBSERVED",
+            detail=f"GET {spec['probe']} → 200 · probed by this process",
+            observedAt=observed_at,
+        )
+    return _row(
+        spec,
+        stage="UNAVAILABLE",
+        provenance="UNAVAILABLE",
+        detail=f"GET {spec['probe']} failed: {reason}",
+        observedAt=observed_at,
+    )
+
+
+def _unobserved(spec: dict[str, str]) -> dict[str, Any]:
+    return _row(
+        spec,
+        stage="UNOBSERVED",
+        provenance="REFERENCE",
+        detail=f"not observed · estate probe disabled ({ESTATE_PROBE_ENV}=0)",
+        observedAt=_utc_now(),
+    )
+
+
+def observe_estate() -> list[dict[str, Any]]:
+    if not _probe_enabled():
+        return [_unobserved(spec) for spec in ESTATE_PROBES]
+    with _PROBE_LOCK:
+        cached = _PROBE_CACHE["rows"]
+        if cached is not None and _PROBE_CACHE["expires"] > time.monotonic():
+            return copy.deepcopy(cached)
+        with ThreadPoolExecutor(max_workers=len(ESTATE_PROBES)) as pool:
+            rows = list(pool.map(_probe, ESTATE_PROBES))
+        _PROBE_CACHE["rows"] = rows
+        _PROBE_CACHE["expires"] = time.monotonic() + PROBE_TTL_SECONDS
+        return copy.deepcopy(rows)
+
 
 def local_estate() -> list[dict[str, Any]]:
-    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    now = _utc_now()
     ready = get_runtime().readiness()
     snap = get_runtime().snapshot()
     return [
@@ -25,36 +195,7 @@ def local_estate() -> list[dict[str, Any]]:
             "detail": f"{ready['status']} · write_ready={ready['write_ready']} · {snap['evidenceState']}",
             "observedAt": now,
         },
-        {
-            "id": "a11oy",
-            "title": "a11oy",
-            "role": "governed command center",
-            "href": "https://huggingface.co/spaces/SZLHOLDINGS/a11oy",
-            "stage": "LIVE",
-            "provenance": "LIVE",
-            "detail": "estate organ · observed from this process",
-            "observedAt": now,
-        },
-        {
-            "id": "killinchu",
-            "title": "killinchu",
-            "role": "field fusion",
-            "href": "https://huggingface.co/spaces/SZLHOLDINGS/killinchu",
-            "stage": "LIVE",
-            "provenance": "LIVE",
-            "detail": "estate organ · observed from this process",
-            "observedAt": now,
-        },
-        {
-            "id": "khipu",
-            "title": "SZL-Khipu-1.5B",
-            "role": "trained sovereign agent",
-            "href": "https://huggingface.co/SZLHOLDINGS/SZL-Khipu-1.5B",
-            "stage": "TRAINED",
-            "provenance": "LIVE",
-            "detail": "text-generation · trained weights on the Hub",
-            "observedAt": now,
-        },
+        *observe_estate(),
     ]
 
 

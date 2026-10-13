@@ -24,17 +24,23 @@ class KernelTests(unittest.TestCase):
             {
                 "IMMUNE_DATA_DIR": self._tmp.name,
                 "IMMUNE_SIGNING_KEY": "",
+                # Hermetic by default: no estate egress from the test suite.
+                "IMMUNE_ESTATE_PROBE": "0",
             },
         )
         self._environment.start()
+        import immune.organs as organs_mod
         import immune.runtime as runtime_mod
 
         runtime_mod._RUNTIME = None
+        organs_mod.reset_estate_probe_cache()
 
     def tearDown(self) -> None:
+        import immune.organs as organs_mod
         import immune.runtime as runtime_mod
 
         runtime_mod._RUNTIME = None
+        organs_mod.reset_estate_probe_cache()
         self._environment.stop()
         self._tmp.cleanup()
 
@@ -944,6 +950,110 @@ class KernelTests(unittest.TestCase):
         immune = next(vote for vote in mesh["votes"] if vote["id"] == "immune")
         self.assertFalse(immune["live"])
         self.assertEqual(immune["stage"], "UNAVAILABLE")
+
+    def test_mesh_provenance_label_alone_never_makes_a_vote_live(self) -> None:
+        from immune.mesh import mesh_from_surfaces
+
+        for stage in ("NOT_READY", "READ_ONLY", "UNAVAILABLE", "UNOBSERVED"):
+            with self.subTest(stage=stage):
+                mesh = mesh_from_surfaces(
+                    [{"id": "immune", "stage": stage, "provenance": "LIVE"}]
+                )
+                immune = next(v for v in mesh["votes"] if v["id"] == "immune")
+                self.assertFalse(immune["live"])
+                self.assertEqual(immune["stage"], stage)
+                self.assertEqual(mesh["liveCount"], 0)
+                self.assertEqual(mesh["provenance"], "UNAVAILABLE")
+        # A ready stage that was not observed (reference only) does not count.
+        mesh = mesh_from_surfaces(
+            [{"id": "khipu", "stage": "TRAINED", "provenance": "REFERENCE"}]
+        )
+        self.assertEqual(mesh["liveCount"], 0)
+
+    def _estate_mesh(self, fetch):
+        from immune.organs import dashboard
+
+        with patch.dict(os.environ, {"IMMUNE_ESTATE_PROBE": "1"}), patch(
+            "immune.organs._fetch_json", side_effect=fetch
+        ) as fetched:
+            projected = dashboard()
+        return projected, fetched
+
+    def test_estate_failed_probes_are_unavailable_and_quorum_open(self) -> None:
+        from urllib.error import URLError
+
+        def fetch(url, timeout):
+            self.assertLessEqual(timeout, 3.0)
+            if "killinchu" in url:
+                raise HTTPError(url, 503, "Service Unavailable", {}, None)
+            raise URLError("egress refused")
+
+        projected, _ = self._estate_mesh(fetch)
+        votes = {v["id"]: v for v in projected["mesh"]["votes"]}
+        for oid in ("a11oy", "killinchu", "khipu"):
+            self.assertFalse(votes[oid]["live"])
+            self.assertEqual(votes[oid]["stage"], "UNAVAILABLE")
+            self.assertEqual(votes[oid]["provenance"], "UNAVAILABLE")
+        self.assertIn("URLError", votes["a11oy"]["detail"])
+        self.assertIn("HTTP 503", votes["killinchu"]["detail"])
+        # This process is NOT_READY at boot, so nothing counts.
+        self.assertFalse(votes["immune"]["live"])
+        self.assertEqual(projected["mesh"]["liveCount"], 0)
+        self.assertFalse(projected["mesh"]["reached"])
+        for row in projected["estate"]:
+            self.assertNotIn("observed from this process", row["detail"])
+
+    def test_estate_non_ok_health_is_not_live(self) -> None:
+        def fetch(url, timeout):
+            if "a11oy" in url:
+                return 200, {"status": "degraded", "organ": "a11oy"}
+            if "killinchu" in url:
+                return 200, {"status": "ok", "organ": "a11oy"}
+            return 200, {"id": "someone/else", "private": False}
+
+        projected, _ = self._estate_mesh(fetch)
+        votes = {v["id"]: v for v in projected["mesh"]["votes"]}
+        self.assertEqual(projected["mesh"]["liveCount"], 0)
+        self.assertIn("status='degraded'", votes["a11oy"]["detail"])
+        self.assertIn("does not match", votes["killinchu"]["detail"])
+        self.assertIn("does not match", votes["khipu"]["detail"])
+
+    def test_estate_observed_probes_count_and_are_cached(self) -> None:
+        def fetch(url, timeout):
+            if "a11oy" in url:
+                return 200, {"status": "ok", "organ": "a11oy"}
+            if "killinchu" in url:
+                return 200, {"status": "ok", "organ": "killinchu"}
+            return 200, {
+                "id": "SZLHOLDINGS/SZL-Khipu-1.5B",
+                "private": False,
+                "siblings": [{"rfilename": "model.safetensors"}],
+            }
+
+        projected, fetched = self._estate_mesh(fetch)
+        votes = {v["id"]: v for v in projected["mesh"]["votes"]}
+        for oid in ("a11oy", "killinchu", "khipu"):
+            self.assertTrue(votes[oid]["live"])
+            self.assertEqual(votes[oid]["provenance"], "OBSERVED")
+        self.assertEqual(votes["khipu"]["stage"], "TRAINED")
+        self.assertFalse(votes["immune"]["live"])
+        self.assertEqual(projected["mesh"]["liveCount"], 3)
+        self.assertTrue(projected["mesh"]["reached"])
+        # dashboard() reads the estate twice; the cache bounds egress to 3 GETs.
+        self.assertEqual(fetched.call_count, 3)
+
+    def test_estate_probe_disabled_is_unobserved(self) -> None:
+        from immune.organs import dashboard
+
+        with patch("immune.organs._fetch_json") as fetched:
+            projected = dashboard()
+        fetched.assert_not_called()
+        votes = {v["id"]: v for v in projected["mesh"]["votes"]}
+        for oid in ("a11oy", "killinchu", "khipu"):
+            self.assertFalse(votes[oid]["live"])
+            self.assertEqual(votes[oid]["stage"], "UNOBSERVED")
+            self.assertEqual(votes[oid]["provenance"], "REFERENCE")
+        self.assertFalse(projected["mesh"]["reached"])
 
     def test_brain_and_silhouette(self) -> None:
         from immune.second_brain import (
