@@ -876,7 +876,11 @@ test("governed-cycle UX requires real input and keeps proof labels evidence-scop
   assert.match(controls, /aria-describedby="cycle-write-warning"/);
   assert.doesNotMatch(controls, /operator@immune\.demo|DEMO: inject payload/);
 
-  assert.match(home, /href="#main-content"/);
+  const shell = fs.readFileSync(path.join(repoRoot, "frontend/src/components/NativeShell.tsx"), "utf8");
+  const app = fs.readFileSync(path.join(repoRoot, "frontend/src/App.tsx"), "utf8");
+  assert.match(shell, /href="#main-content"/);
+  assert.match(app, /<NativeShell>/);
+  assert.match(home, /<main id="main-content" tabIndex=\{-1\}/);
   assert.match(home, /LIVE \/ MEASURED/);
   assert.match(home, /MODELED \/ SAMPLE/);
   assert.match(home, /UNAVAILABLE \/ LIMITS/);

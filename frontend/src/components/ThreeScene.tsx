@@ -14,7 +14,7 @@ export function ThreeScene({ authority }: { authority: AuthoritativeTripwireStat
 
     // Scene setup
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x020202, 0.04);
+    scene.fog = new THREE.FogExp2(0x080b12, 0.04);
 
     const camera = new THREE.PerspectiveCamera(45, mountRef.current.clientWidth / mountRef.current.clientHeight, 0.1, 1000);
     camera.position.set(0, 8, 25);
@@ -34,14 +34,14 @@ export function ThreeScene({ authority }: { authority: AuthoritativeTripwireStat
     mountRef.current.appendChild(renderer.domElement);
 
     // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+    const ambientLight = new THREE.AmbientLight(0xe9eef6, 0.2);
     scene.add(ambientLight);
 
-    const pointLight = new THREE.PointLight(0x00ffff, 5, 20);
+    const pointLight = new THREE.PointLight(0x5cc4bf, 5, 20);
     pointLight.position.set(-6, 2, 5);
     scene.add(pointLight);
 
-    const pointLight2 = new THREE.PointLight(0xffaa00, 5, 20);
+    const pointLight2 = new THREE.PointLight(0xd7b96b, 5, 20);
     pointLight2.position.set(6, 2, 5);
     scene.add(pointLight2);
     
@@ -52,18 +52,18 @@ export function ThreeScene({ authority }: { authority: AuthoritativeTripwireStat
 
     const heartGeo = new THREE.IcosahedronGeometry(1.5, 1);
     const heartMat = new THREE.MeshStandardMaterial({ 
-      color: 0x00ffff, 
+      color: 0x5cc4bf,
       wireframe: true,
       transparent: true,
       opacity: 0.8,
-      emissive: 0x00ffff,
+      emissive: 0x5cc4bf,
       emissiveIntensity: 0.5
     });
     const heart = new THREE.Mesh(heartGeo, heartMat);
     heartGroup.add(heart);
 
     const heartCoreGeo = new THREE.IcosahedronGeometry(0.8, 0);
-    const heartCoreMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+    const heartCoreMat = new THREE.MeshBasicMaterial({ color: 0x5cc4bf });
     const heartCore = new THREE.Mesh(heartCoreGeo, heartCoreMat);
     heartGroup.add(heartCore);
     
@@ -74,8 +74,8 @@ export function ThreeScene({ authority }: { authority: AuthoritativeTripwireStat
 
     const sentraRingGeo = new THREE.TorusGeometry(2.5, 0.05, 16, 64);
     const sentraRingMat = new THREE.MeshStandardMaterial({ 
-      color: 0x0088ff,
-      emissive: 0x0088ff,
+      color: 0x9aa7bd,
+      emissive: 0x9aa7bd,
       emissiveIntensity: 0.5,
       transparent: true,
       opacity: 0.6
@@ -89,10 +89,10 @@ export function ThreeScene({ authority }: { authority: AuthoritativeTripwireStat
 
     const sentraCoreGeo = new THREE.OctahedronGeometry(1, 0);
     const sentraCoreMat = new THREE.MeshStandardMaterial({ 
-      color: 0xffffff,
+      color: 0xe9eef6,
       roughness: 0.1,
       metalness: 0.8,
-      emissive: 0x2244aa,
+      emissive: 0x5c6b86,
       emissiveIntensity: 0.2
     });
     const sentraCore = new THREE.Mesh(sentraCoreGeo, sentraCoreMat);
@@ -107,10 +107,10 @@ export function ThreeScene({ authority }: { authority: AuthoritativeTripwireStat
     const addSlab = () => {
       const slabGeo = new THREE.BoxGeometry(2.5, 0.15, 2.5);
       const slabMat = new THREE.MeshStandardMaterial({ 
-        color: 0xffaa00, 
+        color: 0xd7b96b,
         transparent: true, 
         opacity: 0.9,
-        emissive: 0xffaa00,
+        emissive: 0xd7b96b,
         emissiveIntensity: 0.3,
         roughness: 0.2,
         metalness: 0.8
@@ -138,7 +138,7 @@ export function ThreeScene({ authority }: { authority: AuthoritativeTripwireStat
     for(let i=0; i<10; i++) {
       const angle = (i / 10) * Math.PI * 2;
       const nodeGeo = new THREE.SphereGeometry(0.15, 16, 16);
-      const nodeMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+      const nodeMat = new THREE.MeshBasicMaterial({ color: 0x5cc4bf });
       const node = new THREE.Mesh(nodeGeo, nodeMat);
       node.position.set(Math.cos(angle) * orbitRadius, Math.sin(angle) * 4, Math.sin(angle) * orbitRadius);
       hukllaGroup.add(node);
@@ -146,13 +146,13 @@ export function ThreeScene({ authority }: { authority: AuthoritativeTripwireStat
     }
     
     // Connections
-    const materialLine = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.2 });
+    const materialLine = new THREE.LineBasicMaterial({ color: 0x5cc4bf, transparent: true, opacity: 0.2 });
     const points1 = [heartGroup.position, sentraGroup.position];
     const geoLine1 = new THREE.BufferGeometry().setFromPoints(points1);
     const line1 = new THREE.Line(geoLine1, materialLine);
     scene.add(line1);
 
-    const materialLine2 = new THREE.LineBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.2 });
+    const materialLine2 = new THREE.LineBasicMaterial({ color: 0xd7b96b, transparent: true, opacity: 0.2 });
     const points2 = [sentraGroup.position, yawarGroup.position.clone().setY(0)];
     const geoLine2 = new THREE.BufferGeometry().setFromPoints(points2);
     const line2 = new THREE.Line(geoLine2, materialLine2);
@@ -177,7 +177,7 @@ export function ThreeScene({ authority }: { authority: AuthoritativeTripwireStat
     };
     window.addEventListener('resize', handleResize);
     
-    const stopAnimation = startAnimationLoop(() => {
+    const renderFrame = () => {
       time += 0.01 * pulseSpeed;
       
       if (isDeadman) {
@@ -189,18 +189,18 @@ export function ThreeScene({ authority }: { authority: AuthoritativeTripwireStat
         
         heartMat.color.lerp(new THREE.Color(0x330000), 0.05);
         heartMat.emissive.lerp(new THREE.Color(0x330000), 0.05);
-        heartCoreMat.color.lerp(new THREE.Color(0xff0000), 0.05);
+        heartCoreMat.color.lerp(new THREE.Color(0xdf735f), 0.05);
         
-        sentraCoreMat.emissive.lerp(new THREE.Color(0xff0000), 0.1);
-        sentraRingMat.color.lerp(new THREE.Color(0xff0000), 0.1);
-        sentraRingMat.emissive.lerp(new THREE.Color(0xff0000), 0.1);
+        sentraCoreMat.emissive.lerp(new THREE.Color(0xdf735f), 0.1);
+        sentraRingMat.color.lerp(new THREE.Color(0xdf735f), 0.1);
+        sentraRingMat.emissive.lerp(new THREE.Color(0xdf735f), 0.1);
         
-        pointLight.color.lerp(new THREE.Color(0xff0000), 0.1);
-        pointLight2.color.lerp(new THREE.Color(0xff0000), 0.1);
+        pointLight.color.lerp(new THREE.Color(0xdf735f), 0.1);
+        pointLight2.color.lerp(new THREE.Color(0xdf735f), 0.1);
         pointLight.intensity = targetIntensity;
         pointLight2.intensity = targetIntensity;
 
-        nodes.forEach(n => (n.material as THREE.MeshBasicMaterial).color.lerp(new THREE.Color(0xff0000), 0.1));
+        nodes.forEach(n => (n.material as THREE.MeshBasicMaterial).color.lerp(new THREE.Color(0xdf735f), 0.1));
         
       } else if (isReject) {
         // REJECT: Orange/Warning, sharp pulsing
@@ -209,40 +209,40 @@ export function ThreeScene({ authority }: { authority: AuthoritativeTripwireStat
 
         scene.fog!.color.lerp(new THREE.Color(0x1a0a00), 0.05);
 
-        heartMat.color.lerp(new THREE.Color(0xff5500), 0.05);
-        heartMat.emissive.lerp(new THREE.Color(0xff5500), 0.05);
-        heartCoreMat.color.lerp(new THREE.Color(0xffaa00), 0.05);
+        heartMat.color.lerp(new THREE.Color(0xe4cf99), 0.05);
+        heartMat.emissive.lerp(new THREE.Color(0xe4cf99), 0.05);
+        heartCoreMat.color.lerp(new THREE.Color(0xd7b96b), 0.05);
 
-        sentraCoreMat.emissive.lerp(new THREE.Color(0xff5500), 0.1);
-        sentraRingMat.color.lerp(new THREE.Color(0xffaa00), 0.1);
-        sentraRingMat.emissive.lerp(new THREE.Color(0xffaa00), 0.1);
+        sentraCoreMat.emissive.lerp(new THREE.Color(0xe4cf99), 0.1);
+        sentraRingMat.color.lerp(new THREE.Color(0xd7b96b), 0.1);
+        sentraRingMat.emissive.lerp(new THREE.Color(0xd7b96b), 0.1);
 
-        pointLight.color.lerp(new THREE.Color(0xffaa00), 0.1);
-        pointLight2.color.lerp(new THREE.Color(0xffaa00), 0.1);
+        pointLight.color.lerp(new THREE.Color(0xd7b96b), 0.1);
+        pointLight2.color.lerp(new THREE.Color(0xd7b96b), 0.1);
         
-        nodes.forEach(n => (n.material as THREE.MeshBasicMaterial).color.lerp(new THREE.Color(0xff5500), 0.1));
+        nodes.forEach(n => (n.material as THREE.MeshBasicMaterial).color.lerp(new THREE.Color(0xe4cf99), 0.1));
 
       } else {
         // PASS: Cyan/Blue, smooth flowing
         pulseSpeed = THREE.MathUtils.lerp(pulseSpeed, 1, 0.05);
         targetIntensity = 1;
 
-        scene.fog!.color.lerp(new THREE.Color(0x020202), 0.05);
+        scene.fog!.color.lerp(new THREE.Color(0x080b12), 0.05);
 
-        heartMat.color.lerp(new THREE.Color(0x00ffff), 0.05);
-        heartMat.emissive.lerp(new THREE.Color(0x00ffff), 0.05);
-        heartCoreMat.color.lerp(new THREE.Color(0x00ffff), 0.05);
+        heartMat.color.lerp(new THREE.Color(0x5cc4bf), 0.05);
+        heartMat.emissive.lerp(new THREE.Color(0x5cc4bf), 0.05);
+        heartCoreMat.color.lerp(new THREE.Color(0x5cc4bf), 0.05);
 
-        sentraCoreMat.emissive.lerp(new THREE.Color(0x0044aa), 0.1);
-        sentraRingMat.color.lerp(new THREE.Color(0x0088ff), 0.1);
-        sentraRingMat.emissive.lerp(new THREE.Color(0x0088ff), 0.1);
+        sentraCoreMat.emissive.lerp(new THREE.Color(0x5c6b86), 0.1);
+        sentraRingMat.color.lerp(new THREE.Color(0x9aa7bd), 0.1);
+        sentraRingMat.emissive.lerp(new THREE.Color(0x9aa7bd), 0.1);
 
-        pointLight.color.lerp(new THREE.Color(0x00ffff), 0.1);
-        pointLight2.color.lerp(new THREE.Color(0xffaa00), 0.1);
+        pointLight.color.lerp(new THREE.Color(0x5cc4bf), 0.1);
+        pointLight2.color.lerp(new THREE.Color(0xd7b96b), 0.1);
         pointLight.intensity = THREE.MathUtils.lerp(pointLight.intensity, targetIntensity, 0.1);
         pointLight2.intensity = THREE.MathUtils.lerp(pointLight2.intensity, targetIntensity, 0.1);
         
-        nodes.forEach(n => (n.material as THREE.MeshBasicMaterial).color.lerp(new THREE.Color(0x00ffff), 0.1));
+        nodes.forEach(n => (n.material as THREE.MeshBasicMaterial).color.lerp(new THREE.Color(0x5cc4bf), 0.1));
       }
       
       // Rotations
@@ -261,11 +261,35 @@ export function ThreeScene({ authority }: { authority: AuthoritativeTripwireStat
       }
       
       renderer.render(scene, camera);
-    });
-    
+    };
+
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let stopAnimation: (() => void) | null = null;
+    const syncAnimation = () => {
+      stopAnimation?.();
+      stopAnimation = null;
+      renderFrame();
+      if (!reducedMotion.matches && !document.hidden) stopAnimation = startAnimationLoop(renderFrame);
+    };
+    reducedMotion.addEventListener("change", syncAnimation);
+    document.addEventListener("visibilitychange", syncAnimation);
+    syncAnimation();
+
     return () => {
       window.removeEventListener('resize', handleResize);
-      stopAnimation();
+      reducedMotion.removeEventListener("change", syncAnimation);
+      document.removeEventListener("visibilitychange", syncAnimation);
+      stopAnimation?.();
+      const geometries = new Set<THREE.BufferGeometry>();
+      const materials = new Set<THREE.Material>();
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh || object instanceof THREE.Line) {
+          geometries.add(object.geometry);
+          for (const material of Array.isArray(object.material) ? object.material : [object.material]) materials.add(material);
+        }
+      });
+      for (const geometry of geometries) geometry.dispose();
+      for (const material of materials) material.dispose();
       renderer.dispose();
       if (mountRef.current && renderer.domElement.parentNode === mountRef.current) {
         mountRef.current.removeChild(renderer.domElement);
@@ -277,47 +301,13 @@ export function ThreeScene({ authority }: { authority: AuthoritativeTripwireStat
     const deadman = visualState === "VERIFIED_DEADMAN";
     const unavailable = authority.evidenceState !== "VERIFIED";
     return (
-      <div className="w-full h-full flex items-center justify-center bg-[#050508] text-slate-200 font-mono text-sm p-6 relative">
-        {deadman && <div className="absolute inset-0 border-4 border-red-500/50 animate-pulse" />}
-        <div className="flex flex-col items-center gap-6">
-          <div className="flex items-center gap-8">
-            <div className="flex flex-col items-center gap-2">
-              <div className={`w-16 h-16 rounded-full ${deadman ? 'bg-red-900/50 border border-red-500' : 'bg-cyan-500/20 border border-cyan-400 animate-pulse'} flex items-center justify-center`}>
-                <div className={`w-8 h-8 rounded-full ${deadman ? 'bg-red-500' : 'bg-cyan-400'}`} />
-              </div>
-              <span className={`text-xs font-bold uppercase tracking-widest ${deadman ? 'text-red-400' : 'text-cyan-400'}`}>HEART</span>
-            </div>
-            <div className={`font-black tracking-widest ${deadman ? 'text-red-500' : 'text-cyan-500'}`}>----&gt;</div>
-            <div className="flex flex-col items-center gap-2">
-              <div className={`w-16 h-16 rotate-45 border-2 flex items-center justify-center ${deadman ? 'border-red-500 bg-red-900/30' : 'border-blue-400 bg-blue-900/20'}`}>
-                <div className={`w-6 h-6 rotate-45 ${deadman ? 'bg-red-500' : 'bg-blue-400'}`} />
-              </div>
-              <span className={`text-xs font-bold uppercase tracking-widest ${deadman ? 'text-red-400' : 'text-blue-400'}`}>SENTRA</span>
-            </div>
-            <div className={`font-black tracking-widest ${deadman ? 'text-red-500' : 'text-amber-500'}`}>----&gt;</div>
-            <div className="flex flex-col items-center gap-2">
-              <div className="flex flex-col-reverse gap-1">
-                {[0,1,2,3,4].map(i => (
-                  <div key={i} className={`w-16 h-2 ${deadman ? 'bg-red-900 border border-red-500' : 'bg-amber-500/80 border border-amber-400'} opacity-${80 - i*10}`} />
-                ))}
-              </div>
-              <span className={`text-xs font-bold uppercase tracking-widest ${deadman ? 'text-red-400' : 'text-amber-400'}`}>YAWAR</span>
-            </div>
-          </div>
-          {deadman && (
-            <div className="text-red-500 font-bold text-sm uppercase tracking-widest animate-pulse mt-8 border border-red-500/50 bg-red-500/10 px-6 py-2">
-              ▲ DEADMAN ENGAGED — pipeline frozen
-            </div>
-          )}
-          {unavailable && (
-            <div className="border border-amber-500/50 bg-amber-500/10 px-6 py-2 text-sm font-bold uppercase tracking-widest text-amber-400">
-              Authority {authority.evidenceState} — no green control claim
-            </div>
-          )}
-          <div className="text-slate-500 text-[10px] mt-8 max-w-md text-center opacity-50">
-            WebGL unavailable in this preview.
-          </div>
+      <div className="immune-scene-fallback">
+        <div className="immune-flow-map" aria-label="Intent, admission and receipt sequence">
+          <span>HEART<small>Intent</small></span><span>SENTRA<small>Admission</small></span><span>YAWAR<small>Receipt</small></span>
         </div>
+        {deadman && <p className="text-destructive">DEADMAN ENGAGED · pipeline frozen</p>}
+        {unavailable && <p className="text-warning">Authority {authority.evidenceState} · no green control claim</p>}
+        <p>Static authority view · WebGL unavailable</p>
       </div>
     );
   }

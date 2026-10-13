@@ -59,21 +59,21 @@ export default function LeadersPanel() {
   return (
     <div className="flex flex-col gap-4 text-xs h-full overflow-y-auto pr-2 custom-scrollbar relative z-10">
       {/* Header */}
-      <div className="bg-black/50 border border-border/50 p-3 rounded-sm">
-        <div className="text-[9px] uppercase tracking-[0.2em] text-secondary/80 font-mono flex items-center gap-1.5 border-b border-border/50 pb-2 mb-3">
+      <div className="bg-card border border-border/50 p-3 rounded-sm">
+        <div className="text-xs uppercase tracking-[0.2em] text-secondary font-mono flex items-center gap-1.5 border-b border-border/50 pb-2 mb-3">
           <Award className="w-3 h-3" /> Aligned With The Field
         </div>
-        <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+        <p className="text-xs font-mono text-muted-foreground leading-relaxed">
           {FRAMING}
         </p>
-        <div className="mt-3 flex items-center gap-1.5 text-[9px] font-mono text-primary/70 uppercase tracking-widest">
+        <div className="mt-3 flex items-center gap-1.5 text-xs font-mono text-primary uppercase tracking-widest">
           <ShieldCheck className="w-3 h-3" /> Same principles · independently verifiable
         </div>
       </div>
 
       {/* Loading */}
       {state.status === "loading" && (
-        <div className="bg-black/50 border border-border/50 p-6 rounded-sm flex items-center justify-center gap-2 font-mono text-[10px] text-primary/70">
+        <div className="bg-card border border-border/50 p-6 rounded-sm flex items-center justify-center gap-2 font-mono text-xs text-primary">
           <Loader2 className="w-4 h-4 animate-spin" />
           Loading leader registry…
         </div>
@@ -81,11 +81,11 @@ export default function LeadersPanel() {
 
       {/* Error / unavailable — honest, no fabricated content */}
       {state.status === "error" && (
-        <div className="bg-black/50 border border-warning/50 p-4 rounded-sm">
-          <div className="flex items-center gap-1.5 font-mono text-[10px] text-warning uppercase tracking-widest">
+        <div className="bg-card border border-warning/50 p-4 rounded-sm">
+          <div className="flex items-center gap-1.5 font-mono text-xs text-warning uppercase tracking-widest">
             <AlertTriangle className="w-3 h-3" /> Registry feed unavailable
           </div>
-          <p className="mt-2 text-[9px] font-mono text-muted-foreground leading-relaxed">
+          <p className="mt-2 text-xs font-mono text-muted-foreground leading-relaxed">
             The /intel/leaders feed could not be reached. Nothing is shown rather than fabricated.
           </p>
         </div>
@@ -99,9 +99,9 @@ export default function LeadersPanel() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: ci * 0.05 }}
-            className="bg-black/50 border border-border/50 p-3 rounded-sm"
+            className="bg-card border border-border/50 p-3 rounded-sm"
           >
-            <div className="text-[9px] uppercase tracking-[0.2em] text-primary/80 font-mono border-b border-border/50 pb-2 mb-3">
+            <div className="text-xs uppercase tracking-[0.2em] text-primary font-mono border-b border-border/50 pb-2 mb-3">
               {cat.category}
             </div>
             <div className="grid grid-cols-1 gap-2">
@@ -112,15 +112,15 @@ export default function LeadersPanel() {
                   target="_blank"
                   rel="noopener noreferrer"
                   data-testid={`link-leader-${m.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
-                  className="group block border border-border/30 bg-black/40 hover:border-primary/50 hover:bg-primary/5 rounded-sm px-2.5 py-2 transition-colors"
+                  className="group block border border-border/30 bg-card hover:border-primary/50 hover:bg-primary/5 rounded-sm px-2.5 py-2 transition-colors"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-display font-bold text-[11px] tracking-wider text-foreground group-hover:text-primary transition-colors">
+                    <span className="font-display font-bold text-xs tracking-wider text-foreground group-hover:text-primary transition-colors">
                       {m.name}
                     </span>
                     <ExternalLink className="w-3 h-3 text-muted-foreground group-hover:text-primary shrink-0 transition-colors" />
                   </div>
-                  <div className="mt-1 font-mono text-[9px] text-muted-foreground leading-relaxed">
+                  <div className="mt-1 font-mono text-xs text-muted-foreground leading-relaxed">
                     {m.what}
                   </div>
                 </a>
@@ -130,7 +130,7 @@ export default function LeadersPanel() {
         ))}
 
       {state.status === "ready" && state.data.generatedAt && (
-        <div className="text-[8px] font-mono text-muted-foreground/50 uppercase tracking-widest text-right">
+        <div className="text-xs font-mono text-muted-foreground uppercase tracking-widest text-right">
           Registry · {state.data.generatedAt.slice(0, 10)}
         </div>
       )}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import {
   useGetImmuneReadiness,
   useGetImmuneState,
@@ -14,7 +14,6 @@ import {
 } from "@/lib/authority-view";
 import { ControlsPanel } from "@/components/ControlsPanel";
 import { AuditConsole } from "@/components/AuditConsole";
-import { ThreeScene } from "@/components/ThreeScene";
 import { LatticeCop } from "@/components/LatticeCop";
 import AgentConsole from "@/components/AgentConsole";
 import InferConsole from "@/components/InferConsole";
@@ -22,10 +21,26 @@ import PulsePanel from "@/components/PulsePanel";
 import IntelPanel from "@/components/IntelPanel";
 import LeadersPanel from "@/components/LeadersPanel";
 import FoundationsPanel from "@/components/FoundationsPanel";
-import { motion, AnimatePresence } from "framer-motion";
-import { Activity, ShieldAlert, ShieldCheck, Skull, ChevronDown } from "lucide-react";
+import { Activity, ShieldAlert, ShieldCheck, Skull } from "lucide-react";
+
+// The optional illustration is the only Three.js consumer. Source evidence and
+// controls render without downloading or initializing its WebGL implementation.
+const ThreeScene = lazy(() => import("@/components/ThreeScene").then((module) => ({ default: module.ThreeScene })));
+
+function AuthorityIllustrationSummary({ notice }: { notice?: string }) {
+  return <div className="immune-scene-fallback"><div className="immune-flow-map"><span>HEART<small>Intent</small></span><span>SENTRA<small>Admission</small></span><span>YAWAR<small>Receipt</small></span></div><p role={notice ? "status" : undefined}>{notice ?? "Illustrative relationship · inspect the evidence above for current state."}</p></div>;
+}
+
+class IllustrationBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    return this.state.failed ? <AuthorityIllustrationSummary notice="The 3D illustration is unavailable. The evidence workspace remains available below." /> : this.props.children;
+  }
+}
 
 export default function Home() {
+  const [showIllustration, setShowIllustration] = useState(false);
   useEffect(() => {
     document.title = "IMMUNE | Evidence-Scoped AI Defense";
   }, []);
@@ -141,174 +156,58 @@ export default function Home() {
 
   return (
     <>
-      <a className="kanchay-skip" href="#main-content">
-        Skip to evidence
-      </a>
-      <nav className="kanchay-navigation" aria-label="Explore IMMUNE">
-        <a href="#main-content">Workspace</a>
-        <a href="#proof-boundary-title">Investor brief</a>
-        <a href="#developer-quickstart">Developers</a>
-        <a href="https://github.com/szl-holdings/immune">Source</a>
-      </nav>
-      <main id="main-content" className="@container/immune relative w-full bg-background text-foreground font-sans">
-      {/* ============================ HERO ============================ */}
-      <section
-        className="relative flex min-h-[100svh] w-full flex-col overflow-x-hidden @5xl/immune:h-screen @5xl/immune:block @5xl/immune:overflow-hidden"
-        aria-labelledby="immune-title"
-      >
-        {/* 3D Background */}
-        <div className="absolute inset-0 z-0">
-          <ThreeScene authority={authority} />
-        </div>
-
-        {/* DEADMAN Overlay */}
-        <AnimatePresence>
-          {deadman && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 z-10 bg-destructive/10 pointer-events-none mix-blend-overlay"
-            >
-              <div className="w-full h-full border-[10px] border-destructive/30 animate-pulse" />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Top HUD */}
-        <header className="relative w-full p-4 @min-[40rem]/immune:p-6 z-30 flex flex-wrap justify-between items-start gap-4 pointer-events-none @5xl/immune:absolute @5xl/immune:top-0 @5xl/immune:left-0" data-testid="immune-hud">
-          <div className="flex min-w-0 flex-1 basis-64 flex-col gap-2">
-            <div className="flex min-w-0 items-center gap-3">
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.5 }}
-                className={`shrink-0 p-3 border bg-black/60 backdrop-blur-md ${getStatusColor()}`}
-              >
-                <StatusIcon />
-              </motion.div>
-              <div className="min-w-0">
-                <h1 id="immune-title" className="text-2xl @min-[40rem]/immune:text-3xl font-display font-bold tracking-widest leading-none flex items-center gap-3">
-                  <span className={deadman ? "glitch-text text-destructive" : ""}>IMMUNE</span>
-                </h1>
-                <p className="hidden @min-[40rem]/immune:block text-muted-foreground font-mono text-xs uppercase tracking-[0.2em] mt-1">
-                  Verifiable-AI Defense Matrix
-                </p>
-              </div>
-            </div>
+      <main id="main-content" tabIndex={-1} className="@container/immune relative w-full bg-background text-foreground font-sans">
+      <section className="immune-workbench" aria-labelledby="immune-title">
+        <header className="immune-intro" data-testid="immune-hud">
+          <div>
+            <p className="immune-eyebrow">Evidence-scoped AI defense</p>
+            <h1 id="immune-title">IMMUNE</h1>
+            <p className="immune-lede">Inspect the boundary between intent and execution. Authority, readiness and receipt integrity each have their own evidence.</p>
           </div>
-
-          <div className="flex min-w-0 flex-1 basis-64 flex-col items-start gap-1 font-mono text-[10px] @min-[40rem]/immune:text-xs uppercase tracking-widest @5xl/immune:items-end">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-muted-foreground">Authority State</span>
-              <span
-                className={`px-2 py-1 bg-black/50 border ${getStatusColor()} backdrop-blur`}
-                role="status"
-                aria-live="polite"
-              >
-                {systemStatus}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 mt-2">
-              <Activity className={`w-3 h-3 ${authorityLabelColor}`} />
-              <span className={authorityLabelColor}>
-                {authorityLabel}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 mt-1">
-              <span className="text-muted-foreground">Whole System</span>
-              <span
-                className={readinessLabelColor}
-                data-testid="whole-system-readiness"
-                role="status"
-                aria-live="polite"
-              >
-                {systemReadiness.label}
-              </span>
-            </div>
-          </div>
+          <aside className="immune-authority-summary" aria-label="Current authority and readiness">
+            <div className="immune-status-heading"><StatusIcon /><p className="immune-eyebrow">Current observation</p></div>
+            <div className="immune-status-row"><span>Authority State</span><strong className={getStatusColor()} role="status" aria-live="polite">{systemStatus}</strong></div>
+            <div className="immune-status-row"><span>Authority evidence</span><strong className={authorityLabelColor}>{authorityLabel}</strong></div>
+            <div className="immune-status-row"><span>Whole system</span><strong className={readinessLabelColor} data-testid="whole-system-readiness" role="status" aria-live="polite">{systemReadiness.label}</strong></div>
+            <p>Available observations do not grant permission to act. Missing or expired authority keeps governed controls unavailable.</p>
+          </aside>
         </header>
 
-        {/* Panels: stacked in normal flow on mobile/tablet, absolute HUD on desktop (@5xl/immune:contents) */}
-        <div className="kanchay-safe relative z-20 flex w-full min-w-0 flex-col gap-4 px-4 pb-10 pt-2 @min-[40rem]/immune:px-6 @5xl/immune:contents">
-          {/* Left Panel: Controls */}
-          <motion.div
-            initial={{ x: -60, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ delay: 0.2, type: "spring", stiffness: 200, damping: 20 }}
-            className="w-full pointer-events-auto flex flex-col gap-6 @5xl/immune:absolute @5xl/immune:left-6 @5xl/immune:top-32 @5xl/immune:bottom-6 @5xl/immune:min-h-0 @5xl/immune:w-[320px]"
+        <figure className="immune-visual-card" data-surface="dark">
+          <div className="immune-visual-heading"><span>Authority illustration</span><span>Source state projected as form · no measured telemetry</span></div>
+          <div id="immune-illustration" className="immune-visual-stage">{showIllustration ? <IllustrationBoundary><Suspense fallback={<AuthorityIllustrationSummary />}><ThreeScene authority={authority} /></Suspense></IllustrationBoundary> : <AuthorityIllustrationSummary />}</div>
+          <div className="immune-illustration-action"><button type="button" aria-controls="immune-illustration" aria-pressed={showIllustration} onClick={() => setShowIllustration(!showIllustration)}>{showIllustration ? "Hide 3D illustration" : "Show 3D illustration"}</button><span>Optional visual · no additional evidence request</span></div>
+          <figcaption className="immune-visual-caption"><span>HEART / Intent</span><span>SENTRA / Admission</span><span>YAWAR / Receipt</span></figcaption>
+        </figure>
+
+        <div className="immune-workbench-panels kanchay-safe">
+          <section
+            className="immune-control-panel focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary @5xl/immune:overflow-y-auto @5xl/immune:overscroll-contain [scrollbar-gutter:stable]"
+            data-testid="controls-scroll-region" aria-label="Governed controls" role="region" tabIndex={0}
           >
-            <div
-              aria-label="Governed controls"
-              className="group relative flex flex-1 flex-col border border-border/50 bg-black/40 p-5 backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary @min-[40rem]/immune:p-6 @5xl/immune:min-h-0 @5xl/immune:overflow-x-hidden @5xl/immune:overflow-y-auto @5xl/immune:overscroll-contain [scrollbar-gutter:stable]"
-              data-testid="controls-scroll-region"
-              role="region"
-              tabIndex={0}
-            >
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/50 to-transparent" />
-              <ControlsPanel
-                authority={authority}
-                systemReadiness={systemReadiness}
-              />
-            </div>
-          </motion.div>
-
-          {/* Right Panel: Audit/Ledger */}
-          <motion.div
-            initial={{ x: 60, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ delay: 0.3, type: "spring", stiffness: 200, damping: 20 }}
-            data-testid="audit-panel"
-            className="w-full pointer-events-auto flex flex-col gap-6 @5xl/immune:absolute @5xl/immune:right-6 @5xl/immune:top-32 @5xl/immune:bottom-6 @5xl/immune:w-[400px]"
-          >
-            <div className="flex-1 bg-black/40 backdrop-blur-md border border-border/50 p-5 @min-[40rem]/immune:p-6 flex flex-col relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-full h-1 bg-gradient-to-l from-primary/50 to-transparent" />
-              <div className="text-[10px] text-primary/70 uppercase tracking-[0.3em] mb-6 font-mono flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                Cryptographic Audit
-              </div>
-              <AuditConsole authority={authority} />
-            </div>
-          </motion.div>
+            <div className="immune-panel-label"><Activity className="h-4 w-4" aria-hidden="true" />Governed controls</div>
+            <ControlsPanel authority={authority} systemReadiness={systemReadiness} />
+          </section>
+          <section className="immune-audit-panel" data-testid="audit-panel" aria-label="Cryptographic audit">
+            <div className="immune-panel-label">Cryptographic audit / Retrieved evidence</div>
+            <AuditConsole authority={authority} />
+          </section>
         </div>
-
-        {/* Target Reticle overlays */}
-        <div className="absolute inset-0 pointer-events-none hidden @5xl/immune:flex items-center justify-center z-10 opacity-20">
-          <div className="w-[60vw] h-[60vh] border border-primary/20 rounded-full relative">
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-px h-8 bg-primary/50" />
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-px h-8 bg-primary/50" />
-            <div className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-px bg-primary/50" />
-            <div className="absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-8 h-px bg-primary/50" />
-          </div>
-        </div>
-
-        {/* Scroll cue -> Live Intelligence */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1 }}
-          className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1 pointer-events-none"
-        >
-          <span className="font-mono text-[9px] uppercase tracking-[0.3em] text-primary/60">
-            Live Intelligence
-          </span>
-          <ChevronDown className="w-4 h-4 text-primary/60 animate-bounce" />
-        </motion.div>
       </section>
 
       <LatticeCop authority={authority} writeReady={systemReadiness.writeReady} />
 
       {/* ===================== VALUE + PROOF BOUNDARY ===================== */}
-      <section className="relative z-20 border-y border-primary/10 bg-black/70" aria-labelledby="proof-boundary-title">
+      <section className="relative z-20 border-y border-primary/10 bg-card" aria-labelledby="proof-boundary-title">
         <div className="mx-auto grid max-w-6xl gap-8 px-6 py-14 @5xl/immune:grid-cols-[1.05fr_1.95fr]">
           <header>
-            <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-secondary">
-              Investor brief · proof before posture
+            <p className="font-mono text-xs uppercase tracking-[0.3em] text-secondary">
+              Evidence brief · scoped to the source
             </p>
             <h2 id="proof-boundary-title" className="mt-3 font-display text-2xl font-bold tracking-widest">
-              GOVERNED ACTIONS WITH A REPLAYABLE AUDIT PATH
+              Governed actions. A replayable audit path.
             </h2>
-            <p className="mt-4 max-w-xl font-mono text-[11px] leading-relaxed text-muted-foreground">
+            <p className="mt-4 max-w-xl font-mono text-xs leading-relaxed text-muted-foreground">
               IMMUNE places admission, tripwire evaluation, and an append-only receipt between intent and execution.
               The value is inspectability: authority and ledger evidence can fail closed without turning an outage into a green claim.
             </p>
@@ -350,14 +249,14 @@ export default function Home() {
       <section className="relative z-20 bg-background border-t border-primary/10" aria-labelledby="intelligence-title">
         <div className="max-w-6xl mx-auto px-6 py-20 flex flex-col gap-12">
           <header className="flex flex-col gap-3">
-            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.3em] text-primary/70">
+            <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-[0.3em] text-primary">
               <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-              Verifiable AI · You Can't Fake It
+              Source-by-source disclosure
             </div>
             <h2 id="intelligence-title" className="text-2xl @3xl/immune:text-3xl font-display font-bold tracking-widest">
-              EVIDENCE FEEDS WITH SOURCE-BY-SOURCE STATE
+              Evidence feeds with explicit source state
             </h2>
-            <p className="font-mono text-[11px] text-muted-foreground leading-relaxed max-w-3xl">
+            <p className="font-mono text-xs text-muted-foreground leading-relaxed max-w-3xl">
               IMMUNE's append-only receipt chain is the same principle public transparency logs use —
               applied to every AI-agent action. The feeds below are pulled live from public sources at
               view time and labelled honestly:
@@ -384,7 +283,7 @@ export default function Home() {
             <LeadersPanel />
           </div>
 
-          <footer className="border-t border-border/40 pt-6 font-mono text-[9px] text-muted-foreground/50 leading-relaxed">
+          <footer className="border-t border-border/40 pt-6 font-mono text-xs text-muted-foreground leading-relaxed">
             The server recomputes the SHA-256 receipt chain over canonical bytes. External feeds retain
             their individual provenance state; unavailable sources remain visible and are never promoted
             to live evidence.

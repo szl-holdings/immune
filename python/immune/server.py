@@ -21,6 +21,7 @@ from .nexus import (
     verify_nexus_run,
 )
 from .organs import dashboard, local_organ_mesh
+from .presentation import ASSETS, read_asset
 from .runtime import RuntimeIntegrityError, get_runtime
 from .second_brain import search_brain
 from .sentra import sentra_inspect
@@ -180,6 +181,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         path = parsed.path
+        if path in ASSETS:
+            try:
+                body, content_type = read_asset(path)
+            except OSError:
+                self._json(503, {"error": "PRESENTATION_ASSET_UNAVAILABLE"})
+                return
+            self._send(200, body, content_type)
+            return
+        if path.startswith("/assets/szl/"):
+            self._json(404, {"error": "PRESENTATION_ASSET_NOT_FOUND"})
+            return
         if path in ("/", "/index.html"):
             candidates = [
                 HTML,

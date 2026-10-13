@@ -35,6 +35,7 @@ async function boot(file, scenario) {
     if (url === '/readyz') { body = { ok: write, write_ready: write, status: write ? 'READY' : 'READ_ONLY' }; status = write ? 200 : 503; }
     if (url.endsWith('/nexus/status')) body = { state: 'EXECUTABLE', source: { revision: '<img src=x onerror=alert(1)>' }, immuneReadiness: { write_ready: write } };
     if (url.endsWith('/dashboard')) body = { readiness: { write_ready: write }, organs: { organs: [{ title: '<img>', provenance: 'UNAVAILABLE', detail: '<script>' }] }, mesh: { votes: [{ title: '<img>', stage: 'UNKNOWN' }] } };
+    if (url.endsWith('/dashboard') && scenario === 'zero') body = { brain: { chunks: 0 }, mesh: { liveCount: 0, of: 4, reached: false } };
     if (url.endsWith('/brain')) body = { hits: [{ handle: '<img>', excerpt: '<script>', score: 0 }] };
     if (url.endsWith('/nexus/verify')) body = { verified: true, observedOutputHash: 'a'.repeat(64) };
     return { ok: status === 200, status, json: async () => body };
@@ -54,6 +55,7 @@ async function boot(file, scenario) {
 for (const file of ['nexus.html', 'index.html']) {
   for (const scenario of ['read-only', 'contradictory', 'offline']) {
     const { ids, requests, events } = await boot(file, scenario);
+    assert.equal(requests.some(({ options }) => options.method === 'POST'), false, `${file}/${scenario}: navigation performs no POST`);
     const button = ids.get(file === 'nexus.html' ? 'run' : 'cycle');
     assert.equal(button.disabled, true, `${file}/${scenario}: initial action disabled`);
     button.disabled = false;
@@ -72,4 +74,10 @@ replay.ids.get('expectedHash').value = 'a'.repeat(64);
 await replay.ids.get('verify').onclick();
 assert.equal(replay.requests.filter(({ url }) => url.endsWith('/nexus/verify')).length, 1);
 assert.equal(replay.ids.get('receiptRead').textContent, 'NO NEW RECEIPT');
-console.log('Channel B UI contract: 7 scenarios passed; no governed action POST, no innerHTML');
+const retrieval = await boot('index.html', 'read-only');
+await retrieval.ids.get('retrieve').onclick();
+assert.equal(retrieval.requests.filter(({ url, options }) => url.endsWith('/brain') && options.method === 'POST').length, 1);
+const zero = await boot('index.html', 'zero');
+assert.match(zero.ids.get('brainMeta').textContent, /^0 handles/);
+assert.equal(zero.ids.get('meshMeta').textContent, '0-of-4 · OPEN');
+console.log('Channel B UI contract: 9 scenarios passed; no passive POST, no governed action POST, no innerHTML');
