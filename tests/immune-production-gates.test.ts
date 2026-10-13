@@ -229,7 +229,7 @@ test("production workflows preserve bounded publication and separate authority r
   assert.match(authority, /expected_receipt_hash:/);
   assert.match(
     authority,
-    /actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/,
+    /actions\/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333/,
   );
   assert.match(authority, /run-id:\s*\$\{\{ steps\.discovery\.outputs\.deploy_run_id \}\}/);
   assert.match(authority, /name:\s*immune-hf-release-\$\{\{ github\.sha \}\}/);
@@ -268,7 +268,7 @@ test("production workflows preserve bounded publication and separate authority r
   assert.match(authority, /prepare-reject/);
   assert.match(
     authority,
-    /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/g,
+    /actions\/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9/g,
   );
   assert.match(authority, /immune-authority-application-evidence\.json/);
   assert.match(authority, /immune-authority-failclosed-evidence\.json/);
