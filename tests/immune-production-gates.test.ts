@@ -229,7 +229,7 @@ test("production workflows preserve bounded publication and separate authority r
   assert.match(authority, /expected_receipt_hash:/);
   assert.match(
     authority,
-    /actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/,
+    /actions\/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333/,
   );
   assert.match(authority, /run-id:\s*\$\{\{ steps\.discovery\.outputs\.deploy_run_id \}\}/);
   assert.match(authority, /name:\s*immune-hf-release-\$\{\{ github\.sha \}\}/);
