@@ -922,7 +922,7 @@ class KernelTests(unittest.TestCase):
                 "id": "a11oy",
                 "title": "a11oy",
                 "stage": "LIVE",
-                "provenance": "LIVE",
+                "provenance": "OBSERVED",
                 "href": "",
                 "detail": "",
             },
@@ -930,7 +930,7 @@ class KernelTests(unittest.TestCase):
                 "id": "killinchu",
                 "title": "killinchu",
                 "stage": "LIVE",
-                "provenance": "LIVE",
+                "provenance": "OBSERVED",
                 "href": "",
                 "detail": "",
             },
@@ -938,7 +938,7 @@ class KernelTests(unittest.TestCase):
                 "id": "khipu",
                 "title": "khipu",
                 "stage": "TRAINED",
-                "provenance": "LIVE",
+                "provenance": "OBSERVED",
                 "href": "",
                 "detail": "",
             },
@@ -1008,7 +1008,8 @@ class KernelTests(unittest.TestCase):
             if "a11oy" in url:
                 return 200, {"status": "degraded", "organ": "a11oy"}
             if "killinchu" in url:
-                return 200, {"status": "ok", "organ": "a11oy"}
+                return 200, {"status": "ok", "organ": "a11oy",
+                             "operational_readiness": {"ready": True, "status": "READY"}}
             return 200, {"id": "someone/else", "private": False}
 
         projected, _ = self._estate_mesh(fetch)
@@ -1021,7 +1022,8 @@ class KernelTests(unittest.TestCase):
     def test_estate_observed_probes_count_and_are_cached(self) -> None:
         def fetch(url, timeout):
             if "a11oy" in url:
-                return 200, {"status": "ok", "organ": "a11oy"}
+                return 200, {"status": "ok", "organ": "a11oy",
+                             "operational_readiness": {"ready": True, "status": "READY"}}
             if "killinchu" in url:
                 return 200, {"status": "ok", "organ": "killinchu"}
             return 200, {
@@ -1054,6 +1056,95 @@ class KernelTests(unittest.TestCase):
             self.assertEqual(votes[oid]["stage"], "UNOBSERVED")
             self.assertEqual(votes[oid]["provenance"], "REFERENCE")
         self.assertFalse(projected["mesh"]["reached"])
+
+    def test_mesh_provenance_is_bound_to_organ(self) -> None:
+        from immune.mesh import mesh_from_surfaces, vote_is_live
+
+        for oid in ("immune", "a11oy", "killinchu", "khipu"):
+            correct = "LIVE" if oid == "immune" else "OBSERVED"
+            incorrect = "OBSERVED" if oid == "immune" else "LIVE"
+            row = {"id": oid, "stage": "READY", "provenance": incorrect}
+            self.assertFalse(vote_is_live(row), oid)
+            self.assertEqual(mesh_from_surfaces([row])["liveCount"], 0)
+            row["provenance"] = correct
+            self.assertTrue(vote_is_live(row), oid)
+        self.assertFalse(vote_is_live({"id": "unknown", "stage": "READY"}))
+
+    def test_a11oy_liveness_never_substitutes_for_readiness(self) -> None:
+        from immune.organs import ESTATE_PROBES, _accept
+
+        spec = next(row for row in ESTATE_PROBES if row["id"] == "a11oy")
+        self.assertTrue(spec["probe"].endswith("/api/a11oy/healthz"))
+        body = {"status": "ok", "organ": "a11oy", "scope": "PROCESS_LIVENESS",
+                "capability_readiness_asserted": False}
+        self.assertIsNotNone(_accept(spec, 200, body))
+        for readiness in (None, {}, {"ready": False, "status": "NOT_READY"},
+                          {"ready": "true", "status": "READY"},
+                          {"ready": True, "status": "NOT_READY"}):
+            body["operational_readiness"] = readiness
+            self.assertIsNotNone(_accept(spec, 200, body))
+        body["operational_readiness"] = {"ready": True, "status": "READY"}
+        self.assertIsNone(_accept(spec, 200, body))
+
+    def test_khipu_requires_weight_file_and_projects_observed_state(self) -> None:
+        from immune.organs import ESTATE_PROBES, _accept, local_organ_mesh
+
+        spec = next(row for row in ESTATE_PROBES if row["id"] == "khipu")
+        body = {"id": spec["model"], "private": False, "tags": ["safetensors"]}
+        self.assertIsNotNone(_accept(spec, 200, body))
+        body["siblings"] = [{"rfilename": "README.md"}, None, "model.safetensors"]
+        self.assertIsNotNone(_accept(spec, 200, body))
+        body["siblings"].append({"rfilename": "model-00001.safetensors"})
+        self.assertIsNone(_accept(spec, 200, body))
+        projected = local_organ_mesh()
+        self.assertEqual(projected["khipu"]["stage"], "UNOBSERVED")
+        skeleton = next(row for row in projected["organs"] if row["id"] == "skeleton")
+        self.assertEqual(skeleton["status"], "UNOBSERVED")
+        self.assertEqual(skeleton["provenance"], "REFERENCE")
+
+    def test_probe_deadline_terminates_stuck_fetch_process(self) -> None:
+        import subprocess
+        import time
+        from immune.organs import _fetch_json
+
+        helper = Path(self._tmp.name) / "blocked_fetch.py"
+        helper.write_text("import time; time.sleep(30)\n", encoding="utf-8")
+        started = time.monotonic()
+        with patch("immune.organs.PROBE_HELPER", helper):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                _fetch_json("https://unused.invalid", 0.2)
+        self.assertLess(time.monotonic() - started, 5.0)
+
+    def test_fetch_helper_decodes_json_and_bounds_response(self) -> None:
+        from http.server import BaseHTTPRequestHandler
+        from immune.organs import _fetch_json
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                status = 503 if self.path == "/unavailable" else 200
+                self.send_response(status)
+                self.end_headers()
+                if self.path == "/large":
+                    self.wfile.write(b"x" * 300_000)
+                else:
+                    self.wfile.write(b'{"status":"ok"}')
+
+            def log_message(self, *_args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base = f"http://127.0.0.1:{server.server_port}"
+        try:
+            self.assertEqual(_fetch_json(base, 3.0), (200, {"status": "ok"}))
+            self.assertEqual(_fetch_json(base + "/unavailable", 3.0), (503, None))
+            with self.assertRaises(ValueError):
+                _fetch_json(base + "/large", 3.0)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
 
     def test_brain_and_silhouette(self) -> None:
         from immune.second_brain import (
@@ -1098,14 +1189,18 @@ class KernelTests(unittest.TestCase):
         self.assertFalse(genome["recommendation"]["executable"])
         self.assertEqual(genome["mode"], "shadow")
 
-    def test_organs_are_live_but_not_write_ready(self) -> None:
+    def test_local_organs_are_live_but_remote_state_is_observed_separately(self) -> None:
         from immune.organs import dashboard, local_organ_mesh
         from immune.runtime import get_runtime
 
         get_runtime()
         mesh = local_organ_mesh()
         self.assertEqual(len(mesh["organs"]), 5)
-        self.assertTrue(all(o["provenance"] == "LIVE" for o in mesh["organs"]))
+        local = [o for o in mesh["organs"] if o["id"] != "skeleton"]
+        self.assertTrue(all(o["provenance"] == "LIVE" for o in local))
+        skeleton = next(o for o in mesh["organs"] if o["id"] == "skeleton")
+        self.assertEqual(skeleton["provenance"], "REFERENCE")
+        self.assertEqual(skeleton["status"], "UNOBSERVED")
         self.assertFalse(mesh["yawar"]["writeReady"])
         self.assertEqual(mesh["yawar"]["keyPurpose"], "RECEIPT_SIGNING_ONLY")
         self.assertTrue(mesh["secondBrain"]["trained"])

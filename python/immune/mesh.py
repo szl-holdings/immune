@@ -14,12 +14,13 @@ from typing import Any
 
 ORGAN_IDS = ("immune", "a11oy", "killinchu", "khipu")
 READY_STAGES = frozenset({"LIVE", "WRITE-READY", "READY", "RUNNING", "TRAINED"})
-OBSERVED_PROVENANCE = frozenset({"LIVE", "OBSERVED"})
+EXPECTED_PROVENANCE = {oid: "LIVE" if oid == "immune" else "OBSERVED" for oid in ORGAN_IDS}
 
 
 def vote_is_live(surface: dict[str, Any]) -> bool:
     return (
-        surface.get("provenance") in OBSERVED_PROVENANCE
+        surface.get("id") in EXPECTED_PROVENANCE
+        and surface.get("provenance") == EXPECTED_PROVENANCE[surface["id"]]
         and surface.get("stage") in READY_STAGES
     )
 
