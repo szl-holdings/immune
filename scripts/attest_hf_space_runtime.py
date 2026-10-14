@@ -50,6 +50,7 @@ MAX_READINESS_BYTES = 65_536
 USER_AGENT = "szl-immune-live-attestation/1"
 CHANNEL_A_BLOCKERS = frozenset({
     "DEPLOYMENT_REVISION_BINDING_UNVERIFIED",
+    "RECEIPT_LEDGER_EMPTY",
     "ACTION_AUTHORITY_READ_ONLY",
     "ACTION_AUTHORITY_UNAVAILABLE",
     "ACTION_AUTHORITY_DURABILITY_UNVERIFIED",
@@ -308,6 +309,15 @@ def blocked_readiness(
     ):
         refuse("BLOCKED_READINESS_BLOCKERS_INVALID")
     if space == "SZLHOLDINGS/immune":
+        if "RECEIPT_LEDGER_EMPTY" in blockers:
+            ledger = payload.get("ledger")
+            if (
+                read_ready
+                or not isinstance(ledger, dict)
+                or type(ledger.get("count")) is not int
+                or ledger["count"] != 0
+            ):
+                refuse("BLOCKED_READINESS_LEDGER_INVALID")
         build = payload.get("build")
         runtime = payload.get("runtime")
         integrity = runtime.get("artifact_integrity") if isinstance(runtime, dict) else None
