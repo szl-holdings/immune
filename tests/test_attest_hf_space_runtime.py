@@ -250,6 +250,44 @@ class BlockedReadinessTests(unittest.TestCase):
                                             fetch=Sequence((503, read_only)))
         self.assertEqual(observed["readiness"]["status"], "READ_ONLY")
 
+    def test_channel_a_empty_ledger_is_observed_only_as_not_ready(self):
+        channel_a = "SZLHOLDINGS/immune"
+        blockers = ["DEPLOYMENT_REVISION_BINDING_UNVERIFIED",
+                    "RECEIPT_LEDGER_EMPTY", "ACTION_AUTHORITY_UNAVAILABLE",
+                    "ACTION_AUTHORITY_DURABILITY_UNVERIFIED",
+                    "RECEIPT_LEDGER_DURABILITY_UNVERIFIED"]
+        observed = attest.blocked_readiness(
+            channel_a, SOURCE,
+            fetch=Sequence((503, self.body(
+                channel_a, blockers=blockers, ledger={"count": 0}))))
+        self.assertEqual(observed["status"], 503)
+        self.assertEqual(observed["readiness"]["status"], "NOT_READY")
+        self.assertFalse(observed["readiness"]["ready"])
+        self.assertFalse(observed["readiness"]["write_ready"])
+        self.assertEqual(observed["readiness"]["blockers"], blockers)
+
+        for count in (1, "0", True):
+            with self.subTest(count=count), self.assertRaisesRegex(
+                attest.AttestationError, "BLOCKED_READINESS_LEDGER_INVALID"
+            ):
+                attest.blocked_readiness(
+                    channel_a, SOURCE,
+                    fetch=Sequence((503, self.body(
+                        channel_a, blockers=blockers, ledger={"count": count}))))
+
+        read_only = self.body(
+            channel_a, status="READ_ONLY", runtime_ready=True, read_ready=True,
+            source={"repository": "szl-holdings/immune", "revision": SOURCE,
+                    "build_revision": SOURCE,
+                    "manifest_schema": "szl.hf-deploy-manifest/v2",
+                    "alignment_state": "OBSERVED_RUNTIME_HASH_MATCH"},
+            blockers=["RECEIPT_LEDGER_EMPTY", "ACTION_AUTHORITY_READ_ONLY"],
+            ledger={"count": 0})
+        with self.assertRaisesRegex(attest.AttestationError,
+                                    "BLOCKED_READINESS_LEDGER_INVALID"):
+            attest.blocked_readiness(channel_a, SOURCE,
+                                     fetch=Sequence((503, read_only)))
+
     def test_bad_status_schema_source_fields_and_boolean_contradictions_fail(self):
         cases = [
             (200, self.body()),
@@ -279,15 +317,13 @@ class BlockedReadinessTests(unittest.TestCase):
                 attest.blocked_readiness(SPACE, SOURCE,
                                          fetch=Sequence((status, body)))
 
-    def test_channel_a_rejects_build_mismatch_and_lost_ledger(self):
+    def test_channel_a_rejects_build_mismatch_and_missing_runtime_integrity(self):
         channel_a = "SZLHOLDINGS/immune"
         for body in (
             self.body(channel_a, source={"repository": "szl-holdings/immune",
                                          "revision": SOURCE, "build_revision": OLD,
                                          "manifest_schema": "szl.hf-deploy-manifest/v2",
                                          "alignment_state": "REVISION_UNAVAILABLE"}),
-            self.body(channel_a, blockers=["RECEIPT_LEDGER_EMPTY",
-                                           "ACTION_AUTHORITY_READ_ONLY"]),
             self.body(channel_a, build=None),
             self.body(channel_a, runtime={"artifact_integrity": None}),
         ):
