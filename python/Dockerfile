@@ -1,7 +1,7 @@
 # IMMUNE Python kernel — Channel B. Same doctrine as src/lib/immune.
 # Digest-pinned OCI index for python:3.12-slim (3.12.14-slim-trixie, linux/amd64
 # included), identical on mirror.gcr.io and registry-1.docker.io on 2026-09-29.
-FROM mirror.gcr.io/library/python:3.15-slim@sha256:2da676046630d7bf14c6764ae1143dc7fa0377a53f94bf5a642f0b214aca5bce
+FROM mirror.gcr.io/library/python:3.15-slim@sha256:533b0b2f9b5d46fd097091cf826f27902f1d6c3bca714b6dc74551356aa97a51
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=7860 IMMUNE_DATA_DIR=/app/data/immune
 COPY python/requirements.txt ./requirements.txt
