@@ -23,6 +23,7 @@ import {
 } from "./source-attestation";
 import { readinessHttpResult } from "./readiness";
 import { loadActionTrustDocument } from "./action-trust.js";
+import { publicHttpErrorHandler } from "./http-error-handler";
 
 const __serverDir = path.dirname(fileURLToPath(import.meta.url));
 const staticDir = bindRuntimeStaticDir(resolveRuntimeStaticDir(__serverDir));
@@ -178,14 +179,7 @@ if (staticDir) {
 }
 
 // Final safety net so errors never leak stack traces to the public audience.
-app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  const message = err instanceof Error ? err.message : String(err);
-  // eslint-disable-next-line no-console
-  console.error("[immune-standalone] unhandled error:", message);
-  if (!res.headersSent) {
-    res.status(500).json({ error: "internal error" });
-  }
-});
+app.use(publicHttpErrorHandler);
 
 const rawPort = process.env.PORT || "7860";
 const port = Number(rawPort);

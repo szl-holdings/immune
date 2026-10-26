@@ -52,7 +52,7 @@ def _finite(name: str, value: Any) -> float:
         )
     try:
         number = float(value)
-    except (TypeError, ValueError) as error:
+    except (TypeError, ValueError, OverflowError) as error:
         raise NexusValidationError("NON_FINITE_NUMBER", f"{name} must be finite") from error
     if not math.isfinite(number):
         raise NexusValidationError("NON_FINITE_NUMBER", f"{name} must be finite")
@@ -75,7 +75,7 @@ def _integer_in_range(name: str, value: Any, minimum: int, maximum: int) -> int:
         )
     try:
         number = int(value)
-    except (TypeError, ValueError) as error:
+    except (TypeError, ValueError, OverflowError) as error:
         raise NexusValidationError(
             "OUT_OF_RANGE", f"{name} must be an integer between {minimum} and {maximum}"
         ) from error

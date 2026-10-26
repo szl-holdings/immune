@@ -53,6 +53,15 @@ export default defineConfig({
       strict: true,
     },
     proxy: {
+      "/readyz": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
+      [`${basePath}readyz`]: {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+        rewrite: (path: string) => path.replace(new RegExp(`^${basePath}`), "/"),
+      },
       "/api": {
         target: "http://localhost:8080",
         changeOrigin: true,
