@@ -60,16 +60,19 @@ router.post("/infer", async (req: Request, res: Response) => {
   }
 
   const answer = await governedAnswer(prompt, runGovernedCycle);
+  const finalSealPassed = answer.sealed.pass === true;
 
   res.json({
     prompt,
-    answer: answer.text,
-    blocked: !answer.verdict.ok,
-    stoppedReason: answer.verdict.ok
-      ? answer.verdict.rewritten
-        ? "NEMO rewrote the answer to conform (rule_check ground truth)"
-        : "NEMO admitted the answer"
-      : `NEMO fail-closed: ${answer.verdict.violated.join(", ")}`,
+    answer: finalSealPassed ? answer.text : "",
+    blocked: !finalSealPassed || !answer.verdict.ok,
+    stoppedReason: !finalSealPassed
+      ? "Final answer seal failed - answer withheld"
+      : answer.verdict.ok
+        ? answer.verdict.rewritten
+          ? "NEMO rewrote the answer to conform (rule_check ground truth)"
+          : "NEMO admitted the answer"
+        : `NEMO fail-closed: ${answer.verdict.violated.join(", ")}`,
     provider: answer.provider,
     model: answer.model,
     provenance: "LIVE",
