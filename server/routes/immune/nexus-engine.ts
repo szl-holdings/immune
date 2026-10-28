@@ -833,6 +833,28 @@ export function nexusInputHash(input: NexusRunInput): string {
   return nexusHash({ schema: NEXUS_ENGINE_SCHEMA, source: NEXUS_SOURCE_REVISION, input });
 }
 
+/**
+ * Admission identity: normalize ONCE (including the 15 -> 20 slot NEMO bank pad)
+ * and derive the single szl.immune-nexus-engine/v1 identity used for replay,
+ * execution and storage. For every accepted input this equals
+ * runNexus(input).inputHash, so no stored identity changes. Hashing the raw body
+ * instead made identical 15-slot retries collide with their own record.
+ */
+export function admitNexusInput(input: NexusRunInput): { input: NexusRunInput; inputHash: string } {
+  const normalized = normalizeNexusInput(input);
+  return { input: normalized, inputHash: nexusInputHash(normalized) };
+}
+
+export function nexusReplayDecision(
+  stored: { actor: string; inputHash: string } | null,
+  presented: { actor: string; inputHash: string },
+): "NEW" | "REPLAY" | "COLLISION" {
+  if (!stored) return "NEW";
+  return stored.actor === presented.actor && stored.inputHash === presented.inputHash
+    ? "REPLAY"
+    : "COLLISION";
+}
+
 function sampleTrail(
   program: NexusProgram,
   initial: NexusState,
