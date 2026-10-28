@@ -98,6 +98,16 @@ const TOOLS: Record<string, { desc: string; run: ToolFn }> = {
 
 const TOOL_NAMES = Object.keys(TOOLS);
 
+/**
+ * Own-property tool resolution. `tool` comes from model-generated JSON, and a plain
+ * object literal answers truthy for inherited names (constructor, toString,
+ * __proto__, ...), so bracket lookup must never gate dispatch. This only narrows
+ * what can resolve; it does not grant execution authority (Appendix I #1).
+ */
+export function resolveAgentTool(name: string): { desc: string; run: ToolFn } | null {
+  return Object.hasOwn(TOOLS, name) ? TOOLS[name] : null;
+}
+
 function systemPrompt(): string {
   const toolLines = Object.entries(TOOLS)
     .map(([name, t]) => `  - ${name}: ${t.desc}`)
@@ -678,8 +688,9 @@ router.post("/run", async (req: Request, res: Response) => {
 
       // Accepted + receipted -> execute the REAL tool (or honestly report unknown).
       let observation: unknown;
-      if (TOOLS[tool]) {
-        observation = TOOLS[tool].run(args as Record<string, unknown>);
+      const resolved = resolveAgentTool(tool);
+      if (resolved) {
+        observation = resolved.run(args as Record<string, unknown>);
       } else {
         observation = {
           provenance: "LIVE",
