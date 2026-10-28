@@ -10,7 +10,8 @@ import {
   NEXUS_RUN_SCHEMA,
   NEXUS_SOURCE_REVISION,
   NexusValidationError,
-  nexusInputHash,
+  admitNexusInput,
+  nexusReplayDecision,
   nexusStatus,
   runNexus,
   verifyNexusRun,
@@ -324,12 +325,28 @@ router.post("/run", async (req: Request, res: Response) => {
     return;
   }
 
-  const inputHash = nexusInputHash(input);
+  // Normalize once at admission; this one v1 identity is used for replay,
+  // execution and storage (it equals the stored result.inputHash).
+  let admitted: ReturnType<typeof admitNexusInput>;
+  try {
+    admitted = admitNexusInput(input);
+  } catch (error) {
+    if (error instanceof NexusValidationError) {
+      res.status(400).json({ error: error.code, detail: error.message });
+      return;
+    }
+    throw error;
+  }
+  const inputHash = admitted.inputHash;
   try {
     await withNexusRequestLock(parsed.data.requestId, async () => {
       const existing = findNexusReceipt(parsed.data.requestId);
       const storedActor = existing ? String(existing.receipt.payload.actor ?? "") : "";
-      if (existing && (storedActor !== parsed.data.actor || existing.nexus.inputHash !== inputHash)) {
+      const decision = nexusReplayDecision(
+        existing ? { actor: storedActor, inputHash: existing.nexus.inputHash } : null,
+        { actor: parsed.data.actor, inputHash },
+      );
+      if (decision === "COLLISION" && existing) {
         res.status(409).json({
           error: "NEXUS_REQUEST_ID_COLLISION",
           requestId: parsed.data.requestId,
@@ -340,7 +357,18 @@ router.post("/run", async (req: Request, res: Response) => {
         return;
       }
 
-      const result = runNexus(input);
+      const result = runNexus(admitted.input);
+      if (result.inputHash !== inputHash) {
+        res.status(500).json({
+          error: "NEXUS_IDENTITY_DIVERGENCE",
+          requestId: parsed.data.requestId,
+          admittedInputHash: inputHash,
+          observedInputHash: result.inputHash,
+          computationPerformed: true,
+          externalEffectPerformed: false,
+        });
+        return;
+      }
       if (!result.invariants.allHold) {
         res.status(500).json({
           error: "NEXUS_INVARIANT_FAILURE",
