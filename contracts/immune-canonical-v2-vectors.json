@@ -1,0 +1,136 @@
+{
+  "profile": "szl.immune.canonical/v2",
+  "note": "Inputs are JSON texts parsed by the host JSON parser (JSON.parse / json.loads) before canonicalization. Expected canonical texts were written by hand from the v2 rules, not produced by an implementation. Legacy v1 canonicalBytes is NOT expected to match these.",
+  "vectors": [
+    {
+      "id": "plain_nested",
+      "input": "{\"b\":[1,true,null,\"x\"],\"a\":{\"d\":-5,\"c\":\"y\"}}",
+      "canonical": "{\"a\":{\"c\":\"y\",\"d\":-5},\"b\":[1,true,null,\"x\"]}",
+      "sha256": "d85c45c801befddf486b68725c5f15868b48e0378bf43c22b339ab15cca96a4b"
+    },
+    {
+      "id": "empty_object",
+      "input": "{}",
+      "canonical": "{}",
+      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "id": "empty_array",
+      "input": "[]",
+      "canonical": "[]",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "id": "top_null",
+      "input": "null",
+      "canonical": "null",
+      "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    {
+      "id": "constructor_like_keys",
+      "input": "{\"toString\":2,\"constructor\":{\"x\":1},\"prototype\":3,\"hasOwnProperty\":4,\"valueOf\":5}",
+      "canonical": "{\"constructor\":{\"x\":1},\"hasOwnProperty\":4,\"prototype\":3,\"toString\":2,\"valueOf\":5}",
+      "sha256": "719e2ae3099a62906281efb2afb813c0401a0b7659c16d2c5602c208e2d5a45c"
+    },
+    {
+      "id": "integer_like_keys",
+      "input": "{\"10\":1,\"9\":2,\"a\":3,\"-1\":4,\"01\":5,\"4294967295\":6,\"4294967294\":7}",
+      "canonical": "{\"-1\":4,\"01\":5,\"10\":1,\"4294967294\":7,\"4294967295\":6,\"9\":2,\"a\":3}",
+      "sha256": "c6bcf3a3e1f5877b430b07f6d81af8183640e408dd1a6d1c118e2e6f8c749b91"
+    },
+    {
+      "id": "utf16_key_order",
+      "input": "{\"\\uffff\":1,\"\\ud83d\\ude00\":2,\"\\u00e9\":3,\"z\":4}",
+      "canonical": "{\"z\":4,\"\u00e9\":3,\"\ud83d\ude00\":2,\"\uffff\":1}",
+      "sha256": "67a486f6e154ebe82a255dc6cf51933c8b7d561db0ab633756fcb599f35f7f9b"
+    },
+    {
+      "id": "string_escapes",
+      "input": "{\"s\":\"q\\\"b\\\\\\/\\b\\f\\n\\r\\t\\u0000\\u001f\\u007f\\u2028\\u2029\\u00e9\\ud83d\\ude00\"}",
+      "canonical": "{\"s\":\"q\\\"b\\\\/\\b\\f\\n\\r\\t\\u0000\\u001f\u007f\u2028\u2029\u00e9\ud83d\ude00\"}",
+      "sha256": "251dd1498b89491a3846c6dd5446e36e5a99fa0515b8ea9a783dab1fd1e4c00b"
+    },
+    {
+      "id": "numeric_boundaries",
+      "input": "{\"a\":9007199254740991,\"b\":-9007199254740991,\"c\":0,\"d\":-0,\"e\":1.0,\"f\":1e2,\"g\":-0.0}",
+      "canonical": "{\"a\":9007199254740991,\"b\":-9007199254740991,\"c\":0,\"d\":0,\"e\":1,\"f\":100,\"g\":0}",
+      "sha256": "055aafe707317346690131a4a74dd97e30ec4d9d2b39091aa53e8964381f9e5c"
+    },
+    {
+      "id": "depth_32",
+      "input": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+      "canonical": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+      "sha256": "4e04cac422d9ecd4a5f6221653eeb4eaf29077cf3f588cd36bf6dc8ead76971f"
+    },
+    {
+      "id": "proto_top_object",
+      "input": "{\"__proto__\":{\"x\":1},\"b\":2}",
+      "error": "proto_key"
+    },
+    {
+      "id": "proto_top_primitive",
+      "input": "{\"__proto__\":7}",
+      "error": "proto_key"
+    },
+    {
+      "id": "proto_top_null",
+      "input": "{\"__proto__\":null}",
+      "error": "proto_key"
+    },
+    {
+      "id": "proto_nested",
+      "input": "{\"a\":{\"k\":1,\"__proto__\":{\"secret\":\"s\"}}}",
+      "error": "proto_key"
+    },
+    {
+      "id": "proto_in_array",
+      "input": "[{\"__proto__\":[]}]",
+      "error": "proto_key"
+    },
+    {
+      "id": "lone_surrogate_value",
+      "input": "{\"k\":\"\\ud800\"}",
+      "error": "lone_surrogate"
+    },
+    {
+      "id": "lone_surrogate_key",
+      "input": "{\"\\udc00\":1}",
+      "error": "lone_surrogate"
+    },
+    {
+      "id": "fraction",
+      "input": "{\"n\":1.5}",
+      "error": "non_integer"
+    },
+    {
+      "id": "sub_1e9_fraction",
+      "input": "{\"n\":1.000000001}",
+      "error": "non_integer"
+    },
+    {
+      "id": "non_finite",
+      "input": "{\"n\":1e400}",
+      "error": "non_integer"
+    },
+    {
+      "id": "unsafe_positive",
+      "input": "{\"n\":9007199254740992}",
+      "error": "unsafe_integer"
+    },
+    {
+      "id": "unsafe_negative",
+      "input": "{\"n\":-9007199254740992}",
+      "error": "unsafe_integer"
+    },
+    {
+      "id": "unsafe_exponent",
+      "input": "{\"n\":1e300}",
+      "error": "unsafe_integer"
+    },
+    {
+      "id": "depth_33",
+      "input": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+      "error": "depth"
+    }
+  ]
+}
