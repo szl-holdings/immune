@@ -2,7 +2,8 @@
 
 Pins the Python side of the 9-decimal Nexus identity projection. The values
 differ from the TypeScript ones in tests/immune-nexus-numeric-identity.test.ts
-for exact decimal ties and |x| >= 1e21. Not a fix: see SPEC_nexus_numeric_identity.md.
+for exact decimal ties and |x| >= 1e21. Not a fix: see SPEC_nexus_numeric_identity.md
+(delivered with this change, not committed to the repo).
 """
 
 from __future__ import annotations

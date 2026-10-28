@@ -114,7 +114,7 @@ test("existing v1 storage equivalence: 15-slot and padded 20-slot share one iden
   // OWNER DECISION RECORDED, NOT MADE HERE: v1 storage already cannot tell these two
   // bodies apart (same stored inputHash and outputHash). Admission now applies that
   // same equivalence symmetrically. Treating them as distinct needs a new identity
-  // version (see SPEC_nexus_identity.md), not a change to v1.
+  // version (spec delivered with this change as SPEC_nexus_identity.md), not a v1 change.
   const stored = storedRecord("operator-a", withBank(nemo15(), [...BANK_15, 1, 1, 1, 1, 1]));
   const retry15 = { actor: "operator-a", inputHash: api.admitNexusInput(nemo15()).inputHash };
   assert.equal(stored.inputHash, STORED_V1_NEMO15);

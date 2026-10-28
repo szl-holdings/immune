@@ -5,7 +5,8 @@
 // number to 9 decimals, while execution uses full float64 precision. These tests
 // pin the current, known-defective behaviour so it cannot change silently. They
 // are NOT the fix: changing the projection re-hashes every stored v1 identity and
-// the parity contract, so it needs a new identity version (SPEC_nexus_numeric_identity.md).
+// the parity contract, so it needs a new identity version (spec delivered
+// with this change as SPEC_nexus_numeric_identity.md, not committed to the repo).
 import assert from "node:assert/strict";
 import test from "node:test";
 import { nexusInputHash, nexusReplayDecision, runNexus, type NexusRunInput } from "../server/routes/immune/nexus-engine.ts";
