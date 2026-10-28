@@ -9,7 +9,8 @@
 //
 // Narrow fix pinned here: tool resolution is own-property only. The wider authority
 // design (external admission bound to tool, args digest, request, authority and
-// expiry; rejection before receipt creation) is owner-gated: SPEC_agent_tool_admission.md.
+// expiry; rejection before receipt creation) is owner-gated (spec delivered
+// with this change as SPEC_agent_tool_admission.md, not committed to the repo).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
