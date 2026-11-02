@@ -340,6 +340,18 @@ test("typed readiness fetch accepts and parses both 200 and fail-closed 503 bodi
     () => parseImmuneReadiness({ ...ready, ledger: { ok: "yes" } }),
     /does not match/,
   );
+
+  for (const [status, body] of [[503, ready], [200, blocked]] as const) {
+    const contradictoryFetch = (async () =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      })) as typeof fetch;
+    await assert.rejects(
+      fetchImmuneReadiness(contradictoryFetch),
+      /contradicts parsed ready claim/,
+    );
+  }
 });
 
 test("whole-system write readiness requires one fresh exact-bound ready contract", () => {

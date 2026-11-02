@@ -4,6 +4,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
+import { assertReadinessHttpBinding } from "./readiness-http-binding";
 
 export type ImmuneMode = "PASS" | "SENTRA_REJECT" | "DEADMAN";
 export type EvidenceState = "VERIFIED" | "FAILED" | "UNAVAILABLE" | "STALE";
@@ -305,7 +306,9 @@ export async function fetchImmuneReadiness(
   if (response.status !== 200 && response.status !== 503) {
     throw new Error(`IMMUNE readiness GET /readyz failed: HTTP ${response.status}`);
   }
-  return parseImmuneReadiness(await response.json());
+  const readiness = parseImmuneReadiness(await response.json());
+  assertReadinessHttpBinding(response.status, readiness);
+  return readiness;
 }
 
 async function request<T>(
