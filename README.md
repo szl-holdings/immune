@@ -227,6 +227,11 @@ That stronger artifact remains **BLOCKED** until independently qualified;
 neither the publication-boundary receipt nor source-live observation may be
 renamed or substituted for it.
 
+The browser also binds `/readyz` transport status to the parsed readiness
+claim: HTTP 200 is accepted only with `ready: true`, and HTTP 503 only with
+`ready: false`. A contradictory status/body pair is rejected before it can
+reach the whole-system authority projection or enable a write control.
+
 Release-receipt revisions and hashes must be JSON strings, not values coerced
 to strings. The receipt and live authority observation must name the exact
 `/data/immune` authority directory required by readiness, not a sibling,
