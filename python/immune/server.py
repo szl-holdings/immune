@@ -434,7 +434,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"hits": search_brain(q, k), "q": q})
             return
         if path in ("/api/immune/agent/frontier/evaluate", "/api/immune/frontier"):
-            self._json(200, evaluate_frontier(data))
+            try:
+                genome = evaluate_frontier(data)
+            except ValueError as error:
+                self._json(400, {"error": "INVALID_FRONTIER_INPUT", "detail": str(error)})
+                return
+            self._json(200, genome)
             return
         if path == "/api/immune/nexus/verify":
             expected = data.pop("expectedOutputHash", None)

@@ -1,17 +1,32 @@
-"""Shadow Decision Genome. Matches src/lib/immune/frontier.ts."""
+"""Modeled, non-executable shadow output for the legacy flat Python interface.
+
+Caller-supplied freshness/calibration are assertions, not authenticated evidence.
+This adapter is not a portable TS DecisionGenome validator or an authority gate.
+"""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
 from datetime import datetime, timezone
 from typing import Any
 
 SCHEMA_ID = "urn:szl:contracts:decision-genome:v1"
 
 
-def default_calibration() -> list[float]:
-    return [round(0.08 + (i % 7) * 0.04, 2) for i in range(40)]
+def _number(name: str, value: Any, *, unit_interval: bool = True) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a finite JSON number")
+    try:
+        number = float(value)
+    except OverflowError as exc:
+        raise ValueError(f"{name} must be finite") from exc
+    if not math.isfinite(number):
+        raise ValueError(f"{name} must be finite")
+    if unit_interval and not 0 <= number <= 1:
+        raise ValueError(f"{name} must be between 0 and 1")
+    return number
 
 
 def _conformal_p(score: float, calibration: list[float]) -> float | None:
@@ -22,16 +37,27 @@ def _conformal_p(score: float, calibration: list[float]) -> float | None:
 
 
 def evaluate_frontier(inp: dict[str, Any]) -> dict[str, Any]:
-    novelty = float(inp.get("novelty") or 0)
-    danger = float(inp.get("dangerContext") or 0)
-    baseline = float(inp.get("baselineAnomaly") or 0)
-    causal = float(inp.get("causalShift") or 0)
-    prop = float(inp.get("propagationRisk") or 0)
+    novelty = _number("novelty", inp.get("novelty", 0))
+    danger = _number("dangerContext", inp.get("dangerContext", 0))
+    baseline = _number("baselineAnomaly", inp.get("baselineAnomaly", 0))
+    causal = _number("causalShift", inp.get("causalShift", 0))
+    prop = _number("propagationRisk", inp.get("propagationRisk", 0))
     composite = round(0.25 * novelty + 0.3 * danger + 0.2 * baseline + 0.15 * causal + 0.1 * prop, 4)
-    cal = inp.get("calibrationScores") or default_calibration()
+    supplied_calibration = inp.get("calibrationScores")
+    if supplied_calibration is None:
+        supplied_calibration = []
+    if not isinstance(supplied_calibration, list) or len(supplied_calibration) > 10_000:
+        raise ValueError("calibrationScores must be a list of at most 10000 scores")
+    cal = [_number(f"calibrationScores[{i}]", value) for i, value in enumerate(supplied_calibration)]
     p_value = _conformal_p(composite, cal)
-    age = float(inp.get("sourceAgeMinutes") or 0)
-    if age <= 5:
+    age = None if inp.get("sourceAgeMinutes") is None else _number(
+        "sourceAgeMinutes", inp["sourceAgeMinutes"], unit_interval=False,
+    )
+    if age is None:
+        freshness = "UNAVAILABLE"
+    elif age < 0:
+        freshness = "CONFLICTED"
+    elif age <= 5:
         freshness = "LIVE"
     elif age <= 60:
         freshness = "CACHED"
@@ -39,12 +65,15 @@ def evaluate_frontier(inp: dict[str, Any]) -> dict[str, Any]:
         freshness = "STALE"
     else:
         freshness = "DEGRADED"
-    freshness_debt = 0.35 if freshness in ("STALE", "DEGRADED") else (0.1 if freshness == "CACHED" else 0)
-    confidence = float(inp.get("sourceConfidence") or 0)
+    unavailable = freshness in ("STALE", "DEGRADED", "UNAVAILABLE", "CONFLICTED")
+    freshness_debt = 0.35 if unavailable else (0.1 if freshness == "CACHED" else 0)
+    confidence = _number("sourceConfidence", inp.get("sourceConfidence", 0))
     uncertainty = min(1.0, 0.55 * (1 - confidence) + freshness_debt + (0.2 if p_value is None else 0))
-    hard = bool(inp.get("hardPolicyViolation"))
+    hard = inp.get("hardPolicyViolation", False)
+    if not isinstance(hard, bool):
+        raise ValueError("hardPolicyViolation must be a boolean")
     reason: list[str] = []
-    if confidence < 0.5 or freshness in ("STALE", "DEGRADED"):
+    if confidence < 0.5 or unavailable:
         state = "WITHHOLD"
         action = "REQUEST_READ_ONLY_PROBE" if freshness == "STALE" else "OPEN_INCIDENT"
         reason.append("PROVENANCE_OR_FRESHNESS_GATE")
@@ -56,7 +85,7 @@ def evaluate_frontier(inp: dict[str, Any]) -> dict[str, Any]:
         reason.append("HARD_POLICY_SIGNAL")
     elif p_value is None:
         state = "REVIEW_REQUIRED"
-        action = "REQUEST_HUMAN_REVIEW"
+        action = "OPEN_INCIDENT"
         reason.append("INSUFFICIENT_CALIBRATION")
     elif composite >= 0.72:
         state = "QUARANTINE_RECOMMENDED"
@@ -64,23 +93,22 @@ def evaluate_frontier(inp: dict[str, Any]) -> dict[str, Any]:
         reason.append("COMPOSITE_RISK")
     elif composite >= 0.45 or uncertainty >= 0.55:
         state = "REVIEW_REQUIRED"
-        action = "REQUEST_HUMAN_REVIEW"
+        action = "OPEN_INCIDENT"
         reason.append("UNCERTAINTY_OR_MID_RISK")
     else:
         state = "ALLOW_OBSERVE"
-        action = "CONTINUE_OBSERVE"
+        action = "OBSERVE"
         reason.append("WITHIN_SHADOW_BAND")
 
-    evidence_label = inp.get("evidenceLabel") or ("LIVE" if freshness == "LIVE" else "MODELED")
     rec = {
         "state": state,
         "action": action,
         "reasonCodes": reason,
         "humanApprovalRequired": state != "ALLOW_OBSERVE",
         "executable": False,
-        "evidenceLabel": evidence_label,
+        "evidenceLabel": "MODELED",
     }
-    subject = {"kind": inp.get("subjectKind") or "observation", "id": inp.get("subjectId") or "unknown", "digest": hashlib.sha256(json.dumps(inp, sort_keys=True).encode()).hexdigest()}
+    subject = {"kind": inp.get("subjectKind") or "observation", "id": inp.get("subjectId") or "unknown", "digest": hashlib.sha256(json.dumps(inp, sort_keys=True, allow_nan=False).encode()).hexdigest()}
     genome = {
         "schemaId": SCHEMA_ID,
         "decisionId": inp.get("observationId") or "obs",
