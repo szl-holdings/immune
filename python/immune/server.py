@@ -158,10 +158,32 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _read_json(self) -> dict:
-        n = int(self.headers.get("Content-Length") or 0)
-        if n > 1_048_576:
-            raise NexusValidationError("PAYLOAD_OVERSIZE", "request body exceeds 1 MiB")
+        if self.headers.get_all("Transfer-Encoding"):
+            raise NexusValidationError(
+                "UNSUPPORTED_TRANSFER_ENCODING", "send a Content-Length request body"
+            )
+        lengths = self.headers.get_all("Content-Length") or []
+        if len(lengths) > 1:
+            raise NexusValidationError(
+                "INVALID_CONTENT_LENGTH", "exactly one Content-Length is allowed"
+            )
+        n = 0
+        if lengths:
+            length = lengths[0].strip(" \t")
+            if not re.fullmatch(r"[0-9]+", length):
+                raise NexusValidationError(
+                    "INVALID_CONTENT_LENGTH", "Content-Length must be non-negative decimal"
+                )
+            # Bound decimal text before int() to handle arbitrarily long headers.
+            length = length.lstrip("0") or "0"
+            if len(length) > 7 or (len(length) == 7 and length > "1048576"):
+                raise NexusValidationError("PAYLOAD_OVERSIZE", "request body exceeds 1 MiB")
+            n = int(length)
         raw = self.rfile.read(n) if n else b"{}"
+        if n and len(raw) != n:
+            raise NexusValidationError(
+                "INVALID_CONTENT_LENGTH", "request body is shorter than Content-Length"
+            )
         try:
             data = json.loads(raw.decode() or "{}")
             if not isinstance(data, dict):
