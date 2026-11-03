@@ -24,8 +24,18 @@ auditable, while mode and reset operations remain unavailable.
 | HUKLLA | T01-T10 tripwire evaluation |
 | Second brain | Software-only handle search and measured silhouette |
 | MESH | Modeled quorum projection |
-| Frontier | Shadow Decision Genome with `executable: false` |
+| Frontier | Legacy flat shadow adapter with `MODELED` recommendations and `executable: false` |
 | NEXUS | Preserved bounded simulation engine, catalog, and read-only replay verification |
+
+The Python frontier routes never inherit caller evidence or authority labels.
+Missing, empty or insufficient calibration leaves the conformal p-value unknown
+(`null`) and requires review; no calibration scores are generated. Missing age is
+`UNAVAILABLE`, negative age is `CONFLICTED`, and both withhold recommendations.
+Supplied age, confidence and calibration are assertions, not authenticated
+measurements. Observation/review actions are now `OBSERVE` / `OPEN_INCIDENT`
+(formerly `CONTINUE_OBSERVE` / `REQUEST_HUMAN_REVIEW`); quarantine/read-only
+review actions remain non-executable. This legacy flat Python interface is not
+the full nested TypeScript DecisionGenome contract or a claim of policy parity.
 
 `GET /healthz` is process liveness. `GET /readyz` remains 503 when whole-system
 write readiness is unavailable. NEXUS `POST /api/immune/nexus/run` checks that
