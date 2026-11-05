@@ -1,0 +1,2 @@
+# The base Python gate installs this file. The pin lives with the package.
+-r python/requirements.txt
