@@ -79,6 +79,28 @@ class DependencyWorkspaceContract(unittest.TestCase):
             'A stale workspace override silently defeats a declared Vite upgrade',
         )
 
+    def test_esbuild_override_tracks_the_declared_bundler(self):
+        # The override forces one esbuild for the root bundler, tsx and Vite's
+        # peer. If it lags package.json, pnpm keeps the old binary and the
+        # npm Dependabot job fails with NoChangeError on every run.
+        declared = json.loads((ROOT / 'package.json').read_text(encoding='utf-8'))['devDependencies']['esbuild']
+        self.assertRegex(declared, r'^\d+\.\d+\.\d+$', 'Retain an exact reviewed esbuild version')
+        workspace = (ROOT / 'pnpm-workspace.yaml').read_text(encoding='utf-8')
+        overrides = re.search(r'(?ms)^overrides:\s*\n(.*?)(?=^\S|\Z)', workspace)
+        self.assertIsNotNone(overrides, 'The shared workspace must declare its overrides block')
+        self.assertEqual(
+            re.findall(r'(?m)^  esbuild:\s*(\S+)\s*$', overrides.group(1)),
+            [declared],
+            'A stale workspace override silently defeats a declared esbuild upgrade',
+        )
+        lock = (ROOT / 'pnpm-lock.yaml').read_text(encoding='utf-8')
+        # Lockfile v9 lists each resolution under both packages: and snapshots:.
+        self.assertEqual(
+            set(re.findall(r'(?m)^  esbuild@(\S+?):\s*$', lock)),
+            {declared},
+            'The frozen lock must resolve exactly the declared esbuild',
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
