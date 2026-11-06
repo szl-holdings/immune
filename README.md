@@ -37,7 +37,7 @@ Default NEXUS showcase on both Spaces. Software simulation only.
 |---|---|
 | program / mode | `lorenz` / `OP` |
 | coefficients | σ 10 · ρ 27.9 · β 2.67 |
-| steps / dt / drive / chaos / seed | 320 / 0.01 / 0.7 / 0.45 / 0.2 |
+| steps / dt / drive / chaos / seed / repeatEvery | 320 / 0.01 / 0.7 / 0.45 / 0.2 / 64 (route default) |
 | initial | x 0.182 · y −0.046 · z 23.2 · t 0 |
 | final | x −7.707920173353 · y −10.567955419679 · z 21.305498529338 · t 3.2 |
 | inputHash | `c5fcc5029392a5e4f7cd65a655d5379cd65d8f915b2ee96a1db5d44e35ea2358` |
@@ -52,6 +52,15 @@ Default NEXUS showcase on both Spaces. Software simulation only.
 whole-system write readiness and SENTRA admission both pass. It returns 503
 without execution when authority is unavailable. The table records a historical
 software result, not current authority or deployment proof.
+
+Reproduce the two hashes from source (after `pip install -r python/requirements.txt`);
+`runNexus` in `server/routes/immune/nexus-engine.ts` returns the same pair for the
+same input. This is local software evidence only, not deployment or authority proof.
+
+```bash
+PYTHONPATH=python python3 -c "from immune.nexus import run_nexus; r = run_nexus({'program': 'lorenz', 'mode': 'OP', 'steps': 320, 'dt': 0.01, 'drive': 0.7, 'chaos': 0.45, 'seed': 0.2, 'repeatEvery': 64}); print(r['inputHash'], r['outputHash'])"
+# c5fcc5029392a5e4f7cd65a655d5379cd65d8f915b2ee96a1db5d44e35ea2358 4071a2f2faca744907747cb2cc82a9d841e125fa287240505f9f9a8454a399ac
+```
 
 ## Consolidation (do not delete either Space)
 
@@ -82,8 +91,10 @@ evidence is likewise retained for repair rather than silently replaced.
 
 ```
 python/
-  immune/          canonical · sentra · huklla · persist · runtime · mesh · second_brain · frontier · organs · server
-  tests/           unittest — fail-closed boot, refused writes, NEXUS verification, brain, silhouette, MESH
+  immune/          canonical · sentra · huklla · persist · runtime · mesh · second_brain · frontier · organs · nexus ·
+                   presentation · source_identity · server
+  tests/           unittest — fail-closed boot, refused writes, NEXUS verification and numeric identity, canonical
+                   vectors, frontier evidence gates, request framing, source identity, static assets, brain, silhouette, MESH
   space/           HF hologram HUD
 ```
 
@@ -105,7 +116,7 @@ source code or a historical receipt alone does not prove present enforcement.
 |---|---|---|
 | Admission gate | **SENTRA / GATE** | Inspects every intent for forbidden patterns (token exfiltration, shell escapes) and required fields. No fabricated green lights. |
 | Receipt chain | **YAWAR** | Append-only SHA-256 ledger — each accepted action is hashed over canonical bytes and linked to the previous entry (`prevHash → hash`). Tamper any entry and re-verification breaks at that seq. |
-| Tripwires | **HUKLLA** | 10 watchers aligned to the OWASP LLM Top 10 and MITRE ATLAS. A violation flips the system into **DEADMAN** (kill-switch) mode. |
+| Tripwires | **HUKLLA** | 10 watchers (`T01`–`T10`) evaluated on every governed cycle. **DEADMAN** (kill-switch) is a signed `immune.action.v2` mode: while it is engaged `T07` fires and every write is refused; a tripwire never grants or clears authority by itself. Each watcher is aligned to an OWASP LLM Top 10 (2025) risk and a representative MITRE ATLAS technique — IMMUNE's own correlation, not an official OWASP or ATLAS mapping (`GET /api/immune/intel/frameworks`). |
 | Threat intel | — | Live public feeds (Sigstore Rekor transparency log, NVD CVEs, GitHub/HF ecosystem) labelled `LIVE / REFERENCE / UNAVAILABLE` per source. |
 
 The receipt chain is the same principle public transparency logs use, applied to every
@@ -166,6 +177,21 @@ remain authority-projection consumers.
 | `GET /api/immune/intel/{frameworks,transparency,incidents,leaders,pulse}` | Live/curated threat intel |
 | `GET /api/immune/agent/frontier` | Shadow-only Decision Genome capability and truth boundary |
 | `POST /api/immune/agent/frontier/evaluate` | Validate one evidence observation and return a non-executable `MODELED` recommendation |
+
+Other routes mounted by `server/immune-standalone.ts` and `server/routes/immune/`:
+
+| Endpoint | What |
+|---|---|
+| `GET /healthz` | Process liveness only (`readiness_state: NOT_EVALUATED`); never a readiness claim |
+| `GET /api/build-info` · `GET /.well-known/szl-source.json` | Build identity and source attestation for the running bundle |
+| `GET /api/immune/state/receipts/:requestId?envelopeDigest=` | Exact signed-action receipt lookup by request ID and envelope digest (404 when absent) |
+| `GET /api/immune/pubkey` | YAWAR receipt-signing public key, if one is configured (`enabled: false` otherwise) |
+| `GET /api/immune/intel/{radar,actors}` | Curated, static inference-engine radar and ATT&CK group reference lists |
+| `GET /api/immune/agent-status` · `GET /api/immune/agent/status` | Governed-agent availability, blockers, and readiness projection |
+| `POST /api/immune/agent/run` | One governed agent run; rate-limited (3 per IP per minute, 300 per UTC day) and refused without write readiness |
+| `GET /api/immune/nemo` · `POST /api/immune/infer` | szl-nemo software-surrogate rule gate status (not an LLM); governed inference that returns HTTP 503 `WRITE_NOT_READY` without write readiness |
+| `GET /api/immune/nexus/{status,catalog}` | NEXUS engine status and program catalog |
+| `POST /api/immune/nexus/run` · `POST /api/immune/nexus/verify` · `GET /api/immune/nexus/receipts/:requestId` | Readiness-gated NEXUS run (HTTP 201 / 503), deterministic replay verification, and receipt read-back |
 
 ### Signed advisory authority
 
@@ -327,12 +353,23 @@ HTTP 409 when the governed cycle does not seal the recommendation.
 
 ```
 frontend/            React + Vite + Tailwind SPA ("cyber-HUD" UI, three.js + framer-motion)
-  src/               App entry, Home page, panels (Controls, Audit, Intel, Pulse, Leaders), 3D scene
+  src/               App entry, Home page, panels (Controls, Audit, Intel, Pulse, Leaders, Foundations, Lattice COP, agent/infer consoles), 3D scene
   deploy/            Dockerfile + build-standalone.sh + deploy README (assembles the HF Space image)
-server/              Minimal standalone Express app for the demo
-  immune-standalone.ts   Mounts ONLY /api/immune + serves the built SPA (no DB/auth/Bingle/Mulé)
-  routes/immune/         canonical · sentra · huklla · ledger · state · intel · index
-data/immune/         The REAL seeded receipt/evidence chain (ledger.jsonl, huklla_evidence.jsonl)
+server/              Standalone Express runtime (Channel A)
+  immune-standalone.ts   Mounts /api/immune, /readyz, /healthz and build/source identity routes, then serves
+                         the built SPA (no monorepo Bingle/Mulé/auth/DB; v2 authority keeps its own node:sqlite store)
+  routes/immune/         canonical · sentra · huklla · ledger · state · cycle · signing · intel · agent · nexus ·
+                         nexus-engine · nemo · infer · infer-answer · inference · grok-model · external-operator ·
+                         storage-policy · index
+  readiness.ts, source-attestation.ts, action-trust.js   /readyz binding, source attestation, public trust pin
+  tools/                 Owner-workflow authority action, contract and signer helpers; immutable Hub fetch
+python/              Channel B Python kernel, its unittest suite, and the flattened HF Space files (see above)
+scripts/             Build/seal and CI guards (.mjs), browser qualification (.cjs/.mjs), HF publication guard and
+                     attestation, plus historical one-shot HF Space operations (.py)
+tests/               TypeScript (`tsx --test`) and Python (`unittest`) contract suites, smoke and static-delivery checks
+contracts/           Cross-channel vectors (canonical v2, NEXUS parity) consumed by both TS and Python suites,
+                     plus the NEXUS execution JSON Schema and the proof-carrying ledger-field contract
+data/immune/         The REAL seeded receipt/evidence chain (ledger.jsonl, huklla_evidence.jsonl) plus a tamper demo
 LEDGER_FIELD_KEYS.md Frozen ledger field-key decision (why `sentra` stays an internal hash-input key)
 ```
 
@@ -348,6 +385,31 @@ cross-platform Node builder. It:
 
 `frontend/deploy/Dockerfile` (Node 24 Alpine, non-root UID 1000, port 7860) copies that
 `dist/` and runs `node immune-server.js`. See `frontend/deploy/README.md` for the exact commands.
+
+### Local verification
+
+The same source gates `.github/workflows/ci.yml` runs (Node 24, pnpm 11.9.0, Python 3.11+):
+
+```bash
+python3 -m pip install -r python/requirements.txt
+node --test tests/immune-publication-dispatch.test.mjs
+python3 -m unittest tests.test_assert_hf_space_operational tests.test_attest_hf_space_runtime tests.test_dependency_workspace tests.test_immune_v2_packaging
+python3 -m unittest discover -s tests -p 'test_immune_publication*.py'
+PYTHONPATH=python python3 -m unittest discover -s python/tests
+pnpm install --frozen-lockfile
+pnpm run typecheck
+pnpm test                      # every tests/*.test.ts file
+SOURCE_REVISION=$(git rev-parse HEAD) pnpm run build
+SOURCE_REVISION=$(git rev-parse HEAD) IMMUNE_EXPECTED_HF_REVISION=cccccccccccccccccccccccccccccccccccccccc \
+  HF_SPACE_REVISION=cccccccccccccccccccccccccccccccccccccccc node tests/smoke-standalone.mjs
+rm -rf reports/static-delivery   # the delivery check never reuses an earlier observation
+SOURCE_REVISION=$(git rev-parse HEAD) node tests/static-delivery.mjs
+```
+
+CI additionally renders the built pages in Chromium (`scripts/qualify_native_frontend.cjs` in
+`ci.yml`, `scripts/check_responsive.mjs` in `responsive-ui.yml`) and qualifies the pinned
+`huggingface_hub` publisher without provider mutation. Passing these gates is local software
+evidence only; it is not publication, deployment, or authority evidence.
 
 > **Provenance note.** Installation, typecheck, build, and smoke tests establish
 > local software evidence only. Canonical publication rebuilds from the exact
@@ -367,4 +429,4 @@ cross-platform Node builder. It:
 
 ---
 
-**Explore the SZL estate:** [a11oy console](https://a-11-oy.com) · [LLM Router](https://github.com/szl-holdings/szl-router) · [Receipt format spec](https://github.com/szl-holdings/governed-receipt-spec) · [Lean proofs](https://github.com/szl-holdings/lutar-lean) · [Docs](https://github.com/szl-holdings/docs-site) · [🤗 SZLHOLDINGS](https://huggingface.co/SZLHOLDINGS)
+**Explore the SZL estate:** [a11oy console](https://a-11-oy.com) · [LLM Router](https://github.com/szl-holdings/szl-router) · [Receipt format spec](https://github.com/szl-holdings/governed-receipt-spec) · [Lean proofs](https://github.com/szl-holdings/lutar-lean) · [Public proof site](https://github.com/szl-holdings/a11oy-net) · [🤗 SZLHOLDINGS](https://huggingface.co/SZLHOLDINGS)
