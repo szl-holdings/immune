@@ -16,21 +16,19 @@ jobs:
   build-and-smoke:
     runs-on: ubuntu-latest
     steps:
-      # actions/checkout@v4.1.7
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      # actions/setup-node@v4
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           version: 11.9.0
           run_install: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
           cache: pnpm
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
       - name: Install Python runtime dependencies before contract imports
@@ -70,7 +68,7 @@ jobs:
         run: node tests/static-delivery.mjs
       - name: Retain exact built-delivery observation
         if: ${{ always() && steps.static_delivery.outcome != 'skipped' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: immune-static-delivery-${{ github.run_id }}-${{ github.run_attempt }}
           path: reports/static-delivery/observation.json
@@ -91,14 +89,14 @@ jobs:
         run: node scripts/qualify_native_frontend.cjs
       - name: Retain unsigned rendered observations
         if: ${{ always() && steps.native_frontend.outcome != 'skipped' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: immune-native-frontend-${{ github.run_id }}-${{ github.run_attempt }}
           path: reports/native-frontend/
           if-no-files-found: error
           retention-days: 30
       - name: Set up production publisher Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - name: Qualify pinned SDK against actual built bundles without provider mutation
@@ -118,7 +116,7 @@ jobs:
           "$qpython" tests/check_publication_sdk.py
       - name: Retain source-bound publisher qualification
         if: ${{ always() && steps.publisher_sdk.outcome != 'skipped' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: immune-publisher-sdk-${{ github.run_id }}-${{ github.run_attempt }}
           path: reports/publication-sdk/
