@@ -1,6 +1,7 @@
 # IMMUNE Python kernel — Channel B. Flattened HF Space layout.
-# Digest-pinned OCI index for python:3.12-slim (3.12.14-slim-trixie, linux/amd64
-# included), identical on mirror.gcr.io and registry-1.docker.io on 2026-09-29.
+# Digest-pinned multi-arch OCI index for python:3.15-slim from mirror.gcr.io (the
+# Docker Hub library/python mirror). Dependabot's docker group refreshes the
+# digest; keep the tag and digest together when changing the runtime line.
 FROM mirror.gcr.io/library/python:3.15-slim@sha256:8c13a3f37a6a5b71498228e902c4b9f51c1f7900d49fabf71f9a650c6120e0d0
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=7860 IMMUNE_DATA_DIR=/app/data/immune
