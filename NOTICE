@@ -1,0 +1,15 @@
+IMMUNE (szl-holdings/immune)
+Copyright 2026 SZL Holdings.
+
+Licensed under the Apache License, Version 2.0 (see LICENSE), except where a
+file states otherwise.
+
+Third-party acknowledgements
+----------------------------
+frontend/src/components/ui/: UI primitives scaffolded with the shadcn/ui CLI
+(configuration in frontend/components.json). Upstream: https://github.com/shadcn-ui/ui,
+MIT License, Copyright (c) 2023 shadcn. The upstream project name identifies
+origin only and does not imply endorsement of this repository.
+
+Runtime and build dependencies are resolved from pnpm-lock.yaml and
+python/requirements.txt and retain their own licenses.

@@ -7,3 +7,10 @@ dist/
 .env.*
 __pycache__/
 *.py[cod]
+# Local qualification observations (static delivery, responsive UI, native
+# frontend, publication SDK/boundary). CI uploads these as run artifacts;
+# they are never committed source.
+reports/
+# Python kernel local runtime bundle written when IMMUNE_DATA_DIR=./data/immune
+# (README quick start). Only ledger.jsonl and huklla_evidence.jsonl are seed.
+data/immune/runtime.json
