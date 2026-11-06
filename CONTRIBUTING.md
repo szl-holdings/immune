@@ -28,6 +28,12 @@ contribution to this repository:
 - Sign off every commit (`git commit -s`): the `Signed-off-by:` trailer
   certifies you have the right to submit the change (DCO style).
 
+## Verify locally
+
+Run the source gates in [README → Local verification](README.md#local-verification)
+before opening a pull request; `.github/workflows/ci.yml` runs the same commands.
+`pnpm test` runs every `tests/*.test.ts` suite.
+
 ## Pull requests
 
 - Fill in the PR template checklist — every box is a control or a receipt.
