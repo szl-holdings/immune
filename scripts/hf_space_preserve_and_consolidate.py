@@ -41,9 +41,15 @@ PROTECTED = {
 }
 
 # Creative experiences belong on Stephen's public profile, not the company org.
+# Historical record: these are the sources the completed 2026-09 one-shot used.
+# szl-holdings/cosmos is now ARCHIVED. Its canonical source is
+# szl-holdings/anatomy (spaces/cosmos/), which publishes betterwithage/cosmos
+# through anatomy's .github/workflows/cosmos-hf-sync.yml. Re-dispatching this
+# one-shot as written would upload the frozen archived tree over that Space, so
+# repoint or drop the "cosmos" entry before any re-run.
 CREATIVE_SOURCES = {
     "anatomy": "https://github.com/szl-holdings/anatomy.git",
-    "cosmos": "https://github.com/szl-holdings/cosmos.git",
+    "cosmos": "https://github.com/szl-holdings/cosmos.git",  # ARCHIVED; see above
 }
 CREATIVE_ORG_ALIASES = {
     "anatomy",
