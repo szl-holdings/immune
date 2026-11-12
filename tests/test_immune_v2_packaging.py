@@ -140,7 +140,7 @@ class ImageBoundaryTests(unittest.TestCase):
         docker = DOCKER_PATH.read_text(encoding="utf-8")
         self.assertIn(
             "FROM public.ecr.aws/docker/library/node:24-alpine@sha256:"
-            "ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1",
+            "a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8",
             docker,
         )
         probe = docker.split("HEALTHCHECK ", 1)[1].split("\n\n", 1)[0]
