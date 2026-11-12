@@ -18,7 +18,7 @@
 # Tag node:24-alpine, pinned to the multi-arch OCI image-index digest that ECR Public
 # returned on 2026-09-25 (identical to Docker Hub library/node:24-alpine at that time).
 # Bump the tag and the digest together.
-FROM public.ecr.aws/docker/library/node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8
+FROM public.ecr.aws/docker/library/node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5
 
 # Cache-bust / fresh-container marker (bump to force HF to rebuild+redeploy):
 ARG IMMUNE_DEPLOY_REV=2026-08-29-operational
