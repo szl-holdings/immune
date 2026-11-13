@@ -812,7 +812,9 @@ function canonicalizeForParity(value: unknown): unknown {
   if (typeof value === "number") return canonicalNumber(value);
   if (Array.isArray(value)) return value.map(canonicalizeForParity);
   if (value && typeof value === "object") {
-    const out: Record<string, unknown> = {};
+    // Null-prototype target: a "__proto__" key must stay an own, hashed member
+    // instead of invoking the Object.prototype.__proto__ setter and vanishing.
+    const out = Object.create(null) as Record<string, unknown>;
     for (const key of Object.keys(value as Record<string, unknown>).sort()) {
       out[key] = canonicalizeForParity((value as Record<string, unknown>)[key]);
     }
