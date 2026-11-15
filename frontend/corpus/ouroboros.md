@@ -88,7 +88,7 @@ In two sentences: this component is part of SZL's governed-AI mesh — it enforc
 > **Thesis cross-reference:** The mathematical foundations for this repository are developed
 > in the Ouroboros Thesis v18.0 (DOI [10.5281/zenodo.20434276](https://doi.org/10.5281/zenodo.20434276)).
 > Source for the published thesis is in `szl-holdings/ouroboros-thesis`.
-> Concept DOI (always-latest): [10.5281/zenodo.19944926](https://doi.org/10.5281/zenodo.19944926).
+> Concept DOI (always-latest): [10.5281/zenodo.24239896](https://doi.org/10.5281/zenodo.24239896).
 
 ## On Hugging Face
 
@@ -108,7 +108,7 @@ uniqueness claim is machine-checked **false** (`Round13.maxAgg_ne_Lambda` counte
 **conditional** CUT-2 slice-multiplicativity uniqueness is proven (`lambda_unique_of_separable`,
 axiom-free, 0 sorry, CI-green) in
 [szl-holdings/lutar-lean](https://github.com/szl-holdings/lutar-lean)
-(DOI [10.5281/zenodo.20434308](https://doi.org/10.5281/zenodo.20434308)). The locked-proven PURIQ
+(DOI [10.5281/zenodo.24239654](https://doi.org/10.5281/zenodo.24239654)). The locked-proven PURIQ
 formulas number **exactly 8** {F1, F4, F7, F11, F12, F18, F19, F22}; the broader experimental `main` corpus
 (≈1323 decls / 23 axioms / CI-green) is reported separately and never folded into the locked 8.
 
@@ -144,7 +144,7 @@ receipt schema, not by a physical bound.
 > live code) and is intentionally excluded from the doctrine gate. Because it is a ~1.4 MB
 > generated bundle that bloated every clone, it is now **git-ignored and no longer tracked**
 > (removed with `git rm --cached`; **no history was rewritten**, so prior commits and the
-> Zenodo DOIs in its header — Concept DOI `10.5281/zenodo.19944926`, v14–v17 DOIs — remain
+> Zenodo DOIs in its header — Concept DOI `10.5281/zenodo.24239896`, v14–v17 DOIs — remain
 > the durable provenance anchors). It is produced by concatenating the v14–v19 thesis module
 > set (maintained in the author's thesis working tree / Replit) into one drop-in file; if you
 > need it, recover it from git history (`git show <pre-eviction-commit>:OUROBOROS_RUN_ALL.py`)
@@ -185,8 +185,8 @@ Receipts are anchored to SCITT transparency ledgers per
   title     = {{ouroboros --- Bounded-loop runtime implementing the Lutar Invariant}},
   year      = {2026},
   publisher = {Zenodo},
-  doi       = {10.5281/zenodo.19944926},
-  url       = {https://doi.org/10.5281/zenodo.19944926}
+  doi       = {10.5281/zenodo.24239896},
+  url       = {https://doi.org/10.5281/zenodo.24239896}
 }
 ```
 
