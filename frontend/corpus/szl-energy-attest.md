@@ -177,9 +177,9 @@ cryptographically signed, tamper-evident receipts verifiable offline by anyone w
 a public key. It composes with:
 
 - **lutar-lean** — Lean 4 machine-checked proofs of the Λ uniqueness theorem and
-  the Egyptian-exactness lemma (DOI [10.5281/zenodo.20434308](https://doi.org/10.5281/zenodo.20434308)).
+  the Egyptian-exactness lemma (DOI [10.5281/zenodo.24239654](https://doi.org/10.5281/zenodo.24239654)).
 - **vsp-otel** — the verifiable-span OpenTelemetry exporter that carries these
-  receipts as spans (DOI [10.5281/zenodo.19944926](https://doi.org/10.5281/zenodo.19944926)).
+  receipts as spans (DOI [10.5281/zenodo.24239896](https://doi.org/10.5281/zenodo.24239896)).
 
 ---
 
