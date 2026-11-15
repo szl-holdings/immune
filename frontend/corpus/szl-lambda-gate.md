@@ -124,7 +124,7 @@ The weighted geometric mean as a *less-compensatory* composite-indicator aggrega
 
 ## Provenance
 
-Backed by the Lean 4 formalization [`szl-holdings/lutar-lean`](https://github.com/szl-holdings/lutar-lean) (749 declarations / 14 axioms / 163 tracked sorries), DOI [10.5281/zenodo.20434308](https://doi.org/10.5281/zenodo.20434308). **Λ uniqueness = Conjecture 1 (open).**
+Backed by the Lean 4 formalization [`szl-holdings/lutar-lean`](https://github.com/szl-holdings/lutar-lean) (749 declarations / 14 axioms / 163 tracked sorries), DOI [10.5281/zenodo.24239654](https://doi.org/10.5281/zenodo.24239654). **Λ uniqueness = Conjecture 1 (open).**
 
 ---
 
