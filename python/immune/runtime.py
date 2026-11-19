@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import threading
 from datetime import datetime, timezone
 from typing import Any
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from .canonical import canonical_bytes, sha256_hex
 from .huklla import evaluate_tripwires
@@ -20,6 +24,12 @@ ACTION_ENVELOPE_VERSION = "immune.action.v2"
 
 _RUNTIME: ImmuneRuntime | None = None
 _LOCK = threading.Lock()
+
+
+def _blocks_writes(report: dict[str, Any]) -> bool:
+    # Restored history may be signed under a rotated key; untrusted_key is
+    # reported but must not stop appends, every integrity failure still does.
+    return any(issue["kind"] != "untrusted_key" for issue in report["issues"])
 
 
 def _now_iso() -> str:
@@ -88,7 +98,7 @@ class ImmuneRuntime:
     ) -> None:
         if self.ledger_restore_error is not None:
             raise RuntimeIntegrityError("RUNTIME_BUNDLE_RESTORE_FAILED")
-        if not self.verify_ledger(ledger)["ok"]:
+        if _blocks_writes(self.verify_ledger(ledger)):
             raise RuntimeIntegrityError("RUNTIME_LEDGER_INTEGRITY_FAILED")
         try:
             save_bundle(
@@ -299,16 +309,15 @@ class ImmuneRuntime:
                     }
                 )
             try:
-                recomputed = sha256_hex(
-                    canonical_bytes(
-                        {
-                            "seq": entry["seq"],
-                            "ts": entry["ts"],
-                            "prevHash": entry["prevHash"],
-                            "payload": entry["payload"],
-                        }
-                    )
+                blob = canonical_bytes(
+                    {
+                        "seq": entry["seq"],
+                        "ts": entry["ts"],
+                        "prevHash": entry["prevHash"],
+                        "payload": entry["payload"],
+                    }
                 )
+                recomputed = sha256_hex(blob)
             except (ValueError, TypeError, RecursionError):
                 issues.append(
                     {
@@ -327,6 +336,38 @@ class ImmuneRuntime:
                         "detail": f"stored {stored_hash[:12]} recomputed {recomputed[:12]}",
                     }
                 )
+            # Unsigned receipts stay accepted for parity with the TS kernel.
+            sig = entry.get("sig")
+            if sig is not None:
+                ok_sig = False
+                try:
+                    if (
+                        entry.get("alg") == "ed25519"
+                        and type(sig) is str
+                        and type(entry.get("pub")) is str
+                    ):
+                        Ed25519PublicKey.from_public_bytes(
+                            base64.b64decode(entry["pub"], validate=True)
+                        ).verify(base64.b64decode(sig, validate=True), blob)
+                        ok_sig = True
+                except (InvalidSignature, ValueError, binascii.Error):
+                    ok_sig = False
+                if not ok_sig:
+                    issues.append(
+                        {
+                            "seq": issue_seq,
+                            "kind": "bad_sig",
+                            "detail": "ed25519 signature does not match receipt bytes",
+                        }
+                    )
+                elif self.public_key_b64 and entry["pub"] != self.public_key_b64:
+                    issues.append(
+                        {
+                            "seq": issue_seq,
+                            "kind": "untrusted_key",
+                            "detail": f"signed by kid {str(entry.get('kid'))[:8]} - not the published key",
+                        }
+                    )
             prev_hash = stored_hash
         return {
             "ok": len(issues) == 0,
@@ -359,7 +400,7 @@ class ImmuneRuntime:
         self.maybe_refresh()
         if self.ledger_restore_error is not None:
             raise RuntimeIntegrityError("RUNTIME_BUNDLE_RESTORE_FAILED")
-        if not self.verify_ledger()["ok"]:
+        if _blocks_writes(self.verify_ledger()):
             raise RuntimeIntegrityError("RUNTIME_LEDGER_INTEGRITY_FAILED")
         ready = self.readiness()
         auth = self.project()

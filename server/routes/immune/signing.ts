@@ -7,6 +7,9 @@
 // surface must say so. Signatures are stored as SIBLING fields on the receipt
 // (sig/alg/pub/kid) and are DELIBERATELY excluded from the hashed view, so the
 // existing seeded (unsigned) chain keeps verifying byte-for-byte.
+// IMMUNE_SIGNING_FROM_SEQ (optional, positive integer) declares the first seq
+// that must carry a signature while signing is on; a set-but-invalid value is
+// a configuration error the verifier reports instead of ignoring.
 import crypto from "crypto";
 
 // SPKI DER prefix for an Ed25519 public key (12 bytes) + 32 raw key bytes.
@@ -94,6 +97,24 @@ export function publicKeyInfo(): {
   kid: string | null;
 } {
   return { enabled: signingEnabled(), alg: "ed25519", publicKey: pubRawB64, kid };
+}
+
+function signingEpochRaw(): string | undefined {
+  const raw = process.env.IMMUNE_SIGNING_FROM_SEQ;
+  return raw === undefined || raw === "" ? undefined : raw;
+}
+
+/** First seq that must be signed (IMMUNE_SIGNING_FROM_SEQ), or null when unset/invalid. */
+export function signingEpochSeq(): number | null {
+  const raw = signingEpochRaw();
+  if (raw === undefined || !/^[1-9][0-9]*$/.test(raw)) return null;
+  const n = Number(raw);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+/** True when IMMUNE_SIGNING_FROM_SEQ is set but not a positive integer. */
+export function signingEpochInvalid(): boolean {
+  return signingEpochRaw() !== undefined && signingEpochSeq() === null;
 }
 
 /** The base64 raw public key currently trusted as "official" (or null). */
