@@ -1,7 +1,14 @@
 import fs from "fs";
 import path from "path";
 import { canonicalBytes, sha256Hex, CanonicalError } from "./canonical";
-import { signReceiptBytes, verifyReceiptSignature, officialPublicKeyB64 } from "./signing";
+import {
+  signReceiptBytes,
+  verifyReceiptSignature,
+  officialPublicKeyB64,
+  signingEnabled,
+  signingEpochInvalid,
+  signingEpochSeq,
+} from "./signing";
 import { isDeclaredLocalFilesystemCandidate } from "./storage-policy";
 
 // The append-only chain lives under data/immune by default. IMMUNE_DATA_DIR lets
@@ -272,7 +279,7 @@ export function appendReceipt(
 
 export interface VerifierIssue {
   seq: number;
-  kind: "bad_hash" | "bad_prev" | "bad_sequence" | "parse_error" | "bad_payload" | "bad_sig" | "untrusted_key";
+  kind: "bad_hash" | "bad_prev" | "bad_sequence" | "parse_error" | "bad_payload" | "bad_sig" | "untrusted_key" | "missing_sig";
   detail: string;
 }
 
@@ -292,8 +299,13 @@ export function verifyLedger(): VerifierReport {
     if (firstBadSeq === null) firstBadSeq = seq;
   };
 
+  if (signingEpochInvalid()) {
+    flag(1, "missing_sig", "invalid IMMUNE_SIGNING_FROM_SEQ — signing epoch cannot be established");
+  }
+  const epoch = signingEnabled() ? signingEpochSeq() : null;
+
   if (!fs.existsSync(LEDGER_PATH)) {
-    return { ok: true, count: 0, issues: [], firstBadSeq: null };
+    return { ok: issues.length === 0, count: 0, issues, firstBadSeq };
   }
   const raw = fs.readFileSync(LEDGER_PATH, "utf8");
   const lines = raw.split("\n").filter((l) => l.length > 0);
@@ -301,6 +313,7 @@ export function verifyLedger(): VerifierReport {
   let prevHash = "GENESIS";
   let expectedSeq = 1;
   let parsedCount = 0;
+  let sawSigned = false;
 
   for (let i = 0; i < lines.length; i++) {
     const lineSeq = i + 1;
@@ -337,17 +350,30 @@ export function verifyLedger(): VerifierReport {
     if (recomputed !== parsed.hash) {
       flag(parsed.seq ?? lineSeq, "bad_hash", `hash mismatch — recomputed ${recomputed.slice(0, 12)}…, stored ${String(parsed.hash).slice(0, 12)}…`);
     }
-    // Signatures are OPTIONAL — only verify when a receipt carries one, so the
-    // seeded unsigned chain still verifies. A present-but-invalid signature is a
-    // real integrity failure; a valid signature under a key other than the
-    // published one is flagged as untrusted (authenticity, not integrity).
-    if (parsed.sig) {
+    // Unsigned receipts are accepted only before signing began: once any earlier
+    // receipt is signed, or past the declared IMMUNE_SIGNING_FROM_SEQ epoch while
+    // signing is on, a missing signature is a downgrade (missing_sig). The seeded
+    // unsigned chain still verifies. Without a declared epoch, stripping EVERY
+    // signature is not detectable here. A present-but-invalid signature is an
+    // integrity failure (bad_sig); a valid signature is trusted only under the
+    // configured official key, so with no key configured it is untrusted_key.
+    const receiptSeq = parsed.seq ?? lineSeq;
+    if (!parsed.sig) {
+      if (sawSigned) {
+        flag(receiptSeq, "missing_sig", "unsigned receipt after an earlier signed receipt");
+      } else if (epoch !== null && typeof receiptSeq === "number" && receiptSeq >= epoch) {
+        flag(receiptSeq, "missing_sig", `unsigned receipt at or after IMMUNE_SIGNING_FROM_SEQ=${epoch}`);
+      }
+    } else {
+      sawSigned = true;
       if (!verifyReceiptSignature(bytes, parsed)) {
-        flag(parsed.seq ?? lineSeq, "bad_sig", `ed25519 signature does not match receipt bytes`);
+        flag(receiptSeq, "bad_sig", `ed25519 signature does not match receipt bytes`);
       } else {
         const official = officialPublicKeyB64();
-        if (official && parsed.pub && parsed.pub !== official) {
-          flag(parsed.seq ?? lineSeq, "untrusted_key", `signed by kid ${String(parsed.kid).slice(0, 8)} — not the published key`);
+        if (!official) {
+          flag(receiptSeq, "untrusted_key", "signature present but no official key configured, so authenticity cannot be established");
+        } else if (parsed.pub !== official) {
+          flag(receiptSeq, "untrusted_key", `signed by kid ${String(parsed.kid).slice(0, 8)} — not the published key`);
         }
       }
     }
