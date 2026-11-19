@@ -1824,6 +1824,127 @@ class KernelTests(unittest.TestCase):
         self.assertFalse(report["ok"])
         self.assertEqual(report["issues"][0]["kind"], "bad_hash")
 
+    _SEED_A = "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
+    _SEED_B = "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8="
+
+    def _signed_runtime(self, seed: str):
+        import immune.runtime as runtime_mod
+
+        os.environ["IMMUNE_SIGNING_KEY"] = seed
+        runtime_mod._RUNTIME = None
+        rt = runtime_mod.get_runtime()
+        self.assertIsNotNone(rt.private_key)
+        return rt
+
+    @staticmethod
+    def _hashed_blob(entry: dict) -> bytes:
+        from immune.canonical import canonical_bytes
+
+        return canonical_bytes(
+            {k: entry[k] for k in ("seq", "ts", "prevHash", "payload")}
+        )
+
+    def test_valid_signature_verifies(self) -> None:
+        rt = self._signed_runtime(self._SEED_A)
+        receipt = rt.append_receipt({"actor": "test", "intent": "signed"})
+        self.assertEqual(receipt["alg"], "ed25519")
+        self.assertTrue(rt.verify_ledger()["ok"])
+
+    def test_forged_sig_is_bad_sig(self) -> None:
+        import base64
+
+        rt = self._signed_runtime(self._SEED_A)
+        rt.append_receipt({"actor": "test", "intent": "forged"})
+        rt.ledger[0]["sig"] = base64.b64encode(bytes(64)).decode("ascii")
+        report = rt.verify_ledger()
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["issues"][0]["kind"], "bad_sig")
+
+    def test_garbage_sig_base64_is_bad_sig(self) -> None:
+        rt = self._signed_runtime(self._SEED_A)
+        rt.append_receipt({"actor": "test", "intent": "garbage"})
+        rt.ledger[0]["sig"] = "!!!"
+        report = rt.verify_ledger()
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["issues"][0]["kind"], "bad_sig")
+
+    def test_foreign_key_valid_sig_is_untrusted_key(self) -> None:
+        import base64
+
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+        rt = self._signed_runtime(self._SEED_A)
+        rt.append_receipt({"actor": "test", "intent": "foreign"})
+        foreign = Ed25519PrivateKey.generate()
+        entry = rt.ledger[0]
+        entry["sig"] = base64.b64encode(foreign.sign(self._hashed_blob(entry))).decode("ascii")
+        entry["pub"] = base64.b64encode(
+            foreign.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+        ).decode("ascii")
+        report = rt.verify_ledger()
+        self.assertFalse(report["ok"])
+        self.assertEqual([i["kind"] for i in report["issues"]], ["untrusted_key"])
+
+    def test_pub_swapped_without_resign_is_bad_sig(self) -> None:
+        import base64
+
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+        rt = self._signed_runtime(self._SEED_A)
+        rt.append_receipt({"actor": "test", "intent": "swapped"})
+        rt.ledger[0]["pub"] = base64.b64encode(
+            Ed25519PrivateKey.generate().public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+        ).decode("ascii")
+        report = rt.verify_ledger()
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["issues"][0]["kind"], "bad_sig")
+
+    def test_unsigned_receipt_still_verifies(self) -> None:
+        # Parity with the TS kernel's unsigned-history acceptance; Channel B
+        # missing_sig detection is deferred to a change that covers both channels.
+        rt = self._signed_runtime(self._SEED_A)
+        rt.append_receipt({"actor": "test", "intent": "stripped"})
+        for key in ("sig", "pub", "kid", "alg"):
+            rt.ledger[0].pop(key)
+        self.assertTrue(rt.verify_ledger()["ok"])
+
+    def test_persist_refuses_bad_sig_ledger(self) -> None:
+        import base64
+
+        from immune.runtime import RuntimeIntegrityError
+
+        rt = self._signed_runtime(self._SEED_A)
+        rt.append_receipt({"actor": "test", "intent": "forged persist"})
+        rt.ledger[0]["sig"] = base64.b64encode(bytes(64)).decode("ascii")
+        with self.assertRaises(RuntimeIntegrityError):
+            rt.append_receipt({"actor": "test", "intent": "after forgery"})
+
+    def test_persist_allows_rotated_key_history(self) -> None:
+        old = self._signed_runtime(self._SEED_A)
+        old.append_receipt({"actor": "test", "intent": "old key"})
+        history = [dict(entry) for entry in old.ledger]
+        rt = self._signed_runtime(self._SEED_B)
+        self.assertNotEqual(rt.public_key_b64, history[0]["pub"])
+        rt.ledger = history
+        receipt = rt.append_receipt({"actor": "test", "intent": "new key"})
+        self.assertEqual(receipt["seq"], 2)
+        self.assertEqual(
+            [i["kind"] for i in rt.verify_ledger()["issues"]], ["untrusted_key"]
+        )
+
+    def test_cycle_on_rotated_key_history_records_evidence_without_receipt(self) -> None:
+        old = self._signed_runtime(self._SEED_A)
+        old.append_receipt({"actor": "test", "intent": "old key"})
+        history = [dict(entry) for entry in old.ledger]
+        rt = self._signed_runtime(self._SEED_B)
+        rt.ledger = history
+        rt.run_cycle("operator@test", "read public market snapshot")
+        self.assertEqual(len(rt.ledger), 1)
+        self.assertEqual(rt.evidence[-1]["cycleSeq"], 1)
+        self.assertIn("RECEIPT_LEDGER_INTEGRITY_FAILED", rt.readiness()["blockers"])
+
 
 if __name__ == "__main__":
     unittest.main()
