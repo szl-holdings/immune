@@ -254,6 +254,25 @@ class Handler(BaseHTTPRequestHandler):
                 },
             )
             return
+        if path == "/api/build-info":
+            # A self-consistent publisher declaration is not a provider/runtime
+            # attestation or permission to perform governed actions.
+            source = bundled_source()
+            declared = source["evidence_class"] == "DECLARED"
+            self._json(
+                200 if declared else 503,
+                {
+                    "schema": "szl.immune-lattice.build-info/v1",
+                    "service": "immune-lattice",
+                    "source_repository": "szl-holdings/immune",
+                    "source_revision": source["revision"] if declared else None,
+                    "evidence_class": "DECLARED" if declared else "UNKNOWN",
+                    "manifest_sha256": source["manifest_sha256"] if declared else None,
+                    "deployment_verified": False,
+                    "action_authority": False,
+                },
+            )
+            return
         if path == "/readyz":
             try:
                 runtime = get_runtime()
