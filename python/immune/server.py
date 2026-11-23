@@ -384,7 +384,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/immune/brain":
             qs = parse_qs(parsed.query)
             q = (qs.get("q") or [""])[0]
-            k = int((qs.get("k") or ["6"])[0] or 6)
+            limits = qs.get("k", ["6"])
+            # The public navigator is bounded; negative Python slices and
+            # untrusted integer conversion must not widen its response.
+            if len(limits) != 1 or re.fullmatch(r"[0-9]{1,2}", limits[0]) is None:
+                self._json(400, {"error": "INVALID_RESULT_LIMIT"})
+                return
+            k = int(limits[0])
+            if not 1 <= k <= 25:
+                self._json(400, {"error": "INVALID_RESULT_LIMIT"})
+                return
             self._json(200, {"hits": search_brain(q, k), "q": q})
             return
         if path == "/api/immune/nexus/status":
