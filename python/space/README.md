@@ -57,6 +57,10 @@ The existing Channel B publisher includes a source declaration in its single
 guarded Hub commit. `/readyz` labels it `DECLARED` only when the repository,
 full source revision, and hashes of the files in the running image match that
 declaration; absent or stale declarations are `UNKNOWN` with no revision.
+The read-only `GET /api/build-info` returns that same checked bundled
+source declaration as `DECLARED` (HTTP 200) or `UNKNOWN` (HTTP 503),
+without invoking the authority runtime. Neither result certifies deployed revision
+parity, functional readiness, or authority to perform an action.
 This identifies bundled source only. It does not establish deployment or action
 authority, change readiness, or create a receipt on GET.
 
