@@ -14,12 +14,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    name: Protected-main admission
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Verify canonical dispatch source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_EVENT: ${{ github.event_name }}
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+          EXPECTED_REF: ${{ github.ref }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$EXPECTED_EVENT" = "workflow_dispatch"
+          test "$EXPECTED_REPOSITORY" = "szl-holdings/immune"
+          test "$EXPECTED_REF" = "refs/heads/main"
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          live_main_sha="$(gh api "repos/$EXPECTED_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          test "$live_main_sha" = "$EXPECTED_SHA"
+
   preserve:
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      GITHUB_TOKEN: ${{ github.token }}
       HF_HUB_DISABLE_TELEMETRY: "1"
       HF_HOME: /tmp/hf-home
     steps:
@@ -60,10 +83,14 @@ jobs:
 
       - name: Fail closed if Hugging Face credential is absent
         shell: bash
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           set -euo pipefail
           test -n "${HF_TOKEN:-}" || { echo "::error::HF_TOKEN absent"; exit 2; }
           echo "::add-mask::$HF_TOKEN"
 
       - name: Preserve and consolidate without deleting org Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python scripts/hf_space_preserve_and_consolidate.py
